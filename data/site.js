@@ -473,11 +473,10 @@ function connectWebSocket(url, reconnectDelay = 5000) {
         }
 
         // If the server is replying to our get_tx_state command:
-        if (typeof msg.tx_state === "boolean") {
-            // true → we’re currently transmitting; false → back to connected
-            setConnectionState(msg.tx_state ? "transmitting" : "connected");
+        if (msg.tx_state !== undefined) {
+            setConnectionState(msg.tx_state === "transmitting" ? "transmitting" : "connected");
             debugConsole("debug", "Received tx_state:", msg.tx_state);
-            return; // done
+            return;
         }
 
         // If the server pushes a “transmit” event:
