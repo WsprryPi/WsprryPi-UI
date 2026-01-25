@@ -2,83 +2,83 @@
 
 1. **Update package lists & install prerequisites**
 
-```bash
-sudo apt update
-sudo apt install -y libnss3-tools ca-certificates
-```
+    ```bash
+    sudo apt update
+    sudo apt install -y libnss3-tools ca-certificates
+    ```
 
-2. **Download the prebuilt ARM binary (v1.4.3)**
+1. **Download the prebuilt ARM binary (v1.4.3)**
 
-```bash
-VERSION=1.4.3
-wget https://github.com/FiloSottile/mkcert/releases/download/v$VERSION/mkcert-v$VERSION-linux-arm
-```
+    ```bash
+    VERSION=1.4.3
+    wget https://github.com/FiloSottile/mkcert/releases/download/v$VERSION/mkcert-v$VERSION-linux-arm
+    ```
 
-3. **Make it executable & install it system-wide**
+1. **Make it executable & install it system-wide**
 
-```bash
-chmod +x mkcert-v$VERSION-linux-arm
-sudo mv mkcert-v$VERSION-linux-arm /usr/local/bin/mkcert
-```
+    ```bash
+    chmod +x mkcert-v$VERSION-linux-arm
+    sudo mv mkcert-v$VERSION-linux-arm /usr/local/bin/mkcert
+    ```
 
-4. **Verify installation & install the local CA**
+1. **Verify installation & install the local CA**
 
-```bash
-mkcert --version
-sudo mkcert -install
-```
+    ```bash
+    mkcert --version
+    sudo mkcert -install
+    ```
 
-5. **Generate certificates for your local hostnames**
+1. **Generate certificates for your local hostnames**
 
-```bash
-# For a single hostname
-mkcert wspr.local
-```
+    ```bash
+    # For a single hostname
+    mkcert wspr.local
+    ```
 
-6. **Configure Apache to use the `mkcert` certificates**
+1. **Configure Apache to use the `mkcert` certificates**
 
-```bash
-# Create a directory for mkcert certs
-sudo mkdir -p /etc/ssl/mkcert
+    ```bash
+    # Create a directory for mkcert certs
+    sudo mkdir -p /etc/ssl/mkcert
 
-# Copy generated cert and key
-sudo cp wspr.local.pem wspr.local-key.pem /etc/ssl/mkcert/
-sudo chown root:root /etc/ssl/mkcert/wspr.local*.pem
-sudo chmod 644 /etc/ssl/mkcert/wspr.local.pem
-sudo chmod 600 /etc/ssl/mkcert/wspr.local-key.pem
+    # Copy generated cert and key
+    sudo cp wspr.local.pem wspr.local-key.pem /etc/ssl/mkcert/
+    sudo chown root:root /etc/ssl/mkcert/wspr.local*.pem
+    sudo chmod 644 /etc/ssl/mkcert/wspr.local.pem
+    sudo chmod 600 /etc/ssl/mkcert/wspr.local-key.pem
 
-# Enable SSL and default SSL site
-sudo a2enmod ssl
-sudo a2ensite default-ssl
+    # Enable SSL and default SSL site
+    sudo a2enmod ssl
+    sudo a2ensite default-ssl
 
-# Create your HTTPS VirtualHost
-cat <<EOF | sudo tee /etc/apache2/sites-available/wspr.local.conf
-<IfModule mod_ssl.c>
-    <VirtualHost *:443>
-    ServerName wspr.local
+    # Create your HTTPS VirtualHost
+    cat <<EOF | sudo tee /etc/apache2/sites-available/wspr.local.conf
+    <IfModule mod_ssl.c>
+        <VirtualHost *:443>
+        ServerName wspr.local
 
-    DocumentRoot /var/www/wspr
-    <Directory /var/www/wspr>
-        Options Indexes FollowSymLinks
-        AllowOverride All
-        Require all granted
-    </Directory>
+        DocumentRoot /var/www/wspr
+        <Directory /var/www/wspr>
+            Options Indexes FollowSymLinks
+            AllowOverride All
+            Require all granted
+        </Directory>
 
-    SSLEngine on
-    SSLCertificateFile      /etc/ssl/mkcert/wspr.local.pem
-    SSLCertificateKeyFile   /etc/ssl/mkcert/wspr.local-key.pem
+        SSLEngine on
+        SSLCertificateFile      /etc/ssl/mkcert/wspr.local.pem
+        SSLCertificateKeyFile   /etc/ssl/mkcert/wspr.local-key.pem
 
-    SSLOptions       +StrictRequire
-    SSLProtocol      all -SSLv3 -TLSv1 -TLSv1.1
-    SSLHonorCipherOrder on
-    </VirtualHost>
-</IfModule>
-EOF
+        SSLOptions       +StrictRequire
+        SSLProtocol      all -SSLv3 -TLSv1 -TLSv1.1
+        SSLHonorCipherOrder on
+        </VirtualHost>
+    </IfModule>
+    EOF
 
-# Enable your site & reload Apache
-sudo a2ensite wspr.local
-sudo systemctl reload apache2
-```
+    # Enable your site & reload Apache
+    sudo a2ensite wspr.local
+    sudo systemctl reload apache2
+    ```
 
 ---
 
