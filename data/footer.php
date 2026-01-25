@@ -1,7 +1,7 @@
 <!-- Fixed Footer -->
 <footer class="fixed-bottom bg-primary text-white">
     <div class="container text-center small">
-        <div>Copyright © 2025 Lee Bussy [AA0NT].</div>
+        <div>Copyright © 2023 - 2026 Lee Bussy [AA0NT].</div>
 
         <div>
             WsprryPi version <span id="wspr-version">Loading version...</span>
