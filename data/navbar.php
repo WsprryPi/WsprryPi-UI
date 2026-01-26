@@ -104,7 +104,7 @@ if ($current === 'index.php') {
                         <li>
                             <a
                                 class="dropdown-item"
-                                href="https://github.com/WsprryPi/wsprrypi"
+                                href="https://github.com/WsprryPi/"
                                 target="_blank"
                                 rel="noopener">
                                 GitHub
