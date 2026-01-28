@@ -32,9 +32,10 @@ if ($current === 'index.php') {
 <!-- Bootswatch Zephyr CSS -->
 <link
     rel="stylesheet"
-    href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/5.3.7/zephyr/bootstrap.min.css"
-    integrity="sha512-Lz5ZvfQhGrjnM+ykkCSADHAVbHWx4wGy89UtJTpS70F5ZSbZuL5vzguanjB3rit3GvItlRqgya2E6KRoG5uorw=="
-    crossorigin="anonymous">
+    href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/5.3.8/zephyr/bootstrap.min.css"
+    integrity="sha384-0qFVRx98HJem0F2omOB5o37vVaRuuesFrDqe5Q292oSriOauZU47Cz7anAMHnYnf"
+    crossorigin="anonymous"
+>
 
 <!-- Bootstrap Icons -->
 <link
