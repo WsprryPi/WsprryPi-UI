@@ -30,6 +30,15 @@
 
             <!-- Card Body -->
             <div class="card-body tab-content">
+                <!-- Jump to bottom button (overlays the log area) -->
+                <button
+                    type="button"
+                    id="jumpToBottomBtn"
+                    class="jump-to-bottom"
+                    aria-label="Jump to bottom">
+                    Jump to bottom
+                </button>
+
                 <div
                     id="info-pane"
                     class="tab-pane fade show active"
