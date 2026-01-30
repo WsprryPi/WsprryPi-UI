@@ -58,11 +58,13 @@ $path  = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? '/'), '/');
             white-space: pre-wrap;
             word-break: break-word;
         }
-        .logs-muted {
-            opacity: 0.75;
+        .logs-ts-cont {
+            font-weight: 700;
+            color: #ffffff;
         }
         .logs-playback {
-            opacity: 0.70;
+            opacity: 0.55;
+            color: #888888;
         }
         .logs-header {
             font-size: 0.95rem;
@@ -72,7 +74,42 @@ $path  = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? '/'), '/');
         .logs-toolbar .btn {
             font-size: 0.9rem;
         }
-    </style>
+    
+.log-emerg, .log-alert {
+    color: #ff3b3b;
+    font-weight: bold;
+}
+.log-crit {
+    color: #ff3b3b;
+}
+.log-error {
+    color: #ff9500;
+}
+.log-warn {
+    color: #ffd60a;
+}
+.log-notic {
+    color: #0a84ff;
+}
+.log-info {
+    color: #30d158;
+}
+.log-debug {
+    color: #8e8e93;
+}
+
+
+
+.severity {
+    display: inline-block;
+    width: 7ch; /* Includes brackets: [ + 5 chars + ] */
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+                 "Liberation Mono", "Courier New", monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
+}
+</style>
 </head>
 
 <body class="bg-body-tertiary">
@@ -364,17 +401,38 @@ function setJumpButton(count) {
 }
 
 
-function appendLineToPane(paneId, lineText, isPlayback) {
+function appendLineToPane(paneId, lineParts) {
     const pane = document.getElementById(paneId);
     if (!pane) return;
 
     const div = document.createElement("div");
-    div.className = "logs-line" + (isPlayback ? " logs-playback" : "");
-    div.textContent = lineText;
+    div.className = "logs-line" + (lineParts.prefix.playback ? " logs-playback" : "");
+
+    const tsSpan = document.createElement("span");
+    tsSpan.className = "logs-ts" + (lineParts.prefix.continuation ? " logs-ts-cont" : "");
+    tsSpan.textContent = lineParts.prefix.timestamp ? `${lineParts.prefix.timestamp} ` : "";
+
+    const unitSpan = document.createElement("span");
+    unitSpan.className = "logs-unit";
+    unitSpan.textContent = lineParts.prefix.unit ? `${lineParts.prefix.unit} ` : "";
+
+    const sevSpan = document.createElement("span");
+    sevSpan.className = "logs-sev";
+    sevSpan.textContent = lineParts.prefix.severity ? `[${lineParts.prefix.severity}] ` : "";
+
+    const msgSpan = document.createElement("span");
+    msgSpan.className = "logs-msg";
+    msgSpan.textContent = (lineParts.message ?? "").toString();
+
+    div.appendChild(tsSpan);
+    div.appendChild(unitSpan);
+    div.appendChild(sevSpan);
+    div.appendChild(msgSpan);
 
     pane.appendChild(div);
     trimContainer(pane);
 }
+
 
 function flushHiddenBuffer() {
     if (hiddenBuffer.length === 0) {
@@ -385,10 +443,10 @@ function flushHiddenBuffer() {
     const flushedCount = hiddenBufferedCount;
 
     for (const item of hiddenBuffer) {
-        appendLineToPane(item.paneId, item.text, item.playback);
+        appendLineToPane(item.paneId, item.lineParts);
 
         if (item.alsoAll && item.paneId !== "all") {
-            appendLineToPane("all", item.text, item.playback);
+            appendLineToPane("all", item.lineParts);
         }
     }
 
@@ -549,31 +607,111 @@ function priorityToPane(priorityStr) {
     }
 }
 
-function formatPrefix(payload) {
-    // __REALTIME_TIMESTAMP is microseconds. Convert to ms for JS Date.
-    let ts = "";
-    if (payload.__REALTIME_TIMESTAMP) {
-        const ms = Math.floor(Number(payload.__REALTIME_TIMESTAMP) / 1000);
-        if (!Number.isNaN(ms)) {
-            ts = `[${new Date(ms).toLocaleString()}] `;
+function pad2(n) {
+    return String(n).padStart(2, "0");
+}
+
+function pad3(n) {
+    return String(n).padStart(3, "0");
+}
+
+
+function formatTimestampUTC(payload) {
+    // Format: YYYY-MM-DDTHH:MM:SS.mmmZ (always UTC)
+    // __REALTIME_TIMESTAMP is microseconds since Unix epoch (journald).
+    const raw = payload.__REALTIME_TIMESTAMP;
+    if (raw === undefined || raw === null) return "";
+
+    const us = Number(raw);
+    if (!Number.isFinite(us)) return "";
+
+    const ms = Math.floor(us / 1000);
+    const d = new Date(ms);
+
+    const yyyy = String(d.getUTCFullYear()).padStart(4, "0");
+    const MM = String(d.getUTCMonth() + 1).padStart(2, "0");
+    const dd = String(d.getUTCDate()).padStart(2, "0");
+    const HH = String(d.getUTCHours()).padStart(2, "0");
+    const mm = String(d.getUTCMinutes()).padStart(2, "0");
+    const ss = String(d.getUTCSeconds()).padStart(2, "0");
+    const mmm = String(d.getUTCMilliseconds()).padStart(3, "0");
+
+    return `${yyyy}-${MM}-${dd}T${HH}:${mm}:${ss}.${mmm}Z`;
+}
+
+
+function formatUnitFixed16(unit) {
+    // Fixed-width unit column: 16 characters.
+    // - If shorter, pad spaces on the right.
+    // - If longer, truncate to 15 chars and use an ellipsis as the 16th char.
+    const s = (unit ?? "").toString();
+    if (!s) return "";
+    if (s.length > 16) return s.slice(0, 15) + "…";
+    return s.padEnd(16, " ");
+}
+
+function priorityToLabel(priorityStr) {
+    // Syslog priority: Emerg (0), Alert (1), Crit (2), 3 err, Warn (4),
+    // Notice (5), Info (6), Debug (7).
+    switch (String(priorityStr)) {
+        case "0": return "EMERG";
+        case "1": return "ALERT";
+        case "2": return "CRIT";
+        case "3": return "ERROR";
+        case "4": return "WARN";
+        case "5": return "NOTICE";
+        case "7": return "DEBUG";
+        case "6":
+        default:  return "INFO";
+    }
+}
+
+
+function normalizeSeverityLabel(label) {
+    const s = (label ?? "").toString().toUpperCase();
+    // Keep exactly 5 characters, padded on the right.
+    if (s.length > 5) return s.slice(0, 5);
+    return s.padEnd(5, " ");
+}
+
+function extractSeverityAndMessage(payload) {
+    // Prefer PRIORITY if present. Otherwise try to parse leading [LEVEL] from MESSAGE.
+    const rawMsg = (payload.MESSAGE ?? "").toString();
+
+    let label = "";
+    if (payload.PRIORITY !== undefined && payload.PRIORITY !== null) {
+        label = priorityToLabel(payload.PRIORITY);
+    } else {
+        const m = rawMsg.match(/^\s*\[\s*([A-Za-z]+)\s*\]\s*-?\s*/);
+        if (m && m[1]) {
+            label = String(m[1]).toUpperCase();
+            if (label === "WARNING") label = "WARN";
+        } else {
+            label = "INFO";
         }
     }
 
-    const ident = payload.SYSLOG_IDENTIFIER ? String(payload.SYSLOG_IDENTIFIER) : "";
-    const unit  = payload._SYSTEMD_UNIT ? String(payload._SYSTEMD_UNIT) : "";
-    const pid   = (payload.PID !== null && payload.PID !== undefined) ? String(payload.PID) : "";
-
-    let meta = "";
-    if (ident && unit && pid) meta = `${ident} (${unit})[${pid}] `;
-    else if (ident && unit)   meta = `${ident} (${unit}) `;
-    else if (ident && pid)    meta = `${ident}[${pid}] `;
-    else if (ident)           meta = `${ident} `;
-    else if (unit)            meta = `${unit} `;
-    else if (pid)             meta = `[${pid}] `;
-
-    const playback = payload.playback ? "[PLAYBACK] " : "";
-    return ts + playback + meta;
+    // Do not strip or alter MESSAGE. The producer may already include its own
+    // severity prefix and formatting.
+    return { label: normalizeSeverityLabel(label), message: rawMsg };
 }
+
+function buildLineParts(payload, isContinuation) {
+    const ts = formatTimestampUTC(payload);
+    const unit = payload._SYSTEMD_UNIT ? formatUnitFixed16(String(payload._SYSTEMD_UNIT)) : "";
+
+    const sev = extractSeverityAndMessage(payload);
+    const prefix = {
+        timestamp: ts,
+        unit: unit,
+        severity: sev.label,
+        playback: !!payload.playback,
+        continuation: !!isContinuation
+    };
+
+    return { prefix: prefix, message: sev.message };
+}
+
 
 let evt = null;
 let lastEventAtMs = 0;
@@ -682,49 +820,61 @@ function startLogStream() {
             const isInternal = (inferredType === "internal");
             const alsoAll = !isInternal;
 
-            // Extract message; never allow undefined.
-            const msg = (payload.MESSAGE ?? "").toString();
+            // Extract severity and a cleaned message (removes any leading [LEVEL]).
+            const sev = extractSeverityAndMessage(payload);
 
-            // Prefix with timestamp + metadata.
-            const prefix = formatPrefix(payload);
+            // Split into lines so continuations can render with a bold Z timestamp.
+            const msgLines = sev.message.split(/\r?\n/);
 
-            const lineText = prefix + msg;
+            const ts = formatTimestampUTC(payload);
+            const unit = payload._SYSTEMD_UNIT ? formatUnitFixed16(String(payload._SYSTEMD_UNIT)) : "";
+            const severity = sev.label;
+
 
             // When the page is not visible, browsers may throttle animation frames
             // and delay layout/paint. Buffer incoming lines and flush on focus.
             if (document.hidden) {
-                hiddenBuffer.push({
-                    paneId: paneId,
-                    alsoAll: alsoAll,
-                    text: lineText,
-                    playback: !!payload.playback
-                });
-                hiddenBufferedCount += 1;
+                for (let i = 0; i < msgLines.length; i++) {
+                    const lineParts = {
+                        prefix: {
+                            timestamp: ts,
+                            unit: unit,
+                            severity: severity,
+                            playback: !!payload.playback,
+                            continuation: (i > 0)
+                        },
+                        message: msgLines[i]
+                    };
+
+                    hiddenBuffer.push({
+                        paneId: paneId,
+                        alsoAll: alsoAll,
+                        lineParts: lineParts
+                    });
+                    hiddenBufferedCount += 1;
+                }
                 return;
             }
 
-            const $pane = $("#" + paneId);
-            const $allPane = $("#all");
+            // Visible: append immediately.
+            for (let i = 0; i < msgLines.length; i++) {
+                const lineParts = {
+                    prefix: {
+                        timestamp: ts,
+                        unit: unit,
+                        severity: severity,
+                        playback: !!payload.playback,
+                        continuation: (i > 0)
+                    },
+                    message: msgLines[i]
+                };
 
-            const $line = $("<div>").addClass("logs-line").text(lineText);
-            if (payload.playback) $line.addClass("logs-playback");
+                appendLineToPane(paneId, lineParts);
 
-            if ($pane.length === 0) {
-                debugConsole("warn", `Unknown pane '${paneId}', using 'info'`);
-                const $info = $("#info");
-                $info.append($line);
-                trimContainer($info[0]);
-            } else {
-                $pane.append($line);
-                trimContainer($pane[0]);
+                if (alsoAll && paneId !== "all") {
+                    appendLineToPane("all", lineParts);
+                }
             }
-
-            if (alsoAll && $allPane.length > 0 && paneId !== "all") {
-                // Clone so each pane owns its DOM node.
-                $allPane.append($line.clone(true));
-                trimContainer($allPane[0]);
-            }
-
             scrollLogsToBottom();
         } catch (err) {
             debugConsole("error", "Parse error", err, (e.data ?? "").toString().slice(0, 200));
