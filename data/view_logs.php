@@ -63,8 +63,7 @@ $path  = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? '/'), '/');
             color: #ffffff;
         }
         .logs-playback {
-            opacity: 0.55;
-            color: #888888;
+            opacity: 0.45;
         }
         .logs-header {
             font-size: 0.95rem;
@@ -75,9 +74,12 @@ $path  = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? '/'), '/');
             font-size: 0.9rem;
         }
     
-.log-emerg, .log-alert {
+.log-emerg {
     color: #ff3b3b;
     font-weight: bold;
+}
+.log-alert {
+    color: #bf5af2;
 }
 .log-crit {
     color: #ff3b3b;
@@ -95,10 +97,8 @@ $path  = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? '/'), '/');
     color: #30d158;
 }
 .log-debug {
-    color: #8e8e93;
+    color: #ffffff;
 }
-
-
 
 .severity {
     display: inline-block;
@@ -417,7 +417,7 @@ function appendLineToPane(paneId, lineParts) {
     unitSpan.textContent = lineParts.prefix.unit ? `${lineParts.prefix.unit} ` : "";
 
     const sevSpan = document.createElement("span");
-    sevSpan.className = "logs-sev";
+    sevSpan.className = "logs-sev" + (lineParts.prefix.severityClass ? " " + lineParts.prefix.severityClass : "");
     sevSpan.textContent = lineParts.prefix.severity ? `[${lineParts.prefix.severity}] ` : "";
 
     const msgSpan = document.createElement("span");
@@ -674,6 +674,22 @@ function normalizeSeverityLabel(label) {
     return s.padEnd(5, " ");
 }
 
+function severityClassFromLabel(label5) {
+    const s = (label5 ?? "").toString().trim().toUpperCase();
+    switch (s) {
+        case "EMERG": return "log-emerg";
+        case "ALERT": return "log-alert";
+        case "CRIT":  return "log-crit";
+        case "ERROR": return "log-error";
+        case "WARN":  return "log-warn";
+        case "NOTIC":
+        case "NOTICE": return "log-notic";
+        case "INFO":  return "log-info";
+        case "DEBUG": return "log-debug";
+        default:      return "";
+    }
+}
+
 function extractSeverityAndMessage(payload) {
     // Prefer PRIORITY if present. Otherwise try to parse leading [LEVEL] from MESSAGE.
     const rawMsg = (payload.MESSAGE ?? "").toString();
@@ -705,6 +721,7 @@ function buildLineParts(payload, isContinuation) {
         timestamp: ts,
         unit: unit,
         severity: sev.label,
+        severityClass: severityClassFromLabel(sev.label),
         playback: !!payload.playback,
         continuation: !!isContinuation
     };
@@ -863,6 +880,7 @@ function startLogStream() {
                         timestamp: ts,
                         unit: unit,
                         severity: severity,
+                        severityClass: severityClassFromLabel(severity),
                         playback: !!payload.playback,
                         continuation: (i > 0)
                     },
