@@ -25,7 +25,21 @@
 (function () {
     "use strict";
 
-    const MAX_LINES = 8000; // Maximum number of log lines retained per tab/container
+    const MAX_LINES = 8000; 
+    function setConnectButton(state) {
+        const btn = document.getElementById("btn-reconnect");
+        if (!btn) return;
+
+        // Connected state shows "Reconnect"; otherwise show "Connect".
+        const isConnected = (state === "connected");
+        btn.textContent = isConnected ? "Reconnect" : "Connect";
+
+        // Green when disconnected, blue when connected.
+        btn.classList.remove("btn-outline-success", "btn-outline-primary");
+        btn.classList.add(isConnected ? "btn-outline-primary" : "btn-outline-success");
+    }
+
+// Maximum number of log lines retained per tab/container
 
     function setSseStatus(state, text, title) {
         const el = document.getElementById("sse-status-badge");
@@ -39,6 +53,8 @@
 
         if (text && String(text).trim() !== "") el.textContent = text;
         if (title && String(title).trim() !== "") el.title = title;
+
+        setConnectButton(state);
     }
 
     function formatDelay(delayMs) {
@@ -881,6 +897,7 @@
     }
 
     function init() {
+        setSseStatus("disconnected", "Disconnected", "Disconnected");
         // This mirrors the old inline behavior where site.js calls initLogStream()
         // from loadPage(). We intentionally do not auto-start here to avoid
         // double-connecting if the page framework controls init order.

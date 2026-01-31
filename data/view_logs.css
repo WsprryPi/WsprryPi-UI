@@ -4,11 +4,15 @@
 
 .logs-card .card-body {
     position: relative;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+        "Liberation Mono", "Courier New", monospace;
     font-size: 0.9rem;
     background: #0b0f14;
     color: #d9e1ea;
     border-radius: 0 0 .5rem .5rem;
+
+    /* Prevent overlay shadows from creating scrollbars or layout shifts. */
+    overflow: hidden;
 }
 
 /* Top-left overlay controls inside the black log pane (not the header). */
@@ -20,12 +24,51 @@
     display: inline-flex;
     gap: 8px;
     align-items: center;
+
+    /* Stable box geometry (prevents subtle shifts). */
+    box-sizing: border-box;
+    margin: 0;
     padding: 6px;
     border-radius: 10px;
     border: 1px solid rgba(255, 255, 255, 0.14);
 }
 
-/* SSE status badge (top-right overlay) */
+/*
+    Overlay control opacity.
+    Increase --logs-controls-opacity to make the control cluster more
+    solid, decrease it to blend into the log background.
+*/
+.logs-overlay {
+    opacity: 0.7;
+    backdrop-filter: blur(2px);
+    background: rgba(0, 0, 0, 0.35);
+}
+
+/*
+    Overlay buttons.
+
+    NOTE:
+    These buttons use Bootstrap's semantic outline styles
+    (btn-outline-danger/success/primary) for text + border colors.
+    Do not override color/border-color here, otherwise all buttons look the
+    same (the issue you were seeing).
+*/
+#logs-overlay-controls .btn {
+    box-sizing: border-box;
+    margin: 0;
+    border-width: 1px;
+
+    /* Keep buttons the same width so the cluster does not wobble. */
+    min-width: 88px;
+
+    /* Glassy background without clobbering Bootstrap outline colors. */
+    background-color: rgba(20, 30, 45, 0.35);
+
+    /* Avoid big shadows that can trigger overflow/scrollbar shifts. */
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+}
+
+/* SSE status badge (top-right overlay). */
 #sse-status-badge {
     position: absolute;
     top: 12px;
@@ -54,24 +97,16 @@
 }
 
 /*
-    * Overlay control opacity.
-    * Increase --logs-controls-opacity to make the control cluster more
-    * solid, decrease it to blend into the log background.
+    Keep the scrollable area separate from overlays (like the jump button).
+    If an overlay lives inside the element that scrolls, it will scroll out
+    of view with the content.
 */
-.logs-overlay {
-    opacity: 0.92;
-    backdrop-filter: blur(2px);
-    background: rgba(0, 0, 0, 0.35);
-}
-
-/*
-    * Keep the scrollable area separate from overlays (like the jump button).
-    * If an overlay lives inside the element that scrolls, it will scroll out
-    * of view with the content.
-    */
 #log-scroll {
     height: 65vh;
     overflow-y: auto;
+
+    /* Prevent horizontal shift from any overlay/shadow or long lines. */
+    overflow-x: hidden;
 }
 
 .logs-line {
@@ -140,4 +175,74 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: clip;
+}
+
+/* === Glass button semantic colors (tweak here) === */
+:root {
+    --btn-connect-rgb: 0, 180, 90;
+    --btn-reconnect-rgb: 70, 120, 255;
+    --btn-clear-rgb: 220, 60, 60;
+    --btn-glass-alpha: 0.22;
+    --btn-glass-hover-alpha: 0.30;
+    --btn-glass-active-alpha: 0.38;
+}
+
+.glass-btn {
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    background-color: rgba(255, 255, 255, 0.06);
+    transition: background-color 120ms ease-in-out;
+}
+
+.glass-connect {
+    color: rgb(var(--btn-connect-rgb));
+    border-color: rgba(var(--btn-connect-rgb), 0.6);
+    background-color: rgba(var(--btn-connect-rgb), var(--btn-glass-alpha));
+}
+
+.glass-reconnect {
+    color: rgb(var(--btn-reconnect-rgb));
+    border-color: rgba(var(--btn-reconnect-rgb), 0.6);
+    background-color: rgba(var(--btn-reconnect-rgb), var(--btn-glass-alpha));
+}
+
+.glass-clear {
+    color: rgb(var(--btn-clear-rgb));
+    border-color: rgba(var(--btn-clear-rgb), 0.6);
+    background-color: rgba(var(--btn-clear-rgb), var(--btn-glass-alpha));
+}
+
+
+.glass-btn:hover {
+    background-color: rgba(255, 255, 255, 0.10);
+    filter: brightness(1.05);
+}
+
+
+.glass-btn:active {
+    background-color: rgba(255, 255, 255, 0.14);
+}
+
+.glass-connect:hover {
+    background-color: rgba(var(--btn-connect-rgb), var(--btn-glass-hover-alpha));
+}
+
+.glass-reconnect:hover {
+    background-color: rgba(var(--btn-reconnect-rgb), var(--btn-glass-hover-alpha));
+}
+
+.glass-clear:hover {
+    background-color: rgba(var(--btn-clear-rgb), var(--btn-glass-hover-alpha));
+}
+
+.glass-connect:active {
+    background-color: rgba(var(--btn-connect-rgb), var(--btn-glass-active-alpha));
+}
+
+.glass-reconnect:active {
+    background-color: rgba(var(--btn-reconnect-rgb), var(--btn-glass-active-alpha));
+}
+
+.glass-clear:active {
+    background-color: rgba(var(--btn-clear-rgb), var(--btn-glass-active-alpha));
 }
