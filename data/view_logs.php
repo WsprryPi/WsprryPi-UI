@@ -738,6 +738,64 @@ let reconnectPending = false;
 
 let isReloading = false;
 
+
+const CURSOR_STORAGE_KEY = "log_stream_last_cursor";
+
+function getStoredCursor() {
+    try {
+        const v = localStorage.getItem(CURSOR_STORAGE_KEY);
+        return (v && v.trim() !== "") ? v.trim() : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function storeCursor(cursor) {
+    if (!cursor || cursor.trim() === "") return;
+    try {
+        localStorage.setItem(CURSOR_STORAGE_KEY, cursor.trim());
+    } catch (e) {
+        // Ignore storage failures (private mode, quota, etc.)
+    }
+}
+
+function clearStoredCursor() {
+    try {
+        localStorage.removeItem(CURSOR_STORAGE_KEY);
+    } catch (e) {
+        // Ignore storage failures
+    }
+}
+
+/*
+ * Compute a jittered exponential backoff delay.
+ * Uses "equal jitter" to avoid thundering herds while keeping bounded growth.
+ */
+function computeReconnectDelayMs(attempts) {
+    const baseDelayMs = 1000;
+    const maxDelayMs = 30000;
+    const exp = Math.min(maxDelayMs, baseDelayMs * Math.pow(2, attempts));
+    const half = Math.floor(exp / 2);
+    const jitter = Math.floor(Math.random() * (half + 1));
+    return half + jitter;
+}
+
+function scheduleManualReconnect(reason) {
+    if (reconnectPending) return;
+    reconnectPending = true;
+
+    const delayMs = computeReconnectDelayMs(reconnectAttempts);
+    reconnectAttempts += 1;
+
+    debugConsole("warn", "Reconnect scheduled in", delayMs + "ms", "Reason:", reason);
+
+    setTimeout(() => {
+        reconnectPending = false;
+        restartLogStream();
+    }, delayMs);
+}
+
+
 function buildStreamUrl() {
     const url = new URL(`${PROTO}//${HOSTNAME}${CURRENT_PATH}/log_stream.php`);
 
@@ -754,6 +812,11 @@ function buildStreamUrl() {
     if (prioMax  !== "" && prioMax  !== null) url.searchParams.set("priority_max", prioMax);
     if (unit     !== "" && unit     !== null) url.searchParams.set("unit", unit);
 
+    const cursor = getStoredCursor();
+    if (cursor) url.searchParams.set("cursor", cursor);
+    // Hint the server for SSE retry cadence (ms).
+    url.searchParams.set("retry_ms", "2000");
+
     return url.toString();
 }
 
@@ -764,7 +827,6 @@ function startLogStream() {
     evt = new EventSource(url);
 
     lastEventAtMs = Date.now();
-    reconnectAttempts = 0;
     reconnectPending = false;
     isReloading = false;
 
@@ -775,6 +837,7 @@ function startLogStream() {
 
     evt.onopen = () => {
         debugConsole("debug", "Connected to log stream");
+        reconnectAttempts = 0;
         // Do not assume playback is running. We enter/exit playback deterministically
         // via explicit SSE boundary events from log_stream.php.
         inPlayback = false;
@@ -782,8 +845,7 @@ function startLogStream() {
 
     const handler = (e) => {
         lastEventAtMs = Date.now();
-        reconnectAttempts = 0;
-        reconnectPending = false;
+            reconnectPending = false;
 
         try {
             const raw = (e.data ?? "").toString().trim();
@@ -826,7 +888,30 @@ function startLogStream() {
             const inferredType =
                 (payload.type ?? ((e.type && e.type !== "message") ? e.type : null));
 
-            // Determine target pane.
+            // Persist cursor for resume safety (Last-Event-ID / cursor).
+            if (typeof e.lastEventId === "string" && e.lastEventId.trim() !== "") {
+                storeCursor(decodeURIComponent(e.lastEventId));
+            } else if (payload.__CURSOR && typeof payload.__CURSOR === "string") {
+                storeCursor(payload.__CURSOR);
+            }
+
+            
+            // If this is the initial SSE connection status and playback is enabled,
+            // treat it as part of the preload so it renders dim.
+            if (payload.MESSAGE &&
+                payload.MESSAGE.startsWith("SSE connected") &&
+                payload.playback !== true) {
+                try {
+                    const u = new URL(url);
+                    if (u.searchParams.get("playback") === "1") {
+                        payload.playback = true;
+                    }
+                } catch (e) {
+                    // Ignore URL parsing errors
+                }
+            }
+
+// Determine target pane.
             let paneId = "info";
             if (inferredType === "internal") {
                 paneId = "internal";
@@ -857,6 +942,7 @@ function startLogStream() {
                             timestamp: ts,
                             unit: unit,
                             severity: severity,
+                            severityClass: severityClassFromLabel(severity),
                             playback: !!payload.playback,
                             continuation: (i > 0)
                         },
@@ -927,7 +1013,9 @@ function startLogStream() {
     evt.onerror = () => {
         if (!evt) return;
         if (evt.readyState === EventSource.CLOSED && !isReloading) {
-            debugConsole("warn", "SSE connection closed unexpectedly");
+            debugConsole("warn", "SSE connection closed. Forcing reconnect");
+            scheduleManualReconnect("eventsource closed");
+            return;
         }
         // Otherwise: browser will auto-reconnect.
     };
@@ -946,20 +1034,7 @@ function restartLogStream() {
 }
 
 function scheduleWatchdogReconnect(reason) {
-    if (reconnectPending) return;
-    reconnectPending = true;
-
-    const baseDelayMs = 1000;
-    const maxDelayMs = 30000;
-    const delayMs = Math.min(maxDelayMs, baseDelayMs * Math.pow(2, reconnectAttempts));
-    reconnectAttempts += 1;
-
-    debugConsole("warn", "Watchdog reconnect scheduled in", delayMs + "ms", "Reason:", reason);
-
-    setTimeout(() => {
-        reconnectPending = false;
-        restartLogStream();
-    }, delayMs);
+    scheduleManualReconnect("watchdog: " + reason);
 }
 
 function startWatchdog() {

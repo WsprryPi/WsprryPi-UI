@@ -46,6 +46,25 @@ header('Cache-Control: no-cache, no-transform');
 header('Connection: keep-alive');
 header('X-Accel-Buffering: no');
 
+// SSE reconnect hint. Browsers will use this for automatic retries.
+$retryMs = $_GET['retry_ms'] ?? '2000';
+$retryMsInt = 2000;
+if (is_string($retryMs) && $retryMs !== '') {
+    $v = (int)$retryMs;
+    if ($v > 0) {
+        $retryMsInt = $v;
+    }
+}
+// Clamp retry to a sane range.
+if ($retryMsInt < 250) {
+    $retryMsInt = 250;
+}
+if ($retryMsInt > 30000) {
+    $retryMsInt = 30000;
+}
+
+echo 'retry: ' . (string)$retryMsInt . "\n\n";
+
 set_time_limit(0);
 ignore_user_abort(true);
 
@@ -65,6 +84,9 @@ while (ob_get_level() > 0) {
     @ob_end_flush();
 }
 @ob_implicit_flush(true);
+
+// Flush the initial retry directive.
+@flush();
 
 // -----------------------------------------------------------------------------
 // Helpers
@@ -287,6 +309,14 @@ $lastEventIdRaw = $_SERVER['HTTP_LAST_EVENT_ID'] ?? null;
 $lastCursor = is_string($lastEventIdRaw) && $lastEventIdRaw !== ''
     ? rawurldecode($lastEventIdRaw)
     : null;
+
+// Query cursor fallback for manual reconnects (when Last-Event-ID is unavailable).
+if ($lastCursor === null) {
+    $cursorParam = $_GET['cursor'] ?? null;
+    if (is_string($cursorParam) && $cursorParam !== '') {
+        $lastCursor = $cursorParam;
+    }
+}
 
 function build_cmd(array $parts): string
 {
