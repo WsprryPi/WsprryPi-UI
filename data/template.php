@@ -35,17 +35,8 @@
         </div>
     </div>
 
-    <!-- System action modal -->
-    <?php require_once 'system_action_modal.php'; ?>
-
     <!-- Static page footer -->
     <?php require_once 'footer.php'; ?>
-
-    <!-- jQuery and Bootswatch -->
-    <?php require_once 'site.js.includes.php'; ?>
-
-    <!-- Main JavaScript -->
-    <script src="site.js"></script>
 
     <!-- Template JavaScript -->
     <!-- TODO: Add page-specific JS here -->

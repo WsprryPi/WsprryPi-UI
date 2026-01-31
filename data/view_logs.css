@@ -1,0 +1,143 @@
+/* ------------------------------------------------------------
+     Log File View Styling
+   ------------------------------------------------------------ */
+
+.logs-card .card-body {
+    position: relative;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 0.9rem;
+    background: #0b0f14;
+    color: #d9e1ea;
+    border-radius: 0 0 .5rem .5rem;
+}
+
+/* Top-left overlay controls inside the black log pane (not the header). */
+#logs-overlay-controls {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 13;
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+    padding: 6px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+/* SSE status badge (top-right overlay) */
+#sse-status-badge {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 12;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #e7edf5;
+    user-select: none;
+    pointer-events: none;
+}
+
+#sse-status-badge.sse-connected {
+    border-color: rgba(46, 204, 113, 0.40);
+}
+
+#sse-status-badge.sse-reconnecting {
+    border-color: rgba(241, 196, 15, 0.40);
+}
+
+#sse-status-badge.sse-disconnected {
+    border-color: rgba(231, 76, 60, 0.40);
+}
+
+/*
+    * Overlay control opacity.
+    * Increase --logs-controls-opacity to make the control cluster more
+    * solid, decrease it to blend into the log background.
+*/
+.logs-overlay {
+    opacity: 0.92;
+    backdrop-filter: blur(2px);
+    background: rgba(0, 0, 0, 0.35);
+}
+
+/*
+    * Keep the scrollable area separate from overlays (like the jump button).
+    * If an overlay lives inside the element that scrolls, it will scroll out
+    * of view with the content.
+    */
+#log-scroll {
+    height: 65vh;
+    overflow-y: auto;
+}
+
+.logs-line {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.logs-ts-cont {
+    font-weight: 700;
+    color: #ffffff;
+}
+
+.logs-playback {
+    opacity: 0.45;
+}
+
+.logs-header {
+    font-size: 0.95rem;
+}
+
+.logs-toolbar .form-select,
+.logs-toolbar .form-control,
+.logs-toolbar .btn {
+    font-size: 0.9rem;
+}
+
+.log-emerg {
+    color: #ff3b3b;
+    font-weight: bold;
+}
+
+.log-alert {
+    color: #bf5af2;
+}
+
+.log-crit {
+    color: #ff3b3b;
+}
+
+.log-error {
+    color: #ff9500;
+}
+
+.log-warn {
+    color: #ffd60a;
+}
+
+.log-notic {
+    color: #0a84ff;
+}
+
+.log-info {
+    color: #30d158;
+}
+
+.log-debug {
+    color: #ffffff;
+}
+
+.severity {
+    display: inline-block;
+    width: 7ch;
+    /* Includes brackets: [ + 5 chars + ] */
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+        "Liberation Mono", "Courier New", monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
+}

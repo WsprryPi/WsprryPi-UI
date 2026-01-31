@@ -602,21 +602,46 @@ function setConnectionState(state, timestamp = "") {
     inst.setContent({ ".tooltip-inner": text });
 }
 
-function updateCallsign() {
-    // Update WSPRNet Link:
+function updateCallsign(forceCallsign) {
+    // This function is used across multiple pages. Not all pages include the
+    // callsign input, so guard all DOM access to avoid exceptions.
     const $link = $("#wsprnet-link");
+    if (!$link.length) {
+        return;
+    }
+
     const $text = $link.find(".ms-2");
     const $cs = $("#callsign");
-    const callsign = $cs.val().trim();
 
-    if ($cs[0].checkValidity() && callsign !== "") {
+    let callsign = "";
+
+    if (typeof forceCallsign === "string") {
+        callsign = forceCallsign.trim();
+    } else if ($cs.length && typeof $cs.val() === "string") {
+        callsign = $cs.val().trim();
+    } else if (window.config && typeof window.config.callsign === "string") {
+        callsign = window.config.callsign.trim();
+    }
+
+    const isValid =
+        $cs.length &&
+        $cs[0] &&
+        typeof $cs[0].checkValidity === "function" &&
+        $cs[0].checkValidity();
+
+    if ((isValid || !$cs.length) && callsign !== "") {
         $link
             .attr("href", WSPRNET_URL + encodeURIComponent(callsign))
             .attr("title", `${callsign} on WSPRNet`);
-        $text.text(`${callsign} on WSPRNet`);
+
+        if ($text.length) {
+            $text.text(`${callsign} on WSPRNet`);
+        }
     } else {
         $link.attr("href", WSPRNET_URL).attr("title", "WSPRNet Database");
-        $text.text("WSPRNet Database");
+        if ($text.length) {
+            $text.text("WSPRNet Database");
+        }
     }
 
     // Update Spots For page card header
