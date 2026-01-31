@@ -45,6 +45,36 @@ $path  = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? '/'), '/');
             border-radius: 0 0 .5rem .5rem;
         }
 
+
+        /* SSE status badge (top-right overlay) */
+        #sse-status-badge {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            z-index: 12;
+            padding: 2px 10px;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            line-height: 1.4;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            background: rgba(255, 255, 255, 0.06);
+            color: #e7edf5;
+            user-select: none;
+            pointer-events: none;
+        }
+        #sse-status-badge.sse-connected {
+            background: rgba(46, 204, 113, 0.18);
+            border-color: rgba(46, 204, 113, 0.40);
+        }
+        #sse-status-badge.sse-reconnecting {
+            background: rgba(241, 196, 15, 0.18);
+            border-color: rgba(241, 196, 15, 0.40);
+        }
+        #sse-status-badge.sse-disconnected {
+            background: rgba(231, 76, 60, 0.18);
+            border-color: rgba(231, 76, 60, 0.40);
+        }
+
         /*
          * Keep the scrollable area separate from overlays (like the jump button).
          * If an overlay lives inside the element that scrolls, it will scroll out
@@ -73,7 +103,7 @@ $path  = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? '/'), '/');
         .logs-toolbar .btn {
             font-size: 0.9rem;
         }
-    
+
 .log-emerg {
     color: #ff3b3b;
     font-weight: bold;
@@ -213,6 +243,8 @@ $path  = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? '/'), '/');
         </div>
 
         <div class="card-body" style="position: relative;">
+            <div id="sse-status-badge" class="sse-disconnected" title="Disconnected">Disconnected</div>
+
             <button id="btn-jump-bottom" type="button" class="btn btn-sm btn-primary" style="display:none; position:absolute; right:12px; bottom:12px; z-index:10;">Jump to bottom</button>
             <div id="log-scroll">
                 <div class="tab-content" id="logsTabContent">
@@ -236,6 +268,27 @@ $path  = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? '/'), '/');
 <script>
 (function(){
 const MAX_LINES = 8000;  // Maximum number of log lines retained per tab/container
+
+
+function setSseStatus(state, text, title) {
+    const el = document.getElementById("sse-status-badge");
+    if (!el) return;
+
+    el.classList.remove("sse-connected", "sse-reconnecting", "sse-disconnected");
+
+    if (state === "connected") el.classList.add("sse-connected");
+    else if (state === "reconnecting") el.classList.add("sse-reconnecting");
+    else el.classList.add("sse-disconnected");
+
+    if (text && String(text).trim() !== "") el.textContent = text;
+    if (title && String(title).trim() !== "") el.title = title;
+}
+
+function formatDelay(delayMs) {
+    const s = Math.max(0, Math.round(delayMs / 100) / 10);
+    return s.toFixed(s < 10 ? 1 : 0) + "s";
+}
+
 
 
 let hiddenBuffer = [];          // Buffered log entries while the tab is not visible.
@@ -789,6 +842,12 @@ function scheduleManualReconnect(reason) {
 
     debugConsole("warn", "Reconnect scheduled in", delayMs + "ms", "Reason:", reason);
 
+
+    setSseStatus(
+        "reconnecting",
+        "Reconnecting (" + reconnectAttempts + ")",
+        "Next attempt in " + formatDelay(delayMs) + ". " + reason
+    );
     setTimeout(() => {
         reconnectPending = false;
         restartLogStream();
@@ -824,6 +883,7 @@ function startLogStream() {
     const url = buildStreamUrl();
     debugConsole("info", "Connecting to", url);
 
+    setSseStatus("reconnecting", "Connecting", "Connecting to log stream");
     evt = new EventSource(url);
 
     lastEventAtMs = Date.now();
@@ -836,6 +896,7 @@ function startLogStream() {
     });
 
     evt.onopen = () => {
+        setSseStatus("connected", "Connected", "Connected to log stream");
         debugConsole("debug", "Connected to log stream");
         reconnectAttempts = 0;
         // Do not assume playback is running. We enter/exit playback deterministically
@@ -895,7 +956,7 @@ function startLogStream() {
                 storeCursor(payload.__CURSOR);
             }
 
-            
+
             // If this is the initial SSE connection status and playback is enabled,
             // treat it as part of the preload so it renders dim.
             if (payload.MESSAGE &&
@@ -1012,16 +1073,22 @@ function startLogStream() {
 
     evt.onerror = () => {
         if (!evt) return;
+
+        // If the browser gives up (CLOSED), we handle reconnect with backoff.
         if (evt.readyState === EventSource.CLOSED && !isReloading) {
             debugConsole("warn", "SSE connection closed. Forcing reconnect");
+            setSseStatus("disconnected", "Disconnected", "Stream closed. Reconnecting");
             scheduleManualReconnect("eventsource closed");
             return;
         }
+
         // Otherwise: browser will auto-reconnect.
+        setSseStatus("reconnecting", "Reconnecting", "Transient SSE error. Browser retrying");
     };
 }
 
 function stopLogStream() {
+    setSseStatus("disconnected", "Disconnected", "Disconnected");
     if (evt) {
         evt.close();
         evt = null;
