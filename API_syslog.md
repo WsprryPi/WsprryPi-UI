@@ -16,6 +16,7 @@
 - [Heartbeats](#heartbeats)
 - [Internal Events](#internal-events)
 - [Typical Consumer Flow](#typical-consumer-flow)
+- [Debugging](#debugging)
 - [Notes \& Limitations](#notes--limitations)
 - [Usage](#usage)
 
@@ -58,7 +59,7 @@ use the same schema.**
 ### Field meanings
 
 | Field | Description |
-|------|-------------|
+| ------ | ------------- |
 | `type` | `journal` for real journald entries, `internal` for adapter-generated events |
 | `playback` | `true` when emitted during replay/backlog |
 | `__CURSOR` | Journald cursor; null for internal events |
@@ -89,7 +90,7 @@ Example rendered timestamp:
 - Consumers map priority to labels:
 
 | Priority | Label |
-|--------|-------|
+| -------- | ------- |
 | 0 | EMERG |
 | 1 | ALERT |
 | 2 | CRIT |
@@ -132,7 +133,7 @@ Example rendered timestamp:
 Consumers may present a **connection-status badge** for visibility:
 
 | State | Meaning |
-|------|---------|
+| ------ | --------- |
 | Connected | SSE stream active |
 | Reconnecting | Manual reconnect scheduled |
 | Disconnected | Stream closed and retry pending |
@@ -146,7 +147,7 @@ The badge is **informational only** and does not affect protocol behavior.
 ### Playback & Replay
 
 | Parameter | Default | Description |
-|----------|---------|-------------|
+| ---------- | --------- | ------------- |
 | `playback` | `1` | Enable replay/backlog |
 | `backlog` | `200` | Number of entries to replay |
 
@@ -189,6 +190,21 @@ They share the same schema and never advance cursors.
 3. Persist last journal cursor
 4. Handle reconnect and resume
 5. Style or suppress internal events
+
+---
+
+## Debugging
+
+- Open your browser DevTools Console on the logs page and run any of these:
+  - `viewLogs.toggle()` → switches Journal ⇄ Internal
+  - `viewLogs.showJournal()` → show journald view
+  - `viewLogs.showInternal()` → show internal view
+  - `viewLogs.showBoth()` → show both panes
+  - `viewLogs.get()` → returns current view
+  - `viewLogs.help()` → prints the available commands
+- Also supported:
+  - URL override: `?view=journal`, `?view=internal`, or `?view=both`
+  - The selection is persisted in localStorage (so reloads keep your last view).
 
 ---
 
