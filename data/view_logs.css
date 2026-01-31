@@ -6,9 +6,9 @@
     position: relative;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
         "Liberation Mono", "Courier New", monospace;
-    font-size: 0.9rem;
+    font-size: 0.95rem;
     background: #0b0f14;
-    color: #d9e1ea;
+    color: #e6eef8;
     border-radius: 0 0 .5rem .5rem;
 
     /* Prevent overlay shadows from creating scrollbars or layout shifts. */
@@ -30,7 +30,7 @@
     margin: 0;
     padding: 6px;
     border-radius: 10px;
-    border: 1px solid rgba(255, 255, 255, 0.14);
+    border: 1.5px solid rgba(255, 255, 255, 0.18);
 }
 
 /*
@@ -39,7 +39,7 @@
     solid, decrease it to blend into the log background.
 */
 .logs-overlay {
-    opacity: 0.7;
+    opacity: 0.82;
     backdrop-filter: blur(2px);
     background: rgba(0, 0, 0, 0.35);
 }
@@ -49,10 +49,31 @@
 
     NOTE:
     These buttons use Bootstrap's semantic outline styles
-    (btn-outline-danger/success/primary) for text + border colors.
+    (btn-outline-warning/success/primary) for text + border colors.
     Do not override color/border-color here, otherwise all buttons look the
     same (the issue you were seeing).
 */
+
+
+/*
+    Slightly-muted buttons by default, normal brightness on hover.
+
+    We keep Bootstrap/Bootswatch outline classes in control of colors
+    (btn-outline-warning/primary/success) and only adjust overall
+    prominence here.
+*/
+.btn-soft {
+    opacity: 1.0;
+    filter: brightness(1.0);
+    transition: opacity 120ms ease-in-out, filter 120ms ease-in-out;
+}
+
+.btn-soft:hover,
+.btn-soft:focus {
+    opacity: 1;
+    filter: brightness(1);
+}
+
 #logs-overlay-controls .btn {
     box-sizing: border-box;
     margin: 0;
@@ -62,7 +83,7 @@
     min-width: 88px;
 
     /* Glassy background without clobbering Bootstrap outline colors. */
-    background-color: rgba(20, 30, 45, 0.35);
+    background-color: rgba(20, 30, 45, 0.42);
 
     /* Avoid big shadows that can trigger overflow/scrollbar shifts. */
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);

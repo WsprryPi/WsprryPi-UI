@@ -28,8 +28,8 @@
                 <div id="sse-status-badge" class="sse-disconnected logs-overlay" title="Disconnected">Disconnected</div>
 
                 <div id="logs-overlay-controls" aria-label="Log controls" class="logs-overlay">
-                    <button id="btn-clear" class="btn btn-outline-danger btn-sm glass-btn" type="button">Clear</button>
-                    <button id="btn-reconnect" class="btn btn-outline-success btn-sm glass-btn" type="button">Connect</button>
+                    <button id="btn-clear" class="btn btn-outline-warning btn-sm glass-btn btn-soft" type="button">Clear</button>
+                    <button id="btn-reconnect" class="btn btn-outline-success btn-sm glass-btn btn-soft" type="button">Connect</button>
                 </div>
 
                 <button id="btn-jump-bottom" type="button" class="btn btn-sm btn-primary" style="display:none; position:absolute; right:12px; bottom:12px; z-index:10;">Jump to bottom</button>
