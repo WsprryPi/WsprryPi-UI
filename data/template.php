@@ -5,11 +5,11 @@
     <!-- Bootswatch, Boostrap, and Fontawesome, included here: -->
     <?php require_once 'header.php'; ?>
 
-    <!-- This page's css -->
+    <!-- Site css -->
     <link rel="stylesheet" href="site.css" />
 
-    <!-- This page's css -->
-    <link rel="stylesheet" href="template.css" />
+    <!-- Template css -->
+    <!-- TODO: Add page-specific CSS here -->
 </head>
 
 <body>
@@ -18,12 +18,11 @@
 
     <!-- Main Content -->
     <div class="container my-5">
-        <!-- TODO: Rename this card from template-card -->
         <div class="card shadow-sm template-card mt-5">
 
             <div class="card-header d-flex flex-wrap justify-content-between align-items-center">
                 <!-- Card Title -->
-                <span id="spotsFor">Recent spots for: </span>
+                <span id="cardTitle">Card Title</span>
 
                 <!-- Reboot, Shutdown and Clocks -->
                 <?php require_once 'clock_and_reboot.php'; ?>
@@ -32,11 +31,6 @@
             <!-- Card Body -->
             <div class="card-body tab-content bg-body">
                 <!-- Card body goes here -->
-            </div>
-
-            <!-- Hidden fieldset to hold settings -->
-            <div id="server-settings" class="d-none">
-                <input type="text" id="callsign" name="callsign" value="" />
             </div>
         </div>
     </div>
@@ -53,8 +47,8 @@
     <!-- Main JavaScript -->
     <script src="site.js"></script>
 
-    <!-- Index JavaScript -->
-    <script src="template.js"></script>
+    <!-- Template JavaScript -->
+    <!-- TODO: Add page-specific JS here -->
 </body>
 
 </html>
