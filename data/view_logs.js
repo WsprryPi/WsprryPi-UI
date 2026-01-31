@@ -324,6 +324,121 @@
         if (internalPane) internalPane.textContent = "";
     }
 
+    
+    // ---------------------------------------------------------------------
+    // Visible view selection (console controllable).
+    //
+    // The stream delivers two logical sources:
+    // - type: "journal"   (journald via systemd-journal-gatewayd-like output)
+    // - type: "internal"  (adapter / UI / connection messages)
+    //
+    // By default, only the journal view is shown and internal messages are kept
+    // in a hidden pane. You can toggle the visible pane at runtime from the
+    // browser dev console:
+    //
+    //   viewLogs.showJournal()
+    //   viewLogs.showInternal()
+    //   viewLogs.toggle()
+    //   viewLogs.set("both")   // optional
+    //
+    // The selection is persisted in localStorage.
+    // ---------------------------------------------------------------------
+
+    const VIEW_STORAGE_KEY = "wsprrypi_log_view";
+    let activeView = "journal";
+
+    function normalizeView(view) {
+        const v = String(view ?? "").trim().toLowerCase();
+        if (v === "internal") return "internal";
+        if (v === "both") return "both";
+        return "journal";
+    }
+
+    function getViewLabel(view) {
+        if (view === "internal") return "Internal";
+        if (view === "both") return "Journal + Internal";
+        return "Journal";
+    }
+
+    function applyView(view, persist = true) {
+        const v = normalizeView(view);
+        activeView = v;
+
+        const allPane = document.getElementById("all");
+        const internalPane = document.getElementById("internal");
+
+        // Keep the DOM nodes present for appendLine() to target regardless of view.
+        if (allPane) allPane.style.display = (v === "internal") ? "none" : "";
+        if (internalPane) internalPane.style.display = (v === "journal") ? "none" : "";
+
+        const titleEl = document.getElementById("cardTitle");
+        if (titleEl) {
+            titleEl.textContent = `Wsprry Pi Log (${getViewLabel(v)})`;
+        }
+
+        if (persist) {
+            try {
+                window.localStorage.setItem(VIEW_STORAGE_KEY, v);
+            } catch (e) {
+                // Ignore storage failures.
+            }
+        }
+
+        // If the user is following the tail, keep them on the tail after switching.
+        const scrollContainer = document.getElementById("log-scroll");
+        if (scrollContainer && autoFollow) {
+            scrollLogsToBottom(true);
+            setJumpButton(0);
+        }
+    }
+
+    function loadInitialView() {
+        // URL override: ?view=journal|internal|both
+        try {
+            const u = new URL(window.location.href);
+            const qv = u.searchParams.get("view");
+            if (qv) return normalizeView(qv);
+        } catch (e) {
+            // Ignore URL parse errors.
+        }
+
+        // localStorage override.
+        try {
+            const stored = window.localStorage.getItem(VIEW_STORAGE_KEY);
+            if (stored) return normalizeView(stored);
+        } catch (e) {
+            // Ignore storage failures.
+        }
+
+        return "journal";
+    }
+
+    function registerConsoleApi() {
+        // Expose a small helper to the window so operators can switch views at
+        // runtime without adding more UI chrome.
+        //
+        // This is intentionally terse for console use.
+        window.viewLogs = {
+            set: (v) => applyView(v, true),
+            showJournal: () => applyView("journal", true),
+            showInternal: () => applyView("internal", true),
+            showBoth: () => applyView("both", true),
+            toggle: () => applyView(activeView === "internal" ? "journal" : "internal", true),
+            get: () => activeView,
+            help: () => {
+                // eslint-disable-next-line no-console
+                console.log(
+                    "viewLogs: set('journal'|'internal'|'both'), showJournal(), " +
+                    "showInternal(), showBoth(), toggle(), get()"
+                );
+            }
+        };
+
+        // Back-compat / alternative spelling.
+        window.view_logs = window.viewLogs;
+    }
+
+
     function bindLogViewActions() {
         onClick("btn-clear", () => {
             clearPanes();
@@ -898,7 +1013,10 @@
 
     function init() {
         setSseStatus("disconnected", "Disconnected", "Disconnected");
-        // This mirrors the old inline behavior where site.js calls initLogStream()
+        registerConsoleApi();
+        applyView(loadInitialView(), false);
+
+// This mirrors the old inline behavior where site.js calls initLogStream()
         // from loadPage(). We intentionally do not auto-start here to avoid
         // double-connecting if the page framework controls init order.
         bindLogViewActions();
