@@ -95,7 +95,7 @@ if ($current === 'index.php') {
                         <li>
                             <a
                                 class="dropdown-item"
-                                href="https://wsprry-pi.readthedocs.io/en/latest/"
+                                href="https://wsprry-pi.readthedocs.io/"
                                 target="_blank"
                                 rel="noopener">
                                 Documentation
