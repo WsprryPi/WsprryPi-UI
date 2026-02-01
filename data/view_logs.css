@@ -63,8 +63,8 @@
     prominence here.
 */
 .btn-soft {
-    opacity: 1.0;
-    filter: brightness(1.0);
+    opacity: 0.9;
+    filter: brightness(0.9);
     transition: opacity 120ms ease-in-out, filter 120ms ease-in-out;
 }
 
@@ -200,9 +200,9 @@
 
 /* === Glass button semantic colors (tweak here) === */
 :root {
-    --btn-connect-rgb: 0, 180, 90;
-    --btn-reconnect-rgb: 70, 120, 255;
-    --btn-clear-rgb: 220, 60, 60;
+    --btn-connect-rgb: 80, 220, 130;      /* brighter green */
+    --btn-reconnect-rgb: 150, 185, 255;   /* brighter blue */
+    --btn-clear-rgb: 255, 120, 80;        /* optional: warmer clear */
     --btn-glass-alpha: 0.22;
     --btn-glass-hover-alpha: 0.30;
     --btn-glass-active-alpha: 0.38;
