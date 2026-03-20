@@ -14,6 +14,10 @@ const WEBSOCKET_URL = `${SV_URL}/wsprrypi/socket`;
 const WSPRNET_URL =
     "https://www.wsprnet.org/olddb?mode=html&band=all&limit=50&findreporter=&sort=date&findcall=";
 
+// Allow reloading data after communication interruption
+let communicationInterrupted = false;
+let reloadAfterReconnectPending = false;
+
 // Websocket Creation
 let ws;
 const WS_RECONNECT = 5000; // Retry again every 5s
@@ -482,6 +486,23 @@ function validateConfigSchema(json, schema) {
     });
 }
 
+/**
+ * Reload all UI data after communication is restored.
+ */
+function reloadAllData() {
+    debugConsole("debug", "Reloading all UI data after communication recovery.");
+
+    populateConfig(() => {
+        if (typeof fetchSpots === "function") {
+            fetchSpots();
+        }
+
+        if (typeof getTxState === "function") {
+            getTxState();
+        }
+    });
+}
+
 // Data Load
 function populateConfig(callback = null) {
     if (populateConfigRunning) return;
@@ -862,14 +883,20 @@ function connectWebSocket(url, reconnectDelay = 5000) {
     ws.addEventListener("open", () => {
         debugConsole("debug", "WebSocket ▶️ open");
         setConnectionState("connected");
-        // If the systemModal is currently shown, re-enable its Reload button:
-        // re-enable Reload if modal is showing for reboot
+
         const $reload = $("#systemModal .reload-btn");
         if ($reload.is(":visible")) {
             $("#systemModalBody").text("System has restarted, reload page.");
             $reload.prop("disabled", false);
         }
-        getTxState();
+
+        if (reloadAfterReconnectPending) {
+            reloadAfterReconnectPending = false;
+            communicationInterrupted = false;
+            reloadAllData();
+        } else {
+            getTxState();
+        }
     });
 
     // On message: Try to parse JSON and react to “transmitting” or
@@ -928,6 +955,8 @@ function connectWebSocket(url, reconnectDelay = 5000) {
     // On error: Log and treat as a disconnection
     ws.addEventListener("error", (err) => {
         debugConsole("error", "WebSocket ❌ error", err);
+        communicationInterrupted = true;
+        reloadAfterReconnectPending = true;
         setConnectionState("disconnected");
     });
 
@@ -937,8 +966,10 @@ function connectWebSocket(url, reconnectDelay = 5000) {
             "debug",
             `WebSocket 🔌 closed (code=${ev.code}), reconnecting in ${reconnectDelay}ms`
         );
+        communicationInterrupted = true;
+        reloadAfterReconnectPending = true;
         setConnectionState("disconnected");
-        // Only reconnect if the system is *not* paused
+
         if (!systemPaused) {
             setTimeout(() => connectWebSocket(url, reconnectDelay), reconnectDelay);
         }
