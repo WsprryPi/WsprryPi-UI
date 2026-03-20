@@ -85,24 +85,57 @@ function clickUseShutdown() {
     $('#shutdownDropdownButton').prop('disabled', !on);
 }
 
+function isPlaceholderCallsign(callsign) {
+    if (typeof callsign !== "string") return false;
+
+    const value = callsign.trim().toUpperCase();
+    return value === "N0CALL" || value === "NXXX";
+}
+
+function isPlaceholderGridSquare(gridSquare) {
+    if (typeof gridSquare !== "string") return false;
+
+    return gridSquare.trim().toUpperCase() === "ZZ99";
+}
+
 function validatePage() {
     const form = document.getElementById("wsprform");
 
     let invalidCount = 0;
 
     // ONLY the .form-control elements (no switches, ranges, etc)
-    form
-        .querySelectorAll(".form-control:not(.form-check-input)")
-        .forEach((ctrl) => {
-            if (ctrl.checkValidity()) {
-                ctrl.classList.add("is-valid");
-                ctrl.classList.remove("is-invalid");
+form
+    .querySelectorAll(".form-control:not(.form-check-input)")
+    .forEach((ctrl) => {
+        if (ctrl.id === "callsign") {
+            if (isPlaceholderCallsign(ctrl.value)) {
+                ctrl.setCustomValidity(
+                    "Placeholder callsign is not allowed."
+                );
             } else {
-                ctrl.classList.add("is-invalid");
-                ctrl.classList.remove("is-valid");
-                invalidCount++;
+                ctrl.setCustomValidity("");
             }
-        });
+        }
+
+        if (ctrl.id === "gridsquare") {
+            if (isPlaceholderGridSquare(ctrl.value)) {
+                ctrl.setCustomValidity(
+                    "Placeholder grid square ZZ99 is not allowed."
+                );
+            } else {
+                ctrl.setCustomValidity("");
+            }
+        }
+
+        if (ctrl.checkValidity()) {
+            ctrl.classList.add("is-valid");
+            ctrl.classList.remove("is-invalid");
+        } else {
+            ctrl.classList.add("is-invalid");
+            ctrl.classList.remove("is-valid");
+            invalidCount++;
+        }
+    });
 
     return invalidCount === 0;
 }

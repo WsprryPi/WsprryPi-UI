@@ -31,11 +31,77 @@ let systemPaused = false;
 // For "are you sure?"
 let pendingSystemAction = null;  // "reboot" or "shutdown"
 
+const loggedConfigWarnings =
+    window.loggedConfigWarnings ||
+    (window.loggedConfigWarnings = new Set());
+
 // Wait for page to load
 $(window).on("load", function () {
     bindActions();
     loadPage();
 });
+
+const configSchema = {
+    Meta: {
+        required: false,
+        keys: {
+            "Mode": { required: false, type: "string" }
+        }
+    },
+    Control: {
+        required: false,
+        keys: {
+            "Transmit": { required: false, type: "boolean" }
+        }
+    },
+    Common: {
+        required: false,
+        keys: {
+            "Call Sign": { required: false, type: "string" },
+            "Grid Square": { required: false, type: "string" },
+            "TX Power": { required: false, type: "number" },
+            "Frequency": { required: false, type: "string" },
+            "Transmit Pin": { required: false, type: "number" }
+        }
+    },
+    QRSS: {
+        disabled: true, // Not yet in use
+        required: false,
+        keys: {
+            "QRSS Mode": { required: false, type: "string" },
+            "Dot Length": { required: false, type: "number" },
+            "FSK Offset": { required: false, type: "number" },
+            "QRSS Frequency": { required: false, type: "number" },
+            "TX Start Minute": { required: false, type: "number" },
+            "TX Repeat Every": { required: false, type: "number" },
+            "Message": { required: false, type: "string" }
+        }
+    },
+    Extended: {
+        required: false,
+        keys: {
+            "Use LED": { required: false, type: "boolean" },
+            "LED Pin": { required: false, type: "number" },
+            "Use NTP": { required: false, type: "boolean" },
+            "PPM": { required: false, type: "number" },
+            "Offset": { required: false, type: "boolean" },
+            "Power Level": { required: false, type: "number" }
+        }
+    },
+    Server: {
+        required: false,
+        keys: {
+            "Use Shutdown": { required: false, type: "boolean" },
+            "Shutdown Button": { required: false, type: "number" }
+        }
+    }
+};
+
+function logConfigWarningOnce(message) {
+    if (loggedConfigWarnings.has(message)) return;
+    loggedConfigWarnings.add(message);
+    debugConsole("warn", message);
+}
 
 function loadPage() {
     initThemeToggle();
@@ -165,15 +231,255 @@ function initThemeToggle() {
 }
 
 // Helper to parse a true bool
-function parseBool(value) {
-    // If it’s already a boolean, just return it
-    if ($.type(value) === "boolean") {
-        return value;
+function parseBool(val, fallback = false) {
+    if (val === undefined || val === null) return fallback;
+    if (typeof val === "boolean") return val;
+    if (typeof val === "string") return val.toLowerCase() === "true";
+    return fallback;
+}
+
+// function getConfigSection(obj, key) {
+//     if (!obj || typeof obj !== "object") return {};
+//     return obj[key] && typeof obj[key] === "object" ? obj[key] : {};
+// }
+
+// function getConfigValue(section, key, fallback) {
+//     if (!section || typeof section !== "object") return fallback;
+//     return section[key] !== undefined ? section[key] : fallback;
+// }
+
+function showLoadAlert() {
+    const container = document.querySelector(".card-body");
+    if (!container) return;
+
+    const alert = document.createElement("div");
+    alert.className = "alert alert-warning";
+    alert.innerText =
+        "Warning: Failed to fully load configuration. Defaults are in use.";
+
+    container.prepend(alert);
+}
+
+function recoverFromPopulateConfigFailure() {
+    document.querySelectorAll("input, select, button").forEach(el => {
+        el.disabled = false;
+    });
+}
+
+function configTypeMatches(value, expectedType) {
+    if (value === undefined || value === null) return true;
+
+    if (expectedType === "number") {
+        if (typeof value === "number") {
+            return !Number.isNaN(value);
+        }
+
+        if (typeof value === "string") {
+            const trimmed = value.trim();
+            if (trimmed === "") return false;
+            return !Number.isNaN(Number(trimmed));
+        }
+
+        return false;
     }
-    // Coerce everything to a trimmed, lower‐case string
-    var s = $.trim(value + "").toLowerCase();
-    // Truthy if exactly "true" or "1" (else false)
-    return /^(true|1)$/.test(s);
+
+    if (expectedType === "boolean") {
+        return (
+            typeof value === "boolean" ||
+            value === "true" ||
+            value === "false" ||
+            value === "1" ||
+            value === "0" ||
+            value === 1 ||
+            value === 0
+        );
+    }
+
+    if (expectedType === "string") {
+        return typeof value === "string";
+    }
+
+    return true;
+}
+
+function getConfigSection(configJson, name) {
+    const section = configJson[name];
+
+    if (section === undefined || section === null) {
+        logConfigWarningOnce(
+            'Config section "' + name + '" not found. Using defaults.'
+        );
+        return {};
+    }
+
+    if (typeof section !== "object" || Array.isArray(section)) {
+        logConfigWarningOnce(
+            'Config section "' + name + '" is not an object. Using defaults.'
+        );
+        return {};
+    }
+
+    return section;
+}
+
+function getConfigValue(section, sectionName, key, fallback) {
+    if (!section || typeof section !== "object") {
+        logConfigWarningOnce(
+            'Config section "' +
+            sectionName +
+            '" unavailable while reading "' +
+            key +
+            '". Using default.'
+        );
+        return fallback;
+    }
+
+    const value = section[key];
+
+    if (value === undefined || value === null) {
+        logConfigWarningOnce(
+            'Config key "' +
+            sectionName +
+            "." +
+            key +
+            '" missing. Using default.'
+        );
+        return fallback;
+    }
+
+    return value;
+}
+
+function getConfigIntValue(section, sectionName, key, fallback) {
+    const rawValue = getConfigValue(section, sectionName, key, fallback);
+    const value = parseInt(rawValue, 10);
+
+    if (Number.isNaN(value)) {
+        logConfigWarningOnce(
+            'Config key "' +
+            sectionName +
+            "." +
+            key +
+            '" is not a valid integer. Using default.'
+        );
+        return fallback;
+    }
+
+    return value;
+}
+
+function getConfigFloatValue(section, sectionName, key, fallback) {
+    const rawValue = getConfigValue(section, sectionName, key, fallback);
+    const value = parseFloat(rawValue);
+
+    if (Number.isNaN(value)) {
+        logConfigWarningOnce(
+            'Config key "' +
+            sectionName +
+            "." +
+            key +
+            '" is not a valid number. Using default.'
+        );
+        return fallback;
+    }
+
+    return value;
+}
+
+function getConfigBoolValue(section, sectionName, key, fallback) {
+    const rawValue = getConfigValue(section, sectionName, key, fallback);
+
+    if (
+        rawValue === true ||
+        rawValue === false ||
+        rawValue === "true" ||
+        rawValue === "false" ||
+        rawValue === "1" ||
+        rawValue === "0" ||
+        rawValue === 1 ||
+        rawValue === 0
+    ) {
+        return parseBool(rawValue);
+    }
+
+    logConfigWarningOnce(
+        'Config key "' +
+        sectionName +
+        "." +
+        key +
+        '" is not a valid boolean. Using default.'
+    );
+    return fallback;
+}
+
+function validateConfigSchema(json, schema) {
+    Object.keys(schema).forEach(function (sectionName) {
+        const sectionRule = schema[sectionName];
+        const section = json[sectionName];
+        if (sectionRule.disabled) return; // Return early if section is disabled
+
+        if (section === undefined || section === null) {
+            if (sectionRule.required) {
+                logConfigWarningOnce(
+                    'Missing required config section "' + sectionName + '".'
+                );
+            } else {
+                logConfigWarningOnce(
+                    'Missing optional config section "' +
+                    sectionName +
+                    '". Defaults will be used.'
+                );
+            }
+            return;
+        }
+
+        if (typeof section !== "object" || Array.isArray(section)) {
+            logConfigWarningOnce(
+                'Invalid config section "' +
+                sectionName +
+                '". Expected object. Defaults will be used.'
+            );
+            return;
+        }
+
+        Object.keys(sectionRule.keys).forEach(function (keyName) {
+            const keyRule = sectionRule.keys[keyName];
+            const value = section[keyName];
+
+            if (value === undefined || value === null) {
+                if (keyRule.required) {
+                    logConfigWarningOnce(
+                        'Missing required config key "' +
+                        sectionName +
+                        "." +
+                        keyName +
+                        '".'
+                    );
+                } else {
+                    logConfigWarningOnce(
+                        'Missing optional config key "' +
+                        sectionName +
+                        "." +
+                        keyName +
+                        '". Default will be used.'
+                    );
+                }
+                return;
+            }
+
+            if (!configTypeMatches(value, keyRule.type)) {
+                logConfigWarningOnce(
+                    'Invalid type for config key "' +
+                    sectionName +
+                    "." +
+                    keyName +
+                    '". Expected ' +
+                    keyRule.type +
+                    ". Default may be used."
+                );
+            }
+        });
+    });
 }
 
 // Data Load
@@ -188,19 +494,70 @@ function populateConfig(callback = null) {
                     throw new Error("Invalid JSON data received.");
                 }
 
+                validateConfigSchema(configJson, configSchema);
+
+                const meta = getConfigSection(configJson, "Meta");
+                const control = getConfigSection(configJson, "Control");
+                const common = getConfigSection(configJson, "Common");
+                // A guard while we implement
+                let qrss = {};
+                if (configJson.QRSS) {
+                    qrss = getConfigSection(configJson, "QRSS");
+                }
+                const extended = getConfigSection(configJson, "Extended");
+                const server = getConfigSection(configJson, "Server");
+
                 // Safely assign values from JSON to temporary elements
                 //
                 // [Meta]
-                let mode = "WSPR";
+                let mode = getConfigValue(meta, "Meta", "Mode", "WSPR");
                 // let mode = configJson["Meta"]["Mode"] || "WSPR";
                 // [Control]
-                let transmit = parseBool(configJson["Control"]["Transmit"]);
+                let transmit = getConfigBoolValue(
+                    control,
+                    "Control",
+                    "Transmit",
+                    false
+                );
                 // [Common]
-                let callsign = configJson["Common"]["Call Sign"] || N0CALL;
-                let gridsquare = configJson["Common"]["Grid Square"] || ZZ99;
-                let dbm = parseInt(configJson["Common"]["TX Power"]) || 0;
-                let frequencies = configJson["Common"]["Frequency"] || "20m";
-                let tx_pin = parseInt(configJson["Common"]["Transmit Pin"]) || 4;
+                let callsign = getConfigValue(
+                    common,
+                    "Common",
+                    "Call Sign",
+                    "N0CALL"
+                );
+                if (
+                    typeof callsign === "string" &&
+                    ["N0CALL", "NXXX"].includes(callsign.toUpperCase())
+                ) {
+                    logConfigWarningOnce(
+                        'Config key "Common.Call Sign" is placeholder (' + callsign + ').'
+                    );
+                }
+                let gridsquare = getConfigValue(
+                    common,
+                    "Common",
+                    "Grid Square",
+                    "ZZ99"
+                );
+                if (typeof gridsquare === "string" && gridsquare.toUpperCase() === "ZZ99") {
+                    logConfigWarningOnce(
+                        'Config key "Common.Grid Square" is placeholder (ZZ99).'
+                    );
+                }
+                let dbm = getConfigIntValue(common, "Common", "TX Power", 0);
+                let frequencies = getConfigValue(
+                    common,
+                    "Common",
+                    "Frequency",
+                    "20m"
+                );
+                let tx_pin = getConfigIntValue(
+                    common,
+                    "Common",
+                    "Transmit Pin",
+                    4
+                );
                 // [QRSS]
                 // let qrss_type = configJson["QRSS"]["QRSS Mode"] || "QRSS";
                 // let dot_length = parseInt(configJson["QRSS"]["Dot Length"]) || 10;
@@ -210,15 +567,50 @@ function populateConfig(callback = null) {
                 // let tx_repeat_every = parseInt(configJson["QRSS"]["TX Repeat Every"]) || 10;
                 // let qrss_message_content = configJson["QRSS"]["Message"] || "AA0NT EM18";
                 // [Extended]
-                let use_led = parseBool(configJson["Extended"]["Use LED"]) || false;
-                let led_pin = parseInt(configJson["Extended"]["LED Pin"]) || 18;
-                let use_ntp = parseBool(configJson["Extended"]["Use NTP"]) || false;
-                let ppm = parseFloat(configJson["Extended"]["PPM"]) || 0.0;
-                let use_offset = parseBool(configJson["Extended"]["Offset"]) || true;
-                let power_level = parseInt(configJson["Extended"]["Power Level"]) || 0;
+                let use_led = getConfigBoolValue(
+                    extended,
+                    "Extended",
+                    "Use LED",
+                    false
+                );
+                let led_pin = getConfigIntValue(
+                    extended,
+                    "Extended",
+                    "LED Pin",
+                    18
+                );
+                let use_ntp = getConfigBoolValue(
+                    extended,
+                    "Extended",
+                    "Use NTP",
+                    false
+                );
+                let ppm = getConfigFloatValue(extended, "Extended", "PPM", 0.0);
+                let use_offset = getConfigBoolValue(
+                    extended,
+                    "Extended",
+                    "Offset",
+                    true
+                );
+                let power_level = getConfigIntValue(
+                    extended,
+                    "Extended",
+                    "Power Level",
+                    0
+                );
                 // [Server]
-                let use_shutdown = parseBool(configJson["Server"]["Use Shutdown"]) || false;
-                let shutdown_pin = parseInt(configJson["Server"]["Shutdown Button"]) || 19;
+                let use_shutdown = getConfigBoolValue(
+                    server,
+                    "Server",
+                    "Use Shutdown",
+                    false
+                );
+                let shutdown_pin = getConfigIntValue(
+                    server,
+                    "Server",
+                    "Shutdown Button",
+                    19
+                );
                 // let web_port = parseInt(configJson["Server"]["Web Port"]) || 3145;
                 // let socket_port = parseInt(configJson["Server"]["Socket Port"]) || 3146;
                 // [Meta]
@@ -230,6 +622,10 @@ function populateConfig(callback = null) {
                 // let tx_iter = parseInt(configJson["Meta"]["TX Iterations"]) || 0;
                 // let test_tone = parseFloat(configJson["Meta"]["Test Tone"]) || 14097100.0;
 
+                // Prevent unused variable warning while keeping the documented assignment
+                void qrss;
+                void tx_pin;
+
                 // If we are on the config page
                 if (window.currentPage == "index.php") {
                     // Load form elements
@@ -237,17 +633,23 @@ function populateConfig(callback = null) {
                     // Meta
                     if (mode === "QRSS") {
                         // Set to QRSS
-                        $('input[name="mode_toggle"][value="QRSS"]').prop('checked', true).trigger('change');
+                        $('input[name="mode_toggle"][value="QRSS"]')
+                            .prop("checked", true)
+                            .trigger("change");
                     } else {
                         // Set to WSPR
-                        $('input[name="mode_toggle"][value="WSPR"]').prop('checked', true).trigger('change');
+                        $('input[name="mode_toggle"][value="WSPR"]')
+                            .prop("checked", true)
+                            .trigger("change");
                     }
 
                     // Hardware Control
                     $("#transmit").prop("checked", transmit).trigger("change");
                     $("#use_led").prop("checked", use_led).trigger("change");
                     setLEDPin(led_pin);
-                    $("#use_shutdown").prop("checked", use_shutdown).trigger("change");
+                    $("#use_shutdown")
+                        .prop("checked", use_shutdown)
+                        .trigger("change");
                     setShutdownPin(shutdown_pin);
 
                     // Operator Information
@@ -299,7 +701,12 @@ function populateConfig(callback = null) {
                 debugConsole("error", "Error parsing config JSON:", error);
                 // Only try to load if the system is *not* paused
                 if (!systemPaused) {
-                    pendingPopulateConfigTimeout = setTimeout(populateConfig, 10000);
+                    pendingPopulateConfigTimeout = setTimeout(
+                        function () {
+                            populateConfig(callback);
+                        },
+                        10000
+                    );
                 }
             }
         })
@@ -312,7 +719,12 @@ function populateConfig(callback = null) {
             );
             // Only try to load if the system is *not* paused
             if (!systemPaused) {
-                pendingPopulateConfigTimeout = setTimeout(populateConfig, 10000);
+                pendingPopulateConfigTimeout = setTimeout(
+                    function () {
+                        populateConfig(callback);
+                    },
+                    10000
+                );
             }
         })
         .always(function () {
