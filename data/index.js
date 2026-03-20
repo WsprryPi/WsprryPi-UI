@@ -103,39 +103,42 @@ function validatePage() {
 
     let invalidCount = 0;
 
+    validateFrequencies();
+    validateQRSSFrequencies();
+
     // ONLY the .form-control elements (no switches, ranges, etc)
-form
-    .querySelectorAll(".form-control:not(.form-check-input)")
-    .forEach((ctrl) => {
-        if (ctrl.id === "callsign") {
-            if (isPlaceholderCallsign(ctrl.value)) {
-                ctrl.setCustomValidity(
-                    "Placeholder callsign is not allowed."
-                );
-            } else {
-                ctrl.setCustomValidity("");
+    form
+        .querySelectorAll(".form-control:not(.form-check-input)")
+        .forEach((ctrl) => {
+            if (ctrl.id === "callsign") {
+                if (isPlaceholderCallsign(ctrl.value)) {
+                    ctrl.setCustomValidity(
+                        "Placeholder callsign is not allowed."
+                    );
+                } else {
+                    ctrl.setCustomValidity("");
+                }
             }
-        }
 
-        if (ctrl.id === "gridsquare") {
-            if (isPlaceholderGridSquare(ctrl.value)) {
-                ctrl.setCustomValidity(
-                    "Placeholder grid square ZZ99 is not allowed."
-                );
-            } else {
-                ctrl.setCustomValidity("");
+            if (ctrl.id === "gridsquare") {
+                if (isPlaceholderGridSquare(ctrl.value)) {
+                    ctrl.setCustomValidity(
+                        "Placeholder grid square ZZ99 is not allowed."
+                    );
+                } else {
+                    ctrl.setCustomValidity("");
+                }
             }
-        }
 
-        if (ctrl.checkValidity()) {
-            ctrl.classList.add("is-valid");
-            ctrl.classList.remove("is-invalid");
-        } else {
-            ctrl.classList.add("is-invalid");
-            ctrl.classList.remove("is-valid");
-            invalidCount++;
-        }
-    });
+            if (ctrl.checkValidity()) {
+                ctrl.classList.add("is-valid");
+                ctrl.classList.remove("is-invalid");
+            } else {
+                ctrl.classList.add("is-invalid");
+                ctrl.classList.remove("is-valid");
+                invalidCount++;
+            }
+        });
 
     return invalidCount === 0;
 }
@@ -459,20 +462,41 @@ function validateFrequencies() {
         valid = false;
     }
 
-    // build our two regexes
-    const numericRx = /^\d+(?:\.\d+)?(?:hz|khz|mhz|ghz)?$/i;
+    // Match numeric values with optional frequency unit
+    const numericRx = /^(\d+(?:\.\d+)?)(hz|khz|mhz|ghz)?$/i;
+
+    // Match named amateur bands
     const bandRx =
         /^(?:lf(?:-15)?|mf(?:-15)?|160m(?:-15)?|80m|60m|40m|30m|20m|17m|15m|12m|10m|6m|4m|2m)$/i;
 
     // Split on any whitespace
     const tokens = raw.split(/\s+/);
+
     for (const tok of tokens) {
-        if (!(numericRx.test(tok) || bandRx.test(tok))) {
-            valid = false;
+        if (bandRx.test(tok)) {
+            continue;
         }
+
+        const numericMatch = tok.match(numericRx);
+        if (numericMatch) {
+            const value = Number.parseFloat(numericMatch[1]);
+            const unit = numericMatch[2]?.toLowerCase() || "";
+
+            // Bare numbers must be at least 137
+            if (!unit && value < 137) {
+                valid = false;
+            }
+
+            continue;
+        }
+
+        valid = false;
     }
 
-    // Add/remove validity classes
+    fld.setCustomValidity(
+        valid ? "" : "Enter band names like 80m, or numeric frequencies 137 or higher."
+    );
+
     fld.classList.toggle("is-invalid", !valid);
     fld.classList.toggle("is-valid", valid);
 
