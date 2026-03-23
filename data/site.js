@@ -1,15 +1,17 @@
 // Debug Logging Level (via debugConsole())
 CONSOLE_LOG_LEVEL = "log";
 // Service Components
+const PORT = window.location.port ? `:${window.location.port}` : "";
 const PROTO = window.location.protocol;
 const WS_PROTO = PROTO === "https:" ? "wss:" : "ws:";
 const HOSTNAME = window.location.hostname;
 const CURRENT_PATH = window.location.pathname.replace(/\/[^\/]*$/, "");
 // Service URLs
-const SV_URL = `${PROTO}//${HOSTNAME}`;
-const WS_URL = `${WS_PROTO}//${HOSTNAME}`;
+const SV_URL = `${PROTO}//${HOSTNAME}${PORT}`;
+const WS_URL = `${WS_PROTO}//${HOSTNAME}${PORT}`;
 const SETTINGS_URL = `${SV_URL}/wsprrypi/config`;
 const VERSION_URL = `${SV_URL}/wsprrypi/version`;
+const REPAIR_URL = `${SV_URL}/wsprrypi/config/repair`;
 const WEBSOCKET_URL = `${SV_URL}/wsprrypi/socket`;
 const WSPRNET_URL =
     "https://www.wsprnet.org/olddb?mode=html&band=all&limit=50&findreporter=&sort=date&findcall=";

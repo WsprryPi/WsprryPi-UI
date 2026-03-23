@@ -9,6 +9,8 @@ if ($current === 'index.php') {
     $navBarTitle = 'Wsprry Pi Logs';
 } elseif ($current === 'view_spots.php') {
     $navBarTitle = 'Wsprry Pi Spots';
+} elseif ($current === 'maintenance.php') {
+    $navBarTitle = 'Wsprry Pi Maintenance';
 } else {
     $navBarTitle = 'Wsprry Pi Configuration'; // Fallback
 }
@@ -74,6 +76,14 @@ if ($current === 'index.php') {
                                 href="view_spots.php"
                                 <?= $current === 'view_spots.php' ? 'tabindex=\"-1\" aria-disabled=\"true\"' : '' ?>>
                                 Spots
+                            </a>
+                        </li>
+                        <li>
+                            <a
+                                class="dropdown-item <?= $current === 'maintenance.php' ? 'disabled' : '' ?>"
+                                href="maintenance.php"
+                                <?= $current === 'maintenance.php' ? 'tabindex=\"-1\" aria-disabled=\"true\"' : '' ?>>
+                                Maintenance
                             </a>
                         </li>
                     </ul>

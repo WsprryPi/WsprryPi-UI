@@ -1,0 +1,79 @@
+.maintenance-split {
+    display: flex;
+    flex-direction: column;
+}
+
+.maintenance-pane {
+    padding: 1rem 0;
+}
+
+.maintenance-pane + .maintenance-pane {
+    border-top: 1px solid var(--bs-border-color);
+    margin-top: 1rem;
+    padding-top: 1.5rem;
+}
+
+#maintenanceAlert {
+    margin-bottom: 1rem;
+}
+
+.maintenance-split {
+    display: flex;
+    flex-direction: column;
+}
+
+.maintenance-pane {
+    padding: 1rem 0;
+    position: relative;
+}
+
+.maintenance-pane + .maintenance-pane {
+    border-top: 1px solid var(--bs-border-color);
+    margin-top: 1rem;
+    padding-top: 1.5rem;
+}
+
+.maintenance-action {
+    display: flex;
+    justify-content: center;
+    margin-top: 1rem;
+}
+
+.maintenance-action .btn {
+    min-width: 220px;
+}
+
+.maintenance-toast-host .toast {
+    border-width: 2px;
+    min-width: 320px;
+    max-width: 420px;
+    z-index: 1080;
+}
+
+.maintenance-toast-host .toast-body {
+    font-weight: 500;
+}
+
+#globalToastContainer {
+    top: 200px; /* adjust to taste */
+}
+
+.maintenance-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.25);
+    backdrop-filter: blur(1px);
+    z-index: 1070;
+    pointer-events: all;
+}
+
+.maintenance-overlay.d-none {
+    display: none;
+}
+
+.maintenance-overlay {
+    transition: opacity 0.2s ease;
+}
