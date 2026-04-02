@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="site.css" />
 
     <!-- Template css -->
-    <!-- TODO: Add page-specific CSS here -->
+    <!-- Add page-specific CSS here -->
 </head>
 
 <body>
@@ -39,7 +39,7 @@
     <?php require_once 'footer.php'; ?>
 
     <!-- Template JavaScript -->
-    <!-- TODO: Add page-specific JS here -->
+    <!-- Add page-specific JS here -->
 </body>
 
 </html>
