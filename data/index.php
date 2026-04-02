@@ -79,7 +79,9 @@
                                         class="btn btn-outline-secondary dropdown-toggle w-100 text-start pin-dropdown-btn"
                                         type="button"
                                         data-bs-toggle="dropdown"
-                                        aria-expanded="false"></button>
+                                        aria-expanded="false">
+                                        <?= htmlspecialchars($defaultGpio) ?>
+                                    </button>
                                     <?php
                                     $dropdownId  = "ledDropdownButton";
                                     $defaultGpio = "GPIO18";
@@ -106,7 +108,9 @@
                                         class="btn btn-outline-secondary dropdown-toggle w-100 text-start pin-dropdown-btn"
                                         type="button"
                                         data-bs-toggle="dropdown"
-                                        aria-expanded="false"></button>
+                                        aria-expanded="false">
+                                        <?= htmlspecialchars($defaultShutdownGpio) ?>
+                                    </button>
                                     <?php
                                     $dropdownId  = "shutdownDropdownButton";
                                     $defaultGpio = "GPIO19";

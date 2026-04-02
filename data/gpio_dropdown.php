@@ -66,7 +66,8 @@ $defaultGpio = isset($defaultGpio) ? (string)$defaultGpio : '';
                 '#<?= htmlspecialchars($dropdownId) ?> + .dropdown-menu .dropdown-item.active'
             );
             if (btn && activeItem) {
-                btn.textContent = activeItem.textContent.trim();
+                btn.textContent = activeItem.dataset.val || activeItem.textContent.trim();
+                btn.title = activeItem.textContent.trim();
             }
         });
     </script>
