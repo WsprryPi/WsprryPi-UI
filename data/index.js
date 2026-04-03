@@ -133,9 +133,12 @@ function collectBandGpioConfig() {
         const $row = $(this);
         const band = $row.data("band");
         const enabled = $row.find(".band-gpio-enabled").is(":checked");
-        const gpioValue = parseInt($row.find(".band-gpio-input").val(), 10);
+        const gpioRaw = $row.find(".band-gpio-input").val();
+        const gpioValue = gpioRaw === "" || gpioRaw === null
+            ? -1
+            : parseInt(gpioRaw, 10);
         const activeHigh = $row.find(".band-gpio-active-high").is(":checked");
-        const validEnabledRow = enabled && Number.isInteger(gpioValue) && gpioValue >= 0;
+        const validEnabledRow = enabled && gpioValue >= 0;
 
         bandGpio[band] = validEnabledRow
             ? {
@@ -159,14 +162,8 @@ function validateBandGpioFields() {
     getBandGpioRows().each(function () {
         const $row = $(this);
         const enabled = $row.find(".band-gpio-enabled").is(":checked");
-        const $gpio = $row.find(".band-gpio-input");
-        const rawValue = String($gpio.val() || "").trim();
-        const gpioValue = parseInt(rawValue, 10);
-        const valid = !enabled || (
-            rawValue !== "" &&
-            Number.isInteger(gpioValue) &&
-            gpioValue >= 0
-        );
+        const gpioValue = $row.find(".band-gpio-input").val();
+        const valid = !enabled || (gpioValue !== "" && gpioValue !== null);
 
         if (!valid) {
             invalidCount++;

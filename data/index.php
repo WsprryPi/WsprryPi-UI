@@ -358,16 +358,17 @@
                                                         </div>
                                                     </td>
                                                     <td data-label="GPIO">
-                                                        <input
-                                                            type="number"
-                                                            class="form-control form-control-sm band-gpio-input"
-                                                            id="band-gpio-gpio-<?= htmlspecialchars($band) ?>"
-                                                            data-band="<?= htmlspecialchars($band) ?>"
-                                                            min="0"
-                                                            max="27"
-                                                            step="1"
-                                                            inputmode="numeric"
-                                                            disabled>
+                                                        <?php
+                                                        $gpioRenderMode = 'select';
+                                                        $selectId = 'band-gpio-gpio-' . $band;
+                                                        $selectName = $selectId;
+                                                        $selectClass = 'form-select form-select-sm band-gpio-input';
+                                                        $selectDataBand = $band;
+                                                        $selectAttributes = 'disabled';
+                                                        $defaultGpio = '';
+                                                        $selectPlaceholder = 'Select GPIO';
+                                                        include 'gpio_dropdown.php';
+                                                        ?>
                                                     </td>
                                                     <td data-label="Active High">
                                                         <div class="form-check mb-0">
