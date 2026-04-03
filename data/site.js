@@ -43,6 +43,10 @@ const WSPRNET_URL =
 // Allow reloading data after communication interruption
 let communicationInterrupted = false;
 let reloadAfterReconnectPending = false;
+let backendConnectedOnce = false;
+let websocketConnectedOnce = false;
+let outageBannerArmed = false;
+let pageUnloading = false;
 
 // Websocket Creation
 let ws;
@@ -66,6 +70,14 @@ const loggedConfigWarnings =
     (window.loggedConfigWarnings = new Set());
 
 // Wait for page to load
+window.addEventListener("beforeunload", () => {
+    pageUnloading = true;
+});
+
+window.addEventListener("pagehide", () => {
+    pageUnloading = true;
+});
+
 $(window).on("load", function () {
     bindActions();
     loadPage();
@@ -541,6 +553,20 @@ function reloadAllData() {
     });
 }
 
+function shouldShowBackendLossStatus() {
+    return window.currentPage == "index.php" && outageBannerArmed && !pageUnloading;
+}
+
+function shouldShowWebSocketLossStatus() {
+    return window.currentPage == "index.php" && outageBannerArmed && !pageUnloading;
+}
+
+function armOutageBannerIfReady() {
+    if (backendConnectedOnce && websocketConnectedOnce) {
+        outageBannerArmed = true;
+    }
+}
+
 // Data Load
 function populateConfig(callback = null) {
     if (populateConfigRunning) return;
@@ -552,6 +578,9 @@ function populateConfig(callback = null) {
                 if (!configJson || typeof configJson !== "object") {
                     throw new Error("Invalid JSON data received.");
                 }
+
+                backendConnectedOnce = true;
+                armOutageBannerIfReady();
 
                 validateConfigSchema(configJson, configSchema);
 
@@ -766,7 +795,7 @@ function populateConfig(callback = null) {
                 }
             } catch (error) {
                 debugConsole("error", "Error parsing config JSON:", error);
-                if (window.currentPage == "index.php" && typeof setOfflineDefaults === "function") {
+                if (shouldShowBackendLossStatus() && typeof setOfflineDefaults === "function") {
                     setOfflineDefaults();
                 }
                 // Only try to load if the system is *not* paused
@@ -787,7 +816,7 @@ function populateConfig(callback = null) {
                 textStatus,
                 errorThrown
             );
-            if (window.currentPage == "index.php" && typeof setOfflineDefaults === "function") {
+            if (shouldShowBackendLossStatus() && typeof setOfflineDefaults === "function") {
                 setOfflineDefaults();
             }
             // Only try to load if the system is *not* paused
@@ -934,6 +963,8 @@ function connectWebSocket(url, reconnectDelay = 5000) {
     // On open: update UI and log
     ws.addEventListener("open", () => {
         debugConsole("debug", "WebSocket ▶️ open");
+        websocketConnectedOnce = true;
+        armOutageBannerIfReady();
         setConnectionState("connected");
 
         const $reload = $("#systemModal .reload-btn");
@@ -946,8 +977,14 @@ function connectWebSocket(url, reconnectDelay = 5000) {
             reloadAfterReconnectPending = false;
             communicationInterrupted = false;
             reloadAllData();
+        } else if (communicationInterrupted) {
+            communicationInterrupted = false;
+            reloadAllData();
         } else {
             getTxState();
+            if (shouldShowBackendLossStatus() && typeof clearOfflineDefaults === "function") {
+                clearOfflineDefaults();
+            }
         }
     });
 
@@ -1010,6 +1047,9 @@ function connectWebSocket(url, reconnectDelay = 5000) {
         communicationInterrupted = true;
         reloadAfterReconnectPending = true;
         setConnectionState("disconnected");
+        if (shouldShowWebSocketLossStatus() && typeof setBackendStatus === "function") {
+            setBackendStatus(true);
+        }
     });
 
     // On close: Schedule a reconnect
@@ -1021,6 +1061,9 @@ function connectWebSocket(url, reconnectDelay = 5000) {
         communicationInterrupted = true;
         reloadAfterReconnectPending = true;
         setConnectionState("disconnected");
+        if (shouldShowWebSocketLossStatus() && typeof setBackendStatus === "function") {
+            setBackendStatus(true);
+        }
 
         if (!systemPaused) {
             setTimeout(() => connectWebSocket(url, reconnectDelay), reconnectDelay);
