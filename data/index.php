@@ -19,29 +19,61 @@
     <?php
     $defaultLedGpio = 'GPIO18';
     $defaultShutdownGpio = 'GPIO19';
+    $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '20m', '17m', '15m', '12m', '10m', '6m', '4m', '2m'];
     ?>
 
     <!-- Main Content -->
     <div class="container my-5">
         <div class="card shadow-sm logs-card mt-5">
 
-            <div class="card-header d-flex flex-wrap justify-content-between align-items-center">
-                <!-- Mode Toggle and Hostname -->
-                <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <!--
-                    <div class="btn-group" role="group" aria-label="Mode Toggle">
-                        <input type="radio" class="btn-check" name="mode_toggle" id="wspr_mode" value="WSPR" autocomplete="off" checked>
-                        <label class="btn btn-outline-primary" for="wspr_mode">WSPR</label>
+            <div class="card-header pb-0">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-2">
+                    <!-- Mode Toggle and Hostname -->
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <!--
+                        <div class="btn-group" role="group" aria-label="Mode Toggle">
+                            <input type="radio" class="btn-check" name="mode_toggle" id="wspr_mode" value="WSPR" autocomplete="off" checked>
+                            <label class="btn btn-outline-primary" for="wspr_mode">WSPR</label>
 
-                        <input type="radio" class="btn-check" name="mode_toggle" id="qrss_mode" value="QRSS" autocomplete="off">
-                        <label class="btn btn-outline-primary" for="qrss_mode">QRSS</label>
+                            <input type="radio" class="btn-check" name="mode_toggle" id="qrss_mode" value="QRSS" autocomplete="off">
+                            <label class="btn btn-outline-primary" for="qrss_mode">QRSS</label>
+                        </div>
+                        -->
+                        <span>Configuration for: <?php echo gethostname(); ?></span>
                     </div>
-                    -->
-                    <span>Configuration for: <?php echo gethostname(); ?></span>
+
+                    <!-- Reboot, Shutdown and Clocks -->
+                    <?php require_once 'clock_and_reboot.php'; ?>
                 </div>
 
-                <!-- Reboot, Shutdown and Clocks -->
-                <?php require_once 'clock_and_reboot.php'; ?>
+                <ul class="nav nav-tabs card-header-tabs" id="configTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button
+                            class="nav-link active"
+                            id="radio-tab"
+                            data-bs-toggle="tab"
+                            data-bs-target="#radio-pane"
+                            type="button"
+                            role="tab"
+                            aria-controls="radio-pane"
+                            aria-selected="true">
+                            Radio
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button
+                            class="nav-link"
+                            id="pi-hardware-tab"
+                            data-bs-toggle="tab"
+                            data-bs-target="#pi-hardware-pane"
+                            type="button"
+                            role="tab"
+                            aria-controls="pi-hardware-pane"
+                            aria-selected="false">
+                            Pi Hardware
+                        </button>
+                    </li>
+                </ul>
             </div>
 
             <div class="card-body">
@@ -52,181 +84,308 @@
 
                 <form id="wsprform" class="needs-validation" novalidate>
 
-                    <!-- Section 1: Hardware Control -->
-                    <fieldset class="mb-4">
-                        <legend>Hardware Control</legend>
+                    <div class="tab-content pt-3" id="configTabsContent">
+                        <div
+                            class="tab-pane fade show active"
+                            id="radio-pane"
+                            role="tabpanel"
+                            aria-labelledby="radio-tab"
+                            tabindex="0">
+                            <div id="wspr_config">
+                                <fieldset class="mb-4">
+                                    <legend>Radio Control</legend>
 
-                        <!-- Enable Transmit -->
-                        <div class="row gx-2 gy-2 align-items-center mb-3">
-                            <div class="col-12 col-xxl-3 d-flex align-items-center">
-                                <div class="d-flex align-items-center gap-2">
-                                    <label class="form-label mb-0" for="transmit">Enable Transmit:</label>
-                                    <div class="form-check form-switch mb-0">
-                                        <input class="form-check-input" type="checkbox" role="switch" id="transmit">
+                                    <div class="row gx-2 gy-2 align-items-center">
+                                        <div class="col-12 col-md-4 d-flex align-items-center">
+                                            <div class="d-flex align-items-center gap-2">
+                                                <label class="form-label mb-0" for="transmit">Enable Transmit:</label>
+                                                <div class="form-check form-switch mb-0">
+                                                    <input class="form-check-input" type="checkbox" role="switch" id="transmit">
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
-                            </div>
-                        </div>
+                                </fieldset>
 
-                        <!-- Transmit LED, LED Pin, Enable Shutdown, Shutdown Pin -->
-                        <div class="row gx-2 gy-2 align-items-center mb-2">
-                            <!-- Transmit LED -->
-                            <div class="col-12 col-xxl-3 d-flex align-items-center">
-                                <div class="d-flex align-items-center gap-2">
-                                    <label class="form-label mb-0" for="use_led">Transmit LED:</label>
-                                    <div class="form-check form-switch mb-0">
-                                        <input class="form-check-input" type="checkbox" role="switch" id="use_led">
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- LED Pin -->
-                            <div class="col-12 col-xxl-3 d-flex align-items-center">
-                                <label for="ledDropdownButton" class="form-label mb-0 me-2 flex-shrink-0">LED Pin:</label>
-                                <div class="dropdown flex-grow-1">
-                                    <?php
-                                    $dropdownId = "ledDropdownButton";
-                                    $defaultGpio = $defaultLedGpio;
-                                    ?>
-                                    <button id="ledDropdownButton"
-                                        class="btn btn-outline-secondary dropdown-toggle w-100 text-start pin-dropdown-btn"
-                                        type="button"
-                                        data-bs-toggle="dropdown"
-                                        aria-expanded="false"
-                                        title="GPIO18 (Pin 12 - TAPR LED)">
-                                        <?= htmlspecialchars($defaultLedGpio) ?>
-                                    </button>
-                                    <?php include 'gpio_dropdown.php'; ?>
-                                </div>
-                            </div>
-
-                            <!-- Enable Shutdown -->
-                            <div class="col-12 col-xxl-3 d-flex align-items-center">
-                                <div class="d-flex align-items-center gap-2">
-                                    <label class="form-label mb-0" for="use_shutdown">Enable Shutdown:</label>
-                                    <div class="form-check form-switch mb-0">
-                                        <input class="form-check-input" type="checkbox" role="switch" id="use_shutdown" title="Enable to shutdown system when a button is pushed">
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Shutdown Pin -->
-                            <div class="col-12 col-xxl-3 d-flex align-items-center">
-                                <label for="shutdownDropdownButton" class="form-label mb-0 me-2 flex-shrink-0">Shutdown Pin:</label>
-                                <div class="dropdown flex-grow-1">
-                                    <?php
-                                    $dropdownId = "shutdownDropdownButton";
-                                    $defaultGpio = $defaultShutdownGpio;
-                                    ?>
-                                    <button id="shutdownDropdownButton"
-                                        class="btn btn-outline-secondary dropdown-toggle w-100 text-start pin-dropdown-btn"
-                                        type="button"
-                                        data-bs-toggle="dropdown"
-                                        aria-expanded="false"
-                                        title="GPIO19 (Pin 35 - TAPR Shutdown)">
-                                        <?= htmlspecialchars($defaultShutdownGpio) ?>
-                                    </button>
-                                    <?php include 'gpio_dropdown.php'; ?>
-                                </div>
-                            </div>
-                        </div>
-                    </fieldset>
-
-                    <div id="wspr_config">
-                        <!-- Section 2: Operator Information -->
-                        <fieldset class="mb-4" id="op_info">
-                            <legend>Operator Information</legend>
-                            <div class="row gx-2 align-items-center">
-                                <!-- Left column: Call Sign -->
-                                <div class="col-md-6 mb-3 d-flex align-items-center">
-                                    <label for="callsign" class="form-label mb-0 me-2 flex-shrink-0">
-                                        Call Sign:
-                                    </label>
-                                    <div class="flex-grow-1">
-                                        <input
-                                            type="text"
-                                            id="callsign"
-                                            class="form-control"
-                                            minlength="3"
-                                            maxlength="6"
-                                            data-bs-toggle="tooltip"
-                                            title="1-3 letters/digits, then one digit (0-9), then 1-4 letters/digits.  Max 6 characters"
-                                            pattern="^[A-Za-z0-9]{1,3}[0-9][A-Za-z0-9]{1,4}$"
-                                            required />
-                                    </div>
-                                </div>
-                                <!-- Right column: Grid Square -->
-                                <div class="col-md-6 mb-3 d-flex align-items-center">
-                                    <label for="gridsquare" class="form-label mb-0 me-2 flex-shrink-0">
-                                        Grid Square:
-                                    </label>
-                                    <div class="flex-grow-1">
-                                        <input
-                                            type="text"
-                                            id="gridsquare"
-                                            class="form-control"
-                                            data-bs-toggle="tooltip"
-                                            title="Enter exactly 2 letters followed by 2 digits (e.g. FN20)"
-                                            pattern="^[A-Za-z]{2}[0-9]{2}$"
-                                            required />
-                                    </div>
-                                </div>
-                            </div>
-                        </fieldset>
-
-                        <!-- Section 3: Transmitter Information -->
-                        <fieldset class="mb-4" id="tx_info">
-                            <legend>Transmitter Information</legend>
-                            <div class="row gx-2 align-items-center">
-                                <!-- Left column: TX dBm -->
-                                <div class="col-md-4 mb-3 d-flex align-items-center">
-                                    <label for="dbm" class="form-label mb-0 me-2 flex-shrink-0">
-                                        TX dBm:
-                                    </label>
-                                    <div class="flex-grow-1">
-                                        <input
-                                            type="text"
-                                            id="dbm"
-                                            class="form-control"
-                                            pattern="^(?:0|3|7|10|13|17|20|23|27|30|33|37|40|43|47|50|53|57|60)$"
-                                            data-bs-toggle="tooltip"
-                                            title="Valid dBm are one of: 0, 3, 7, 10, 13, 17, 20, 23, 27, 30, 33, 37, 40, 43, 47, 50, 53, 57, or 60"
-                                            required />
-                                    </div>
-                                </div>
-
-                                <!-- Right column: Frequencies and Randomize -->
-                                <div class="col-md-8 mb-3 d-flex flex-column flex-md-row align-items-start align-items-md-center">
-                                    <div class="d-flex flex-grow-1 align-items-center">
-                                        <label for="frequencies" class="form-label mb-0 me-2 flex-shrink-0">
-                                            Frequencies:
-                                        </label>
-                                        <input
-                                            type="text"
-                                            id="frequencies"
-                                            class="form-control"
-                                            data-bs-toggle="tooltip"
-                                            title="You may enter one or more frequencies in plain numeric form (Hz), with a magnitude indicator (Hz, KHz, MHz), or in band notation such as 20m. A 0 is a skipped transmission window."
-                                            required />
-                                    </div>
-
-                                    <div class="col-auto d-flex align-items-center mt-2 mt-md-0 ms-md-3">
-                                        <div class="form-check form-switch form-check-reverse mb-0">
-                                            <label class="form-check-label mb-0 me-2 flex-shrink-0" for="useoffset">
-                                                Randomize:
+                                <!-- Section 2: Operator Information -->
+                                <fieldset class="mb-4" id="op_info">
+                                    <legend>Station Info</legend>
+                                    <div class="row gx-2 align-items-center">
+                                        <!-- Left column: Call Sign -->
+                                        <div class="col-md-6 mb-3 d-flex align-items-center">
+                                            <label for="callsign" class="form-label mb-0 me-2 flex-shrink-0">
+                                                Call Sign:
                                             </label>
-                                            <input
-                                                class="form-check-input"
-                                                type="checkbox"
-                                                role="switch"
-                                                data-bs-toggle="tooltip"
-                                                title="Add a random offset to frequencies"
-                                                id="useoffset" />
+                                            <div class="flex-grow-1">
+                                                <input
+                                                    type="text"
+                                                    id="callsign"
+                                                    class="form-control"
+                                                    minlength="3"
+                                                    maxlength="6"
+                                                    data-bs-toggle="tooltip"
+                                                    title="1-3 letters/digits, then one digit (0-9), then 1-4 letters/digits.  Max 6 characters"
+                                                    pattern="^[A-Za-z0-9]{1,3}[0-9][A-Za-z0-9]{1,4}$"
+                                                    required />
+                                            </div>
+                                        </div>
+                                        <!-- Right column: Grid Square -->
+                                        <div class="col-md-6 mb-3 d-flex align-items-center">
+                                            <label for="gridsquare" class="form-label mb-0 me-2 flex-shrink-0">
+                                                Grid Square:
+                                            </label>
+                                            <div class="flex-grow-1">
+                                                <input
+                                                    type="text"
+                                                    id="gridsquare"
+                                                    class="form-control"
+                                                    data-bs-toggle="tooltip"
+                                                    title="Enter exactly 2 letters followed by 2 digits (e.g. FN20)"
+                                                    pattern="^[A-Za-z]{2}[0-9]{2}$"
+                                                    required />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </fieldset>
+
+                                <!-- Section 3: Transmitter Information -->
+                                <fieldset class="mb-4" id="tx_info">
+                                    <legend>Transmission Settings</legend>
+                                    <div class="row gx-2 align-items-center">
+                                        <div class="col-md-8 mb-3 d-flex align-items-center">
+                                            <label for="frequencies" class="form-label mb-0 me-2 flex-shrink-0">
+                                                Frequencies:
+                                            </label>
+                                            <div class="flex-grow-1">
+                                                <input
+                                                    type="text"
+                                                    id="frequencies"
+                                                    class="form-control"
+                                                    data-bs-toggle="tooltip"
+                                                    title="You may enter one or more frequencies in plain numeric form (Hz), with a magnitude indicator (Hz, KHz, MHz), or in band notation such as 20m. A 0 is a skipped transmission window."
+                                                    required />
+                                            </div>
+                                        </div>
+
+                                        <div class="col-md-4 mb-3 d-flex align-items-center">
+                                            <label for="dbm" class="form-label mb-0 me-2 flex-shrink-0">
+                                                TX dBm:
+                                            </label>
+                                            <div class="flex-grow-1">
+                                                <input
+                                                    type="text"
+                                                    id="dbm"
+                                                    class="form-control"
+                                                    pattern="^(?:0|3|7|10|13|17|20|23|27|30|33|37|40|43|47|50|53|57|60)$"
+                                                    data-bs-toggle="tooltip"
+                                                    title="Valid dBm are one of: 0, 3, 7, 10, 13, 17, 20, 23, 27, 30, 33, 37, 40, 43, 47, 50, 53, 57, or 60"
+                                                    required />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="row gx-2 align-items-center">
+                                        <div class="col-12 mb-3">
+                                            <label for="tx-power-range" class="form-label">Power Level</label>
+                                            <div class="d-flex justify-content-center align-items-center">
+                                                <input
+                                                    type="range"
+                                                    id="tx-power-range"
+                                                    class="form-range me-3"
+                                                    style="width: 60%;"
+                                                    min="0"
+                                                    max="7"
+                                                    step="1"
+                                                    value="0" />
+                                                <label for="tx-power-range" class="form-label small mb-0">
+                                                    <span id="tx-power-range-value" class="small"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </fieldset>
+
+                                <fieldset class="mb-4">
+                                    <legend>Frequency Calibration</legend>
+                                    <div class="row gx-2 align-items-center">
+                                        <div class="col-md-4 mb-3 d-flex align-items-center">
+                                            <div class="form-check form-switch form-check-reverse mb-0">
+                                                <input
+                                                    class="form-check-input"
+                                                    type="checkbox"
+                                                    role="switch"
+                                                    data-bs-toggle="tooltip"
+                                                    title="Use NTP for frequency calibration"
+                                                    id="use_ntp" />
+                                                <label
+                                                    class="form-check-label mb-0"
+                                                    for="use_ntp">
+                                                    Use NTP
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div class="col-md-4 mb-3 d-flex align-items-center">
+                                            <label for="ppm" class="form-label mb-0 me-2 flex-shrink-0">PPM Offset</label>
+                                            <div class="flex-grow-1">
+                                                <input
+                                                    type="number"
+                                                    class="form-control flex-grow-1"
+                                                    id="ppm"
+                                                    min="-200"
+                                                    max="200"
+                                                    step="0.000001"
+                                                    data-bs-toggle="tooltip"
+                                                    title="Enter a decimal value between -200.000000 to 200.000000">
+                                            </div>
+                                        </div>
+
+                                        <div class="col-md-4 mb-3 d-flex align-items-center">
+                                            <div class="form-check form-switch form-check-reverse mb-0">
+                                                <input
+                                                    class="form-check-input"
+                                                    type="checkbox"
+                                                    role="switch"
+                                                    data-bs-toggle="tooltip"
+                                                    title="Add a random offset to frequencies"
+                                                    id="useoffset" />
+                                                <label class="form-check-label mb-0" for="useoffset">
+                                                    Randomize
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </fieldset>
+                            </div>
+                        </div>
+
+                        <div
+                            class="tab-pane fade"
+                            id="pi-hardware-pane"
+                            role="tabpanel"
+                            aria-labelledby="pi-hardware-tab"
+                            tabindex="0">
+                            <fieldset class="mb-4">
+                                <legend>Hardware Control</legend>
+
+                                <!-- Transmit LED, LED Pin, Enable Shutdown, Shutdown Pin -->
+                                <div class="row gx-2 gy-2 align-items-center mb-2">
+                                    <!-- Transmit LED -->
+                                    <div class="col-12 col-xxl-3 d-flex align-items-center">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <label class="form-label mb-0" for="use_led">Transmit LED:</label>
+                                            <div class="form-check form-switch mb-0">
+                                                <input class="form-check-input" type="checkbox" role="switch" id="use_led">
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- LED Pin -->
+                                    <div class="col-12 col-xxl-3 d-flex align-items-center">
+                                        <label for="ledDropdownButton" class="form-label mb-0 me-2 flex-shrink-0">LED Pin:</label>
+                                        <div class="dropdown flex-grow-1">
+                                            <?php
+                                            $dropdownId = "ledDropdownButton";
+                                            $defaultGpio = $defaultLedGpio;
+                                            ?>
+                                            <button id="ledDropdownButton"
+                                                class="btn btn-outline-secondary dropdown-toggle w-100 text-start pin-dropdown-btn"
+                                                type="button"
+                                                data-bs-toggle="dropdown"
+                                                aria-expanded="false"
+                                                title="GPIO18 (Pin 12 - TAPR LED)">
+                                                <?= htmlspecialchars($defaultLedGpio) ?>
+                                            </button>
+                                            <?php include 'gpio_dropdown.php'; ?>
+                                        </div>
+                                    </div>
+
+                                    <!-- Enable Shutdown -->
+                                    <div class="col-12 col-xxl-3 d-flex align-items-center">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <label class="form-label mb-0" for="use_shutdown">Enable Shutdown:</label>
+                                            <div class="form-check form-switch mb-0">
+                                                <input class="form-check-input" type="checkbox" role="switch" id="use_shutdown" title="Enable to shutdown system when a button is pushed">
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Shutdown Pin -->
+                                    <div class="col-12 col-xxl-3 d-flex align-items-center">
+                                        <label for="shutdownDropdownButton" class="form-label mb-0 me-2 flex-shrink-0">Shutdown Pin:</label>
+                                        <div class="dropdown flex-grow-1">
+                                            <?php
+                                            $dropdownId = "shutdownDropdownButton";
+                                            $defaultGpio = $defaultShutdownGpio;
+                                            ?>
+                                            <button id="shutdownDropdownButton"
+                                                class="btn btn-outline-secondary dropdown-toggle w-100 text-start pin-dropdown-btn"
+                                                type="button"
+                                                data-bs-toggle="dropdown"
+                                                aria-expanded="false"
+                                                title="GPIO19 (Pin 35 - TAPR Shutdown)">
+                                                <?= htmlspecialchars($defaultShutdownGpio) ?>
+                                            </button>
+                                            <?php include 'gpio_dropdown.php'; ?>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
-                        </fieldset>
+                            </fieldset>
+
+                            <fieldset class="mb-4">
+                                <legend>Band GPIO</legend>
+                                <div class="table-responsive">
+                                    <table class="table table-sm align-middle mb-0" id="bandGpioTable">
+                                        <thead>
+                                            <tr>
+                                                <th scope="col">Band</th>
+                                                <th scope="col">Enabled</th>
+                                                <th scope="col">GPIO</th>
+                                                <th scope="col">Active High</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php foreach ($bandGpioBands as $band): ?>
+                                                <tr data-band="<?= htmlspecialchars($band) ?>">
+                                                    <th scope="row"><?= htmlspecialchars($band) ?></th>
+                                                    <td data-label="Enabled">
+                                                        <div class="form-check mb-0">
+                                                            <input
+                                                                class="form-check-input band-gpio-enabled"
+                                                                type="checkbox"
+                                                                id="band-gpio-enabled-<?= htmlspecialchars($band) ?>"
+                                                                data-band="<?= htmlspecialchars($band) ?>">
+                                                        </div>
+                                                    </td>
+                                                    <td data-label="GPIO">
+                                                        <input
+                                                            type="number"
+                                                            class="form-control form-control-sm band-gpio-input"
+                                                            id="band-gpio-gpio-<?= htmlspecialchars($band) ?>"
+                                                            data-band="<?= htmlspecialchars($band) ?>"
+                                                            min="0"
+                                                            max="27"
+                                                            step="1"
+                                                            inputmode="numeric"
+                                                            disabled>
+                                                    </td>
+                                                    <td data-label="Active High">
+                                                        <div class="form-check mb-0">
+                                                            <input
+                                                                class="form-check-input band-gpio-active-high"
+                                                                type="checkbox"
+                                                                id="band-gpio-active-high-<?= htmlspecialchars($band) ?>"
+                                                                data-band="<?= htmlspecialchars($band) ?>"
+                                                                disabled>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </fieldset>
+                        </div>
                     </div>
 
                     <div id="qrss_config" style="display: none;">
@@ -381,68 +540,6 @@
                             </div>
                         </fieldset>
                     </div>
-
-                    <!-- Section 6: Frequency Calibration -->
-                    <fieldset class="mb-4">
-                        <legend>Frequency Calibration</legend>
-                        <div class="row gx-2 align-items-center">
-                            <div class="col-md-1 mb-3 d-flex align-items-center"></div>
-                            <!-- Use NTP -->
-                            <div class="col-md-5 mb-3 d-flex align-items-center">
-                                <div class="form-check form-switch form-check-reverse mb-0">
-                                    <input
-                                        class="form-check-input"
-                                        type="checkbox"
-                                        role="switch"
-                                        data-bs-toggle="tooltip"
-                                        title="Use NTP for frequency calibration"
-                                        id="use_ntp" />
-                                    <label
-                                        class="form-check-label mb-0"
-                                        for="use_ntp">
-                                        Use NTP
-                                    </label>
-                                </div>
-                            </div>
-
-                            <!-- PPM Offset -->
-                            <div class="col-md-6 mb-3 d-flex align-items-center">
-                                <label for="ppm" class="form-label mb-0 me-2 flex-shrink-0">PPM Offset</label>
-                                <div class="flex-grow-1">
-                                    <input
-                                        type="number"
-                                        class="form-control flex-grow-1"
-                                        id="ppm"
-                                        min="-200"
-                                        max="200"
-                                        step="0.000001"
-                                        data-bs-toggle="tooltip"
-                                        title="Enter a decimal value between -200.000000 to 200.000000">
-                                    <!-- <div class="valid-feedback">Ok</div>
-                                        <div class="invalid-feedback">Invalid</div> -->
-                                </div>
-                            </div>
-                        </div>
-                    </fieldset>
-
-                    <!-- Section 7: Transmit Power -->
-                    <fieldset class="mb-4">
-                        <legend>Transmit Power</legend>
-                        <div class="d-flex justify-content-center align-items-center">
-                            <input
-                                type="range"
-                                id="tx-power-range"
-                                class="form-range me-3"
-                                style="width: 60%;"
-                                min="0"
-                                max="7"
-                                step="1"
-                                value="0" />
-                            <label for="tx-power-range" class="form-label small mb-0">
-                                <span id="tx-power-range-value" class="small"></span>
-                            </label>
-                        </div>
-                    </fieldset>
 
                     <!-- Section 8: Submit/Cancel/Test Tone -->
                     <fieldset class="mb-4">

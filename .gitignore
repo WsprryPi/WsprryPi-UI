@@ -24,3 +24,11 @@ dist-ssr
 *.sw?
 
 package-lock.json
+
+# Node stuff
+node_modules/
+package.json
+package-lock.json
+
+# Codex
+.codex

@@ -94,3 +94,97 @@
     padding: 0.25rem 0.75rem;
     font-size: 0.9rem;
 }
+
+#configTabs {
+    margin-bottom: 0;
+}
+
+#configTabs .nav-link {
+    padding: 0.375rem 0.85rem;
+    line-height: 1.2;
+}
+
+#bandGpioTable {
+    min-width: 28rem;
+}
+
+#bandGpioTable th,
+#bandGpioTable td {
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+#bandGpioTable .band-gpio-input {
+    min-width: 5rem;
+}
+
+@media (max-width: 575.98px) {
+    #bandGpioTable {
+        min-width: 0;
+    }
+
+    #bandGpioTable thead {
+        display: none;
+    }
+
+    #bandGpioTable,
+    #bandGpioTable tbody,
+    #bandGpioTable tr,
+    #bandGpioTable th,
+    #bandGpioTable td {
+        display: block;
+        width: 100%;
+    }
+
+    #bandGpioTable tbody tr {
+        margin-bottom: 0.75rem;
+        padding: 0.75rem;
+        border: 1px solid var(--bs-border-color);
+        border-radius: var(--bs-border-radius);
+        background-color: var(--bs-body-bg);
+    }
+
+    #bandGpioTable tbody tr:last-child {
+        margin-bottom: 0;
+    }
+
+    #bandGpioTable tbody th[scope="row"] {
+        padding: 0 0 0.5rem;
+        margin-bottom: 0.5rem;
+        border-bottom: 1px solid var(--bs-border-color);
+        font-size: 0.95rem;
+    }
+
+    #bandGpioTable tbody td {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        padding: 0.35rem 0;
+        border: 0;
+        white-space: normal;
+        font-size: 0.875rem;
+    }
+
+    #bandGpioTable tbody td::before {
+        content: attr(data-label);
+        font-weight: 600;
+        color: var(--bs-secondary-color);
+        flex: 0 0 6.5rem;
+    }
+
+    #bandGpioTable tbody td .form-check {
+        margin-left: auto;
+    }
+
+    #bandGpioTable tbody td .band-gpio-input {
+        width: 100%;
+        min-width: 0;
+        max-width: 8rem;
+        margin-left: auto;
+    }
+
+    #bandGpioTable .band-gpio-input {
+        min-width: 0;
+    }
+}

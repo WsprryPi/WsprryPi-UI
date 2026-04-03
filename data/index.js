@@ -14,6 +14,10 @@ function bindIndexActions() {
     // Wire up the LED switch
     $("#use_shutdown").on("change", clickUseShutdown);
 
+    // Wire up Band GPIO switches
+    $("#wsprform").on("change", ".band-gpio-enabled", clickBandGpioEnabled);
+    $("#wsprform").on("input change", ".band-gpio-input, .band-gpio-active-high", validateBandGpioFields);
+
     // Wire up the pin dropdown menus (only in the form)
     $('#wsprform')
         .off('click.pin', '[aria-labelledby="ledDropdownButton"] .dropdown-item, [aria-labelledby="shutdownDropdownButton"] .dropdown-item', selectPin)
@@ -85,6 +89,93 @@ function clickUseShutdown() {
     $('#shutdownDropdownButton').prop('disabled', !on);
 }
 
+function getBandGpioRows() {
+    return $("#bandGpioTable tbody tr[data-band]");
+}
+
+function setBandGpioRowState($row, enabled) {
+    $row.find(".band-gpio-enabled").prop("checked", enabled);
+    $row.find(".band-gpio-input").prop("disabled", !enabled);
+    $row.find(".band-gpio-active-high").prop("disabled", !enabled);
+}
+
+function clickBandGpioEnabled() {
+    const $row = $(this).closest("tr[data-band]");
+    setBandGpioRowState($row, $(this).is(":checked"));
+    validateBandGpioFields();
+}
+
+function populateBandGpioForm(bandGpioConfig = {}) {
+    getBandGpioRows().each(function () {
+        const $row = $(this);
+        const band = $row.data("band");
+        const bandConfig = bandGpioConfig && typeof bandGpioConfig === "object"
+            ? bandGpioConfig[band]
+            : null;
+        const enabled = !!(bandConfig && bandConfig["Enabled"] === true);
+        const gpio = bandConfig && Number.isInteger(bandConfig["GPIO"])
+            ? bandConfig["GPIO"]
+            : -1;
+        const activeHigh = !!(bandConfig && bandConfig["Active High"] === true);
+
+        $row.find(".band-gpio-input").val(gpio >= 0 ? gpio : "");
+        $row.find(".band-gpio-active-high").prop("checked", enabled && activeHigh);
+        setBandGpioRowState($row, enabled);
+    });
+
+    validateBandGpioFields();
+}
+
+function collectBandGpioConfig() {
+    const bandGpio = {};
+
+    getBandGpioRows().each(function () {
+        const $row = $(this);
+        const band = $row.data("band");
+        const enabled = $row.find(".band-gpio-enabled").is(":checked");
+        const gpioValue = parseInt($row.find(".band-gpio-input").val(), 10);
+        const activeHigh = $row.find(".band-gpio-active-high").is(":checked");
+        const validEnabledRow = enabled && Number.isInteger(gpioValue) && gpioValue >= 0;
+
+        bandGpio[band] = validEnabledRow
+            ? {
+                "GPIO": gpioValue,
+                "Enabled": true,
+                "Active High": activeHigh,
+            }
+            : {
+                "GPIO": -1,
+                "Enabled": false,
+                "Active High": false,
+            };
+    });
+
+    return bandGpio;
+}
+
+function validateBandGpioFields() {
+    let invalidCount = 0;
+
+    getBandGpioRows().each(function () {
+        const $row = $(this);
+        const enabled = $row.find(".band-gpio-enabled").is(":checked");
+        const $gpio = $row.find(".band-gpio-input");
+        const rawValue = String($gpio.val() || "").trim();
+        const gpioValue = parseInt(rawValue, 10);
+        const valid = !enabled || (
+            rawValue !== "" &&
+            Number.isInteger(gpioValue) &&
+            gpioValue >= 0
+        );
+
+        if (!valid) {
+            invalidCount++;
+        }
+    });
+
+    return invalidCount === 0;
+}
+
 function isPlaceholderCallsign(callsign) {
     if (typeof callsign !== "string") return false;
 
@@ -105,6 +196,7 @@ function validatePage() {
 
     validateFrequencies();
     validateQRSSFrequencies();
+    validateBandGpioFields();
 
     // ONLY the .form-control elements (no switches, ranges, etc)
     form
@@ -330,6 +422,7 @@ function savePage(e) {
     let led_pin = parseInt(getLEDPin()) || 18;
     let use_shutdown = parseBool($("#use_shutdown").is(":checked"));
     let shutdown_pin = parseInt(getShutdownPin()) || 19;
+    let band_gpio = collectBandGpioConfig();
 
     // Operator Information
     let callsign = $("#callsign").val() || "";
@@ -407,23 +500,36 @@ function savePage(e) {
         QRSS,
         Extended,
         Server,
+        "Band GPIO": band_gpio,
     };
     var json = JSON.stringify(configJson);
 
     $.ajax({
         url: SETTINGS_URL,
-        type: "PUT",
-        contentType: "application/json",
+        type: "PATCH",
+        contentType: "application/merge-patch+json",
         data: json,
     })
         .done(function (data) {
             lastSaveTimestamp = Date.now(); // Save to prevent forced reload
         })
         .fail(function (xhr) {
-            alert(
-                "Settings update failed with status: " + xhr.status,
-                xhr.responseText
-            );
+            let message = "Settings update failed with status: " + xhr.status;
+
+            if (xhr.responseJSON && typeof xhr.responseJSON.message === "string") {
+                message = xhr.responseJSON.message;
+            } else if (typeof xhr.responseText === "string" && xhr.responseText.trim()) {
+                try {
+                    const parsed = JSON.parse(xhr.responseText);
+                    if (parsed && typeof parsed.message === "string") {
+                        message = parsed.message;
+                    }
+                } catch (error) {
+                    debugConsole("warn", "Unable to parse settings error response:", error);
+                }
+            }
+
+            alert(message);
         })
         .always(function () {
             setTimeout(() => {
@@ -559,15 +665,22 @@ function setHardwareControlsDisabled(disabled) {
     controlIds.forEach((selector) => {
         $(selector).prop("disabled", disabled);
     });
+
+    getBandGpioRows().each(function () {
+        const $row = $(this);
+        $row.find(".band-gpio-enabled").prop("disabled", disabled);
+        $row.find(".band-gpio-input").prop("disabled", disabled || !$row.find(".band-gpio-enabled").is(":checked"));
+        $row.find(".band-gpio-active-high").prop("disabled", disabled || !$row.find(".band-gpio-enabled").is(":checked"));
+    });
 }
 
 function setOfflineDefaults() {
     setBackendStatus(true);
-    setHardwareControlsDisabled(true);
 
     $("#transmit").prop("checked", false);
     $("#use_led").prop("checked", false);
     $("#use_shutdown").prop("checked", false);
+    populateBandGpioForm({});
 
     $("#ledDropdownButton")
         .text("GPIO18")
@@ -576,6 +689,8 @@ function setOfflineDefaults() {
     $("#shutdownDropdownButton")
         .text("GPIO19")
         .attr("title", "GPIO19 (Pin 35 - TAPR Shutdown)");
+
+    setHardwareControlsDisabled(true);
 }
 
 function clearOfflineDefaults() {

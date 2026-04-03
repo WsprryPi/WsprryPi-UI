@@ -124,6 +124,27 @@ const configSchema = {
             "Use Shutdown": { required: false, type: "boolean" },
             "Shutdown Button": { required: false, type: "number" }
         }
+    },
+    "Band GPIO": {
+        required: false,
+        keys: {
+            "2200m": { required: false, type: "object" },
+            "630m": { required: false, type: "object" },
+            "160m": { required: false, type: "object" },
+            "80m": { required: false, type: "object" },
+            "60m": { required: false, type: "object" },
+            "40m": { required: false, type: "object" },
+            "30m": { required: false, type: "object" },
+            "22m": { required: false, type: "object" },
+            "20m": { required: false, type: "object" },
+            "17m": { required: false, type: "object" },
+            "15m": { required: false, type: "object" },
+            "12m": { required: false, type: "object" },
+            "10m": { required: false, type: "object" },
+            "6m": { required: false, type: "object" },
+            "4m": { required: false, type: "object" },
+            "2m": { required: false, type: "object" }
+        }
     }
 };
 
@@ -544,6 +565,7 @@ function populateConfig(callback = null) {
                 }
                 const extended = getConfigSection(configJson, "Extended");
                 const server = getConfigSection(configJson, "Server");
+                const bandGpio = getConfigSection(configJson, "Band GPIO");
 
                 // Safely assign values from JSON to temporary elements
                 //
@@ -693,6 +715,9 @@ function populateConfig(callback = null) {
                         .prop("checked", use_shutdown)
                         .trigger("change");
                     setShutdownPin(shutdown_pin);
+                    if (typeof populateBandGpioForm === "function") {
+                        populateBandGpioForm(bandGpio);
+                    }
 
                     // Operator Information
                     $("#callsign").val(callsign).trigger("change");
