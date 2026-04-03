@@ -1,17 +1,5 @@
 <?php
-// Determine the current page (just the filename)
-$current = basename($_SERVER['PHP_SELF']); // e.g. "index.php" or "view_logs.php"
-
-// Decide what the page title should be
-if ($current === 'index.php') {
-    $pageTitle  = 'Wsprry Pi Configuration';
-} elseif ($current === 'view_logs.php') {
-    $pageTitle  = 'Wsprry Pi Logs';
-} elseif ($current === 'view_spots.php') {
-    $pageTitle  = 'Wsprry Pi Spots';
-} else {
-    $pageTitle  = 'Wsprry Pi Configuration'; // Fallback
-}
+require_once 'page_metadata.php';
 
 $scriptName = $_SERVER['SCRIPT_NAME'] ?? '/';
 $basePath = rtrim(str_replace('\\', '/', dirname($scriptName)), '/');
@@ -36,7 +24,7 @@ $pathConfig = [
 
 <meta charset="UTF-8" />
 
-<title><?= htmlspecialchars($pageTitle) ?></title>
+<title><?= htmlspecialchars($currentPageMetadata['title']) ?></title>
 
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">

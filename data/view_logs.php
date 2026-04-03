@@ -9,22 +9,16 @@
     <link rel="stylesheet" href="view_logs.css" />
 </head>
 
-<body class="bg-body-tertiary">
-    <?php require_once 'connection_alert.php'; ?>
-
-    <!-- Fixed Navbar -->
-    <?php require_once 'navbar.php'; ?>
-
-    <div class="container my-5">
-        <div class="card shadow-sm logs-card mt-5">
-
-            <div class="card-header d-flex flex-wrap justify-content-between align-items-center">
-                <!-- Card Title -->
-                <span id="cardTitle">Wsprry Pi Log</span>
-
-                <!-- Reboot, Shutdown and Clocks -->
-                <?php require_once 'clock_and_reboot.php'; ?>
-            </div>
+<?php
+$bodyClass = 'bg-body-tertiary';
+$cardClass = 'logs-card';
+require_once 'page_shell_start.php';
+?>
+            <?php
+            $cardTitleId = 'cardTitle';
+            $cardTitleText = 'Wsprry Pi Log';
+            require_once 'card_header.php';
+            ?>
 
             <div class="card-body" style="position: relative;">
                 <div id="sse-status-badge" class="sse-disconnected logs-overlay" title="Disconnected">Disconnected</div>
@@ -47,8 +41,7 @@
                     </div>
                 </div>
             </div>
-        </div>
-    </div>
+<?php require_once 'page_shell_end.php'; ?>
 
     <!-- Static page footer -->
     <?php require_once 'footer.php'; ?>

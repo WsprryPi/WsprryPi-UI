@@ -6,29 +6,18 @@
     <?php require_once 'header.php'; ?>
 
     <!-- This page's css -->
-    <link rel="stylesheet" href="site.css" />
-
-    <!-- This page's css -->
     <link rel="stylesheet" href="view_spots.css" />
 </head>
 
-<body>
-    <?php require_once 'connection_alert.php'; ?>
-
-    <!-- Fixed Navbar -->
-    <?php require_once 'navbar.php'; ?>
-
-    <!-- Main Content -->
-    <div class="container my-5">
-        <div class="card shadow-sm spots-card mt-5">
-
-            <div class="card-header d-flex flex-wrap justify-content-between align-items-center">
-                <!-- Card Title -->
-                <span id="spotsFor">Recent spots for: </span>
-
-                <!-- Reboot, Shutdown and Clocks -->
-                <?php require_once 'clock_and_reboot.php'; ?>
-            </div>
+<?php
+$cardClass = 'spots-card';
+require_once 'page_shell_start.php';
+?>
+            <?php
+            $cardTitleId = 'spotsFor';
+            $cardTitleText = 'Recent spots for: ';
+            require_once 'card_header.php';
+            ?>
 
             <!-- Card Body -->
             <div class="card-body tab-content bg-body">
@@ -39,8 +28,7 @@
             <div id="server-settings" class="d-none">
                 <input type="text" id="callsign" name="callsign" value="" />
             </div>
-        </div>
-    </div>
+<?php require_once 'page_shell_end.php'; ?>
 
     <!-- Static page footer -->
     <?php require_once 'footer.php'; ?>

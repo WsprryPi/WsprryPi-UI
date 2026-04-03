@@ -5,37 +5,25 @@
     <!-- Bootswatch, Boostrap, and Fontawesome, included here: -->
     <?php require_once 'header.php'; ?>
 
-    <!-- Site css -->
-    <link rel="stylesheet" href="site.css" />
-
     <!-- Template css -->
     <!-- Add page-specific CSS here -->
 </head>
 
-<body>
-    <?php require_once 'connection_alert.php'; ?>
-
-    <!-- Fixed Navbar -->
-    <?php require_once 'navbar.php'; ?>
-
-    <!-- Main Content -->
-    <div class="container my-5">
-        <div class="card shadow-sm template-card mt-5">
-
-            <div class="card-header d-flex flex-wrap justify-content-between align-items-center">
-                <!-- Card Title -->
-                <span id="cardTitle">Card Title</span>
-
-                <!-- Reboot, Shutdown and Clocks -->
-                <?php require_once 'clock_and_reboot.php'; ?>
-            </div>
+<?php
+$cardClass = 'template-card';
+require_once 'page_shell_start.php';
+?>
+            <?php
+            $cardTitleId = 'cardTitle';
+            $cardTitleText = 'Card Title';
+            require_once 'card_header.php';
+            ?>
 
             <!-- Card Body -->
             <div class="card-body tab-content bg-body">
                 <!-- Card body goes here -->
             </div>
-        </div>
-    </div>
+<?php require_once 'page_shell_end.php'; ?>
 
     <!-- Static page footer -->
     <?php require_once 'footer.php'; ?>

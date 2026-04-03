@@ -5,30 +5,19 @@
     <!-- Bootswatch, Boostrap, and Fontawesome, included here: -->
     <?php require_once 'header.php'; ?>
 
-    <!-- Site css -->
-    <link rel="stylesheet" href="site.css" />
-
     <!-- Boilerplate css -->
     <link rel="stylesheet" href="maintenance.css" />
 </head>
 
-<body>
-    <?php require_once 'connection_alert.php'; ?>
-
-    <!-- Fixed Navbar -->
-    <?php require_once 'navbar.php'; ?>
-
-    <!-- Main Content -->
-    <div class="container my-5">
-        <div class="card shadow-sm template-card mt-5">
-            <div
-                class="card-header d-flex flex-wrap justify-content-between align-items-center">
-                <!-- Card Title -->
-                <span id="cardTitle">Wsprry Pi Maintenance</span>
-
-                <!-- Reboot, Shutdown and Clocks -->
-                <?php require_once 'clock_and_reboot.php'; ?>
-            </div>
+<?php
+$cardClass = 'template-card';
+require_once 'page_shell_start.php';
+?>
+            <?php
+            $cardTitleId = 'cardTitle';
+            $cardTitleText = 'Wsprry Pi Maintenance';
+            require_once 'card_header.php';
+            ?>
 
             <div
                 id="globalToastContainer"
@@ -75,8 +64,7 @@
                     </section>
                 </div>
             </div>
-        </div>
-    </div>
+<?php require_once 'page_shell_end.php'; ?>
 
     <div id="maintenanceOverlay" class="maintenance-overlay d-none"></div>
 

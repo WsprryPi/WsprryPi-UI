@@ -1,20 +1,4 @@
-<?php
-// Determine the current page (just the filename)
-$current = basename($_SERVER['PHP_SELF']); // e.g. "index.php" or "view_logs.php"
-
-// Decide what the navbar title should be
-if ($current === 'index.php') {
-    $navBarTitle = 'Wsprry Pi Configuration';
-} elseif ($current === 'view_logs.php') {
-    $navBarTitle = 'Wsprry Pi Logs';
-} elseif ($current === 'view_spots.php') {
-    $navBarTitle = 'Wsprry Pi Spots';
-} elseif ($current === 'maintenance.php') {
-    $navBarTitle = 'Wsprry Pi Maintenance';
-} else {
-    $navBarTitle = 'Wsprry Pi Configuration'; // Fallback
-}
-?>
+<?php require_once 'page_metadata.php'; ?>
 
 <!-- Fixed Navbar -->
 <nav class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top">
@@ -25,7 +9,7 @@ if ($current === 'index.php') {
                 data-bs-toggle="tooltip"
                 data-bs-original-title="Disconnected."
                 class="fa-solid fa-tower-broadcast"></i>
-            <?= htmlspecialchars($navBarTitle) ?>
+            <?= htmlspecialchars($currentPageMetadata['title']) ?>
         </span>
         <button
             class="navbar-toggler ms-auto"

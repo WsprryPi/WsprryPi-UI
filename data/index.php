@@ -6,27 +6,16 @@
     <?php require_once 'header.php'; ?>
 
     <!-- This page's css -->
-    <link rel="stylesheet" href="site.css" />
-
-    <!-- This page's css -->
     <link rel="stylesheet" href="index.css" />
 </head>
 
-<body>
-    <?php require_once 'connection_alert.php'; ?>
+<?php
+require_once 'page_shell_start.php';
 
-    <!-- Fixed Navbar -->
-    <?php require_once 'navbar.php'; ?>
-
-    <?php
-    $defaultLedGpio = 'GPIO18';
-    $defaultShutdownGpio = 'GPIO19';
-    $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '20m', '17m', '15m', '12m', '10m', '6m', '4m', '2m'];
-    ?>
-
-    <!-- Main Content -->
-    <div class="container my-5">
-        <div class="card shadow-sm logs-card mt-5">
+$defaultLedGpio = 'GPIO18';
+$defaultShutdownGpio = 'GPIO19';
+$bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '20m', '17m', '15m', '12m', '10m', '6m', '4m', '2m'];
+?>
 
             <div class="card-header pb-0">
                 <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-2">
@@ -617,8 +606,7 @@
 
                 </form>
             </div>
-        </div>
-    </div>
+<?php require_once 'page_shell_end.php'; ?>
 
     <!-- Static page footer -->
     <?php require_once 'footer.php'; ?>
