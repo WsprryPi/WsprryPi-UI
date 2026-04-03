@@ -693,15 +693,6 @@ function validateQRSSFrequencies() {
     return valid;
 }
 
-function setBackendStatus(isOffline) {
-    const $banner = $("#backendStatus");
-
-    if (!$banner.length) {
-        return;
-    }
-
-    $banner.toggleClass("d-none", !isOffline);
-}
 
 function setHardwareControlsDisabled(disabled) {
     const controlIds = [
@@ -728,8 +719,6 @@ function setHardwareControlsDisabled(disabled) {
 }
 
 function setOfflineDefaults() {
-    setBackendStatus(true);
-
     $("#transmit").prop("checked", false);
     $("#use_led").prop("checked", false);
     $("#use_shutdown").prop("checked", false);
@@ -747,6 +736,5 @@ function setOfflineDefaults() {
 }
 
 function clearOfflineDefaults() {
-    setBackendStatus(false);
     setHardwareControlsDisabled(false);
 }

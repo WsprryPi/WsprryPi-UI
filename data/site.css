@@ -20,6 +20,44 @@
 }
 
 /* ------------------------------------------------------------
+       Connection alert banner
+------------------------------------------------------------ */
+#connection-alert {
+    position: fixed;
+    top: 56px;
+    left: 50%;
+    z-index: 1080;
+    min-width: min(36rem, calc(100vw - 2rem));
+    max-width: calc(100vw - 2rem);
+    padding: 0.75rem 1rem;
+    color: #fff;
+    text-align: center;
+    background-color: #dc3545;
+    border-radius: 0.5rem;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.2);
+    opacity: 0;
+    visibility: hidden;
+    transform: translate(-50%, calc(-100% - 0.75rem));
+    transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out,
+        visibility 0s linear 0.3s;
+    pointer-events: none;
+}
+
+#connection-alert.show {
+    opacity: 1;
+    visibility: visible;
+    transform: translate(-50%, 0);
+    transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out,
+        visibility 0s linear 0s;
+}
+
+@media (max-width: 1399.98px) {
+    #connection-alert {
+        top: 72px;
+    }
+}
+
+/* ------------------------------------------------------------
        Nav Items Wrapping
 ------------------------------------------------------------ */
 

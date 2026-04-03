@@ -13,6 +13,8 @@
 </head>
 
 <body>
+    <?php require_once 'connection_alert.php'; ?>
+
     <!-- Fixed Navbar -->
     <?php require_once 'navbar.php'; ?>
 
@@ -77,10 +79,6 @@
             </div>
 
             <div class="card-body">
-
-                <div id="backendStatus" class="alert alert-warning d-none" role="alert">
-                    WsprryPi service is unavailable. Please ensure the backend is running and try again.
-                </div>
 
                 <form id="wsprform" class="needs-validation" novalidate>
 

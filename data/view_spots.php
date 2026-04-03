@@ -13,6 +13,8 @@
 </head>
 
 <body>
+    <?php require_once 'connection_alert.php'; ?>
+
     <!-- Fixed Navbar -->
     <?php require_once 'navbar.php'; ?>
 

@@ -45,6 +45,8 @@ let communicationInterrupted = false;
 let reloadAfterReconnectPending = false;
 let backendConnectedOnce = false;
 let websocketConnectedOnce = false;
+let backendCurrentlyConnected = false;
+let websocketCurrentlyConnected = false;
 let outageBannerArmed = false;
 let pageUnloading = false;
 
@@ -168,6 +170,7 @@ function logConfigWarningOnce(message) {
 
 function loadPage() {
     initThemeToggle();
+    hideConnectionAlert();
     setConnectionState("disconnected");
     connectWebSocket(WEBSOCKET_URL, WS_RECONNECT);
     updateClocks();
@@ -553,18 +556,56 @@ function reloadAllData() {
     });
 }
 
+function pageHasConnectionAlert() {
+    return document.getElementById("connection-alert") !== null;
+}
+
+function showConnectionAlert() {
+    if (!pageHasConnectionAlert()) {
+        return;
+    }
+
+    const alertElement = document.getElementById("connection-alert");
+    alertElement.hidden = false;
+    alertElement.classList.add("show");
+}
+
+function hideConnectionAlert() {
+    if (!pageHasConnectionAlert()) {
+        return;
+    }
+
+    const alertElement = document.getElementById("connection-alert");
+    alertElement.classList.remove("show");
+    alertElement.hidden = true;
+}
+
 function shouldShowBackendLossStatus() {
-    return window.currentPage == "index.php" && outageBannerArmed && !pageUnloading;
+    return pageHasConnectionAlert() && outageBannerArmed && !pageUnloading;
 }
 
 function shouldShowWebSocketLossStatus() {
-    return window.currentPage == "index.php" && outageBannerArmed && !pageUnloading;
+    return pageHasConnectionAlert() && outageBannerArmed && !pageUnloading;
 }
 
 function armOutageBannerIfReady() {
     if (backendConnectedOnce && websocketConnectedOnce) {
         outageBannerArmed = true;
     }
+}
+
+function syncConnectionAlert() {
+    if (!outageBannerArmed || pageUnloading) {
+        hideConnectionAlert();
+        return;
+    }
+
+    if (backendCurrentlyConnected && websocketCurrentlyConnected) {
+        hideConnectionAlert();
+        return;
+    }
+
+    showConnectionAlert();
 }
 
 // Data Load
@@ -579,8 +620,10 @@ function populateConfig(callback = null) {
                     throw new Error("Invalid JSON data received.");
                 }
 
+                backendCurrentlyConnected = true;
                 backendConnectedOnce = true;
                 armOutageBannerIfReady();
+                syncConnectionAlert();
 
                 validateConfigSchema(configJson, configSchema);
 
@@ -795,7 +838,9 @@ function populateConfig(callback = null) {
                 }
             } catch (error) {
                 debugConsole("error", "Error parsing config JSON:", error);
-                if (shouldShowBackendLossStatus() && typeof setOfflineDefaults === "function") {
+                backendCurrentlyConnected = false;
+                syncConnectionAlert();
+                if (window.currentPage == "index.php" && shouldShowBackendLossStatus() && typeof setOfflineDefaults === "function") {
                     setOfflineDefaults();
                 }
                 // Only try to load if the system is *not* paused
@@ -816,7 +861,9 @@ function populateConfig(callback = null) {
                 textStatus,
                 errorThrown
             );
-            if (shouldShowBackendLossStatus() && typeof setOfflineDefaults === "function") {
+            backendCurrentlyConnected = false;
+            syncConnectionAlert();
+            if (window.currentPage == "index.php" && shouldShowBackendLossStatus() && typeof setOfflineDefaults === "function") {
                 setOfflineDefaults();
             }
             // Only try to load if the system is *not* paused
@@ -963,6 +1010,7 @@ function connectWebSocket(url, reconnectDelay = 5000) {
     // On open: update UI and log
     ws.addEventListener("open", () => {
         debugConsole("debug", "WebSocket ▶️ open");
+        websocketCurrentlyConnected = true;
         websocketConnectedOnce = true;
         armOutageBannerIfReady();
         setConnectionState("connected");
@@ -982,7 +1030,8 @@ function connectWebSocket(url, reconnectDelay = 5000) {
             reloadAllData();
         } else {
             getTxState();
-            if (shouldShowBackendLossStatus() && typeof clearOfflineDefaults === "function") {
+            syncConnectionAlert();
+            if (window.currentPage == "index.php" && typeof clearOfflineDefaults === "function") {
                 clearOfflineDefaults();
             }
         }
@@ -1046,10 +1095,9 @@ function connectWebSocket(url, reconnectDelay = 5000) {
         debugConsole("error", "WebSocket ❌ error", err);
         communicationInterrupted = true;
         reloadAfterReconnectPending = true;
+        websocketCurrentlyConnected = false;
         setConnectionState("disconnected");
-        if (shouldShowWebSocketLossStatus() && typeof setBackendStatus === "function") {
-            setBackendStatus(true);
-        }
+        syncConnectionAlert();
     });
 
     // On close: Schedule a reconnect
@@ -1060,10 +1108,9 @@ function connectWebSocket(url, reconnectDelay = 5000) {
         );
         communicationInterrupted = true;
         reloadAfterReconnectPending = true;
+        websocketCurrentlyConnected = false;
         setConnectionState("disconnected");
-        if (shouldShowWebSocketLossStatus() && typeof setBackendStatus === "function") {
-            setBackendStatus(true);
-        }
+        syncConnectionAlert();
 
         if (!systemPaused) {
             setTimeout(() => connectWebSocket(url, reconnectDelay), reconnectDelay);
