@@ -82,11 +82,13 @@ function updateTxPowerLabel() {
 function clickUseLED() {
     const on = $("#use_led").prop("checked");
     $("#ledDropdownButton").prop("disabled", !on);
+    refreshBandGpioOptions();
 }
 
 function clickUseShutdown() {
     const on = $('#use_shutdown').prop('checked');
     $('#shutdownDropdownButton').prop('disabled', !on);
+    refreshBandGpioOptions();
 }
 
 function getBandGpioRows() {
@@ -103,6 +105,47 @@ function clickBandGpioEnabled() {
     const $row = $(this).closest("tr[data-band]");
     setBandGpioRowState($row, $(this).is(":checked"));
     validateBandGpioFields();
+}
+
+function getReservedBandGpioPins() {
+    const reservedPins = new Set();
+
+    if ($("#use_led").is(":checked")) {
+        const ledPin = getLEDPin();
+        if (Number.isInteger(ledPin)) {
+            reservedPins.add(String(ledPin));
+        }
+    }
+
+    if ($("#use_shutdown").is(":checked")) {
+        const shutdownPin = getShutdownPin();
+        if (Number.isInteger(shutdownPin)) {
+            reservedPins.add(String(shutdownPin));
+        }
+    }
+
+    return reservedPins;
+}
+
+function refreshBandGpioOptions() {
+    const reservedPins = getReservedBandGpioPins();
+
+    getBandGpioRows().each(function () {
+        const $select = $(this).find(".band-gpio-input");
+        const currentValue = $select.val();
+
+        $select.find("option").each(function () {
+            const $option = $(this);
+            const optionValue = String($option.val() || "");
+            const isPlaceholder = optionValue === "";
+            const isReserved = reservedPins.has(optionValue);
+            const keepCurrentSelection = currentValue !== "" && currentValue === optionValue;
+            const shouldDisable = !isPlaceholder && isReserved && !keepCurrentSelection;
+
+            $option.prop("disabled", shouldDisable);
+            $option.prop("hidden", shouldDisable);
+        });
+    });
 }
 
 function populateBandGpioForm(bandGpioConfig = {}) {
@@ -134,6 +177,7 @@ function populateBandGpioForm(bandGpioConfig = {}) {
         setBandGpioRowState($row, enabled);
     });
 
+    refreshBandGpioOptions();
     validateBandGpioFields();
 }
 
@@ -329,6 +373,7 @@ function selectPin(e) {
     // Clear focus from item and (after hide) from the button
     $item.trigger('blur');
     setTimeout(() => $btn.trigger('blur').removeClass('active show'), 0);
+    refreshBandGpioOptions();
 }
 
 /**
