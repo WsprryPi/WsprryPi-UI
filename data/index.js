@@ -109,17 +109,28 @@ function populateBandGpioForm(bandGpioConfig = {}) {
     getBandGpioRows().each(function () {
         const $row = $(this);
         const band = $row.data("band");
+        const $gpioInput = $row.find(".band-gpio-input");
         const bandConfig = bandGpioConfig && typeof bandGpioConfig === "object"
             ? bandGpioConfig[band]
             : null;
-        const enabled = !!(bandConfig && bandConfig["Enabled"] === true);
+        const backendEnabled = !!(bandConfig && bandConfig["Enabled"] === true);
         const gpio = bandConfig && Number.isInteger(bandConfig["GPIO"])
             ? bandConfig["GPIO"]
             : -1;
-        const activeHigh = !!(bandConfig && bandConfig["Active High"] === true);
+        const gpioValue = gpio >= 0 ? String(gpio) : "";
 
-        $row.find(".band-gpio-input").val(gpio >= 0 ? gpio : "");
-        $row.find(".band-gpio-active-high").prop("checked", enabled && activeHigh);
+        $gpioInput.val(gpioValue);
+
+        const resolvedGpioValue = $gpioInput.val();
+        const hasSelectableGpio = gpioValue !== "" && resolvedGpioValue === gpioValue;
+        const enabled = backendEnabled && hasSelectableGpio;
+        const activeHigh = enabled && !!(bandConfig && bandConfig["Active High"] === true);
+
+        if (!hasSelectableGpio) {
+            $gpioInput.val("");
+        }
+
+        $row.find(".band-gpio-active-high").prop("checked", activeHigh);
         setBandGpioRowState($row, enabled);
     });
 
