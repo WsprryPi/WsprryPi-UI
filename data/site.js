@@ -1,18 +1,42 @@
 // Debug Logging Level (via debugConsole())
 CONSOLE_LOG_LEVEL = "log";
+
 // Service Components
 const PORT = window.location.port ? `:${window.location.port}` : "";
 const PROTO = window.location.protocol;
 const WS_PROTO = PROTO === "https:" ? "wss:" : "ws:";
 const HOSTNAME = window.location.hostname;
-const CURRENT_PATH = window.location.pathname.replace(/\/[^\/]*$/, "");
+const HTTP_ORIGIN = `${PROTO}//${HOSTNAME}${PORT}`;
+const WS_ORIGIN = `${WS_PROTO}//${HOSTNAME}${PORT}`;
+const PATHS = window.WSPRRYPI_PATHS || {};
+const APP_BASE_PATH = typeof PATHS.basePath === "string" ? PATHS.basePath : "";
+const SETTINGS_PATH =
+    typeof PATHS.configPath === "string"
+        ? PATHS.configPath
+        : `${APP_BASE_PATH}/config`;
+const VERSION_PATH =
+    typeof PATHS.versionPath === "string"
+        ? PATHS.versionPath
+        : `${APP_BASE_PATH}/version`;
+const REPAIR_PATH =
+    typeof PATHS.repairPath === "string"
+        ? PATHS.repairPath
+        : `${APP_BASE_PATH}/config/repair`;
+const WEBSOCKET_PATH =
+    typeof PATHS.socketPath === "string"
+        ? PATHS.socketPath
+        : `${APP_BASE_PATH}/socket`;
+const LOG_STREAM_PATH =
+    typeof PATHS.logStreamPath === "string"
+        ? PATHS.logStreamPath
+        : `${APP_BASE_PATH}/log_stream.php`;
+
 // Service URLs
-const SV_URL = `${PROTO}//${HOSTNAME}${PORT}`;
-const WS_URL = `${WS_PROTO}//${HOSTNAME}${PORT}`;
-const SETTINGS_URL = `${SV_URL}/wsprrypi/config`;
-const VERSION_URL = `${SV_URL}/wsprrypi/version`;
-const REPAIR_URL = `${SV_URL}/wsprrypi/config/repair`;
-const WEBSOCKET_URL = `${SV_URL}/wsprrypi/socket`;
+const SETTINGS_URL = `${HTTP_ORIGIN}${SETTINGS_PATH}`;
+const VERSION_URL = `${HTTP_ORIGIN}${VERSION_PATH}`;
+const REPAIR_URL = `${HTTP_ORIGIN}${REPAIR_PATH}`;
+const WEBSOCKET_URL = `${WS_ORIGIN}${WEBSOCKET_PATH}`;
+const LOG_STREAM_URL = `${HTTP_ORIGIN}${LOG_STREAM_PATH}`;
 const WSPRNET_URL =
     "https://www.wsprnet.org/olddb?mode=html&band=all&limit=50&findreporter=&sort=date&findcall=";
 
@@ -224,15 +248,6 @@ function clickThemeToggle() {
     const newTheme = isDark ? "dark" : "light";
     document.documentElement.setAttribute("data-bs-theme", newTheme);
     localStorage.setItem("theme", newTheme);
-    updateLabel(isDark);
-}
-
-// Initialize on page load: read saved theme, set switch & label
-function initThemeToggle() {
-    const stored = localStorage.getItem("theme") || "light";
-    const isDark = stored === "dark";
-    $("#themeToggle").prop("checked", isDark);
-    document.documentElement.setAttribute("data-bs-theme", stored);
     updateLabel(isDark);
 }
 
@@ -666,6 +681,10 @@ function populateConfig(callback = null) {
                             .trigger("change");
                     }
 
+                    if (typeof clearOfflineDefaults === "function") {
+                        clearOfflineDefaults();
+                    }
+
                     // Hardware Control
                     $("#transmit").prop("checked", transmit).trigger("change");
                     $("#use_led").prop("checked", use_led).trigger("change");
@@ -722,6 +741,9 @@ function populateConfig(callback = null) {
                 }
             } catch (error) {
                 debugConsole("error", "Error parsing config JSON:", error);
+                if (window.currentPage == "index.php" && typeof setOfflineDefaults === "function") {
+                    setOfflineDefaults();
+                }
                 // Only try to load if the system is *not* paused
                 if (!systemPaused) {
                     pendingPopulateConfigTimeout = setTimeout(
@@ -740,6 +762,9 @@ function populateConfig(callback = null) {
                 textStatus,
                 errorThrown
             );
+            if (window.currentPage == "index.php" && typeof setOfflineDefaults === "function") {
+                setOfflineDefaults();
+            }
             // Only try to load if the system is *not* paused
             if (!systemPaused) {
                 pendingPopulateConfigTimeout = setTimeout(
@@ -989,62 +1014,8 @@ function getTxState() {
     if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ command: "get_tx_state" }));
     } else {
-        console.warn("WebSocket not open; cannot request TX state.");
+        debugConsole("warn", "WebSocket not open; cannot request TX state.");
     }
-}
-
-/**
- * Update the connection-status icon and its tooltip.
- *
- * @param {'disconnected'|'connecting'|'connected'|'transmitting'} state
- * @param {string} [timestamp]  Optional timestamp for “transmitting”
- */
-function setConnectionState(state, timestamp = "") {
-    const icon = document.getElementById("connIcon");
-    if (!icon) return;
-
-    // Remove old state classes
-    icon.classList.remove(
-        "state-disconnected",
-        "state-connecting",
-        "state-connected",
-        "state-transmitting"
-    );
-
-    // Add the new one
-    icon.classList.add(`state-${state}`);
-
-    // Choose the tooltip text
-    let text;
-    switch (state) {
-        case "disconnected":
-            text = "Disconnected.";
-            break;
-        case "connecting":
-            text = "Connecting…";
-            break;
-        case "connected":
-            text = "Ready.";
-            break;
-        case "transmitting":
-            text = `Transmission in progress${timestamp ? ": " + timestamp : "."}`;
-            break;
-        default:
-            text = "";
-    }
-
-    // Update Bootstrap’s tooltip data attr (do NOT set title)
-    icon.setAttribute("data-bs-original-title", text);
-
-    // Remove the native title so the browser never shows it
-    icon.removeAttribute("title");
-
-    // (Re)initialize or fetch the Tooltip instance, then update its content
-    let inst = bootstrap.Tooltip.getInstance(icon);
-    if (!inst) {
-        inst = new bootstrap.Tooltip(icon, { trigger: "hover" });
-    }
-    inst.setContent({ ".tooltip-inner": text });
 }
 
 function updateCallsign(forceCallsign) {
@@ -1096,23 +1067,34 @@ function updateCallsign(forceCallsign) {
 }
 
 function updateWsprryPiVersion() {
+    let versionElement = document.getElementById("versionText");
+
+    if (!versionElement) {
+        debugConsole("error", "Version element not found.");
+        return;
+    }
+
     $.getJSON(VERSION_URL)
         .done(function (response) {
             if (response && response.wspr_version) {
-                let versionText = response.wspr_version;
-
-                // Update with version
-                let versionElement = document.getElementById("wspr-version");
-
-                if (versionElement) {
-                    versionElement.textContent = versionText;
-                }
+                versionElement.textContent = response.wspr_version;
+                versionElement.title = response.wspr_version;
             } else {
+                versionElement.textContent = "Service unavailable";
+                versionElement.removeAttribute("title");
                 debugConsole("error", "Invalid JSON format from version.");
             }
         })
-        .fail(function () {
-            debugConsole("error", "Error fetching WSPR version.");
+        .fail(function (jqXHR, textStatus, errorThrown) {
+            versionElement.textContent = "Service unavailable";
+            versionElement.removeAttribute("title");
+
+            debugConsole(
+                "error",
+                "Error fetching WSPR version: "
+                + textStatus
+                + (errorThrown ? " (" + errorThrown + ")" : "")
+            );
         });
 }
 

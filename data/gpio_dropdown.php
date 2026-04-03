@@ -57,18 +57,3 @@ $defaultGpio = isset($defaultGpio) ? (string)$defaultGpio : '';
         </li>
     <?php endforeach; ?>
 </ul>
-
-<?php if ($defaultGpio): ?>
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const btn = document.getElementById('<?= htmlspecialchars($dropdownId) ?>');
-            const activeItem = document.querySelector(
-                '#<?= htmlspecialchars($dropdownId) ?> + .dropdown-menu .dropdown-item.active'
-            );
-            if (btn && activeItem) {
-                btn.textContent = activeItem.dataset.val || activeItem.textContent.trim();
-                btn.title = activeItem.textContent.trim();
-            }
-        });
-    </script>
-<?php endif; ?>

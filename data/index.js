@@ -190,6 +190,8 @@ function setLEDPin(gpioNumber) {
     const $item = $(`.dropdown-item[data-val="${code}"]`);
     if ($item.length) {
         $btn.text(code);
+    $btn.attr("title", $item.text().trim());
+        $btn.attr("title", $item.text().trim());
     } else {
         debugConsole("warn", "GPIO value not found:", code);
     }
@@ -217,6 +219,7 @@ function selectPin(e) {
 
     // Update the toggle button text with the short code
     $btn.text(code);
+        $btn.attr("title", $item.text().trim());
 
     // Mark this item active, clear others
     const $menu = $item.closest('.dropdown-menu');
@@ -529,4 +532,53 @@ function validateQRSSFrequencies() {
     fld.classList.toggle("is-valid", valid);
 
     return valid;
+}
+
+function setBackendStatus(isOffline) {
+    const $banner = $("#backendStatus");
+
+    if (!$banner.length) {
+        return;
+    }
+
+    $banner.toggleClass("d-none", !isOffline);
+}
+
+function setHardwareControlsDisabled(disabled) {
+    const controlIds = [
+        "#transmit",
+        "#use_led",
+        "#ledDropdownButton",
+        "#use_shutdown",
+        "#shutdownDropdownButton",
+        "#submit",
+        "#reset",
+        "#test_tone"
+    ];
+
+    controlIds.forEach((selector) => {
+        $(selector).prop("disabled", disabled);
+    });
+}
+
+function setOfflineDefaults() {
+    setBackendStatus(true);
+    setHardwareControlsDisabled(true);
+
+    $("#transmit").prop("checked", false);
+    $("#use_led").prop("checked", false);
+    $("#use_shutdown").prop("checked", false);
+
+    $("#ledDropdownButton")
+        .text("GPIO18")
+        .attr("title", "GPIO18 (Pin 12 - TAPR LED)");
+
+    $("#shutdownDropdownButton")
+        .text("GPIO19")
+        .attr("title", "GPIO19 (Pin 35 - TAPR Shutdown)");
+}
+
+function clearOfflineDefaults() {
+    setBackendStatus(false);
+    setHardwareControlsDisabled(false);
 }

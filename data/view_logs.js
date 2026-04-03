@@ -728,26 +728,9 @@
             if (attr && attr.trim() !== "") return attr.trim();
         }
 
-        // Default: derive from PROTO, HOSTNAME, and CURRENT_PATH
-        // These are provided by other UI includes and match the inline-script behavior.
-        // Example:
-        //   PROTO="http", HOSTNAME="example.com", CURRENT_PATH="/ui/view_logs.php"
-        //   -> http://example.com/ui/log_stream.php
-        if (typeof PROTO === "string" &&
-            typeof HOSTNAME === "string" &&
-            typeof CURRENT_PATH === "string")
-        {
-            // site.js defines:
-            //   PROTO = window.location.protocol      (e.g. "http:" or "https:")
-            //   HOSTNAME = window.location.hostname  (e.g. "wspr4.local")
-            //   CURRENT_PATH = "/wsprrypi"           (directory, no trailing slash)
-            //
-            // Build:
-            //   "http://wspr4.local/wsprrypi/log_stream.php"
-            let basePath = String(CURRENT_PATH || "");
-            if (!basePath.startsWith("/")) basePath = "/" + basePath;
-            if (!basePath.endsWith("/")) basePath += "/";
-            return PROTO + "//" + HOSTNAME + basePath + "log_stream.php";
+        // Prefer the centralized UI path map when available.
+        if (w.WSPRRYPI_PATHS && typeof w.WSPRRYPI_PATHS.logStreamPath === "string") {
+            return new URL(w.WSPRRYPI_PATHS.logStreamPath, w.location.origin).toString();
         }
 
         // Fallback: log_stream.php next to the current document.

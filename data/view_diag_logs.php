@@ -1,6 +1,12 @@
 <?php
 
 /**
+ * Standalone diagnostic log viewer.
+ * This page is intentionally self-contained and does not depend on header.php
+ * or the shared UI bootstrap used by the main WsprryPi interface.
+ */
+
+/**
  * view_diag_logs.php
  * ------------
  * Log viewer UI for Server-Sent Events from log_stream.php.
@@ -21,9 +27,16 @@
 
 declare(strict_types=1);
 
-$proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https:' : 'http:';
-$host  = $_SERVER['HTTP_HOST'] ?? 'localhost';
-$path  = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? '/'), '/');
+$scriptName = $_SERVER['SCRIPT_NAME'] ?? '/';
+$basePath = rtrim(str_replace('\\', '/', dirname($scriptName)), '/');
+if ($basePath === '/' || $basePath === '.') {
+    $basePath = '';
+}
+
+$pathConfig = [
+    'basePath' => $basePath,
+    'logStreamPath' => $basePath . '/log_stream.php',
+];
 ?>
 <!doctype html>
 <html lang="en">
@@ -32,6 +45,10 @@ $path  = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? '/'), '/');
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Logs</title>
+
+    <script>
+        window.WSPRRYPI_PATHS = <?= json_encode($pathConfig, JSON_UNESCAPED_SLASHES) ?>;
+    </script>
 
     <!-- Bootstrap + jQuery (CDN). -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -523,10 +540,8 @@ $path  = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? '/'), '/');
                 }
             }
 
-            /* Globals for building the SSE URL. */
-            const PROTO = <?php echo json_encode($proto, JSON_UNESCAPED_SLASHES); ?>;
-            const HOSTNAME = <?php echo json_encode($host, JSON_UNESCAPED_SLASHES); ?>;
-            const CURRENT_PATH = <?php echo json_encode($path, JSON_UNESCAPED_SLASHES); ?>;
+            /* Centralized path configuration for local endpoints. */
+            const WSPRRYPI_PATHS = <?php echo json_encode($pathConfig, JSON_UNESCAPED_SLASHES); ?>;
 
             function debugConsole(level, ...args) {
                 // Keep this simple; integrate with your logger if needed.
@@ -902,7 +917,7 @@ $path  = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? '/'), '/');
             }
 
             function buildStreamUrl() {
-                const url = new URL(`${PROTO}//${HOSTNAME}${CURRENT_PATH}/log_stream.php`);
+                const url = new URL(WSPRRYPI_PATHS.logStreamPath, window.location.origin);
 
                 // Apply filters from controls.
                 const playback = $("#playback").val();

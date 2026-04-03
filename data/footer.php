@@ -7,7 +7,7 @@
             <div>Copyright © 2023 - 2026 Lee Bussy [AA0NT].</div>
 
             <div>
-                WsprryPi version <span id="wspr-version">Loading version...</span>
+                WsprryPi version: <span id="versionText">---</span>
             </div>
 
             <div>Licensed under the MIT License</div>

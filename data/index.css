@@ -3,9 +3,12 @@
    ------------------------------------------------------------ */
 .pin-dropdown-btn {
     position: relative;
-    padding: 0.375rem 2.5rem;
+    padding: 0.375rem 2.5rem 0.375rem 0.75rem;
     line-height: 1.5;
     min-height: calc(1rem * 1.5 + 0.375rem * 2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .pin-dropdown-btn.dropdown-toggle::after {
@@ -31,27 +34,21 @@
 }
 
 /* target the menu immediately following any .pin-dropdown-btn */
-.pin-dropdown-btn+.dropdown-menu {
+.pin-dropdown-btn + .dropdown-menu {
     width: auto;
     min-width: max-content;
 }
 
-.pin-dropdown-btn+.dropdown-menu .dropdown-item {
+.pin-dropdown-btn + .dropdown-menu .dropdown-item {
     white-space: nowrap;
 }
 
-.pin-dropdown-btn {
-    position: relative;
-    padding: 0.375rem 2.5rem 0.375rem 0.75rem;
-    line-height: 1.5;
-    min-height: calc(1rem * 1.5 + 0.375rem * 2);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+#backendStatus {
+    margin-bottom: 1rem;
 }
 
 /* ------------------------------------------------------------
-       Form‑validation feedback
+       Form-validation feedback
      ------------------------------------------------------------ */
 /* reserve one line of space for feedback */
 .position-relative {
@@ -76,16 +73,16 @@
 }
 
 /* show exactly one message */
-.form-control.is-valid~.valid-feedback,
-.was-validated .form-control:valid~.valid-feedback,
-.form-control.is-invalid~.invalid-feedback,
-.was-validated .form-control:invalid~.invalid-feedback {
+.form-control.is-valid ~ .valid-feedback,
+.was-validated .form-control:valid ~ .valid-feedback,
+.form-control.is-invalid ~ .invalid-feedback,
+.was-validated .form-control:invalid ~ .invalid-feedback {
     visibility: visible;
 }
 
 /* hide when disabled */
-.form-control:disabled~.valid-feedback,
-.form-control:disabled~.invalid-feedback {
+.form-control:disabled ~ .valid-feedback,
+.form-control:disabled ~ .invalid-feedback {
     visibility: hidden;
 }
 

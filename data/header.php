@@ -12,10 +12,26 @@ if ($current === 'index.php') {
 } else {
     $pageTitle  = 'Wsprry Pi Configuration'; // Fallback
 }
+
+$scriptName = $_SERVER['SCRIPT_NAME'] ?? '/';
+$basePath = rtrim(str_replace('\\', '/', dirname($scriptName)), '/');
+if ($basePath === '/' || $basePath === '.') {
+    $basePath = '';
+}
+
+$pathConfig = [
+    'basePath' => $basePath,
+    'configPath' => $basePath . '/config',
+    'versionPath' => $basePath . '/version',
+    'repairPath' => $basePath . '/config/repair',
+    'socketPath' => $basePath . '/socket',
+    'logStreamPath' => $basePath . '/log_stream.php',
+];
 ?>
 
 <script>
-    window.currentPage = '<?= basename($_SERVER['SCRIPT_NAME']) ?>';
+    window.currentPage = <?= json_encode(basename($_SERVER['SCRIPT_NAME'])) ?>;
+    window.WSPRRYPI_PATHS = <?= json_encode($pathConfig, JSON_UNESCAPED_SLASHES) ?>;
 </script>
 
 <meta charset="UTF-8" />

@@ -16,6 +16,11 @@
     <!-- Fixed Navbar -->
     <?php require_once 'navbar.php'; ?>
 
+    <?php
+    $defaultLedGpio = 'GPIO18';
+    $defaultShutdownGpio = 'GPIO19';
+    ?>
+
     <!-- Main Content -->
     <div class="container my-5">
         <div class="card shadow-sm logs-card mt-5">
@@ -40,6 +45,10 @@
             </div>
 
             <div class="card-body">
+
+                <div id="backendStatus" class="alert alert-warning d-none" role="alert">
+                    WsprryPi service is unavailable. Please ensure the backend is running and try again.
+                </div>
 
                 <form id="wsprform" class="needs-validation" novalidate>
 
@@ -75,18 +84,19 @@
                             <div class="col-12 col-xxl-3 d-flex align-items-center">
                                 <label for="ledDropdownButton" class="form-label mb-0 me-2 flex-shrink-0">LED Pin:</label>
                                 <div class="dropdown flex-grow-1">
+                                    <?php
+                                    $dropdownId = "ledDropdownButton";
+                                    $defaultGpio = $defaultLedGpio;
+                                    ?>
                                     <button id="ledDropdownButton"
                                         class="btn btn-outline-secondary dropdown-toggle w-100 text-start pin-dropdown-btn"
                                         type="button"
                                         data-bs-toggle="dropdown"
-                                        aria-expanded="false">
-                                        <?= htmlspecialchars($defaultGpio) ?>
+                                        aria-expanded="false"
+                                        title="GPIO18 (Pin 12 - TAPR LED)">
+                                        <?= htmlspecialchars($defaultLedGpio) ?>
                                     </button>
-                                    <?php
-                                    $dropdownId  = "ledDropdownButton";
-                                    $defaultGpio = "GPIO18";
-                                    include 'gpio_dropdown.php';
-                                    ?>
+                                    <?php include 'gpio_dropdown.php'; ?>
                                 </div>
                             </div>
 
@@ -104,18 +114,19 @@
                             <div class="col-12 col-xxl-3 d-flex align-items-center">
                                 <label for="shutdownDropdownButton" class="form-label mb-0 me-2 flex-shrink-0">Shutdown Pin:</label>
                                 <div class="dropdown flex-grow-1">
+                                    <?php
+                                    $dropdownId = "shutdownDropdownButton";
+                                    $defaultGpio = $defaultShutdownGpio;
+                                    ?>
                                     <button id="shutdownDropdownButton"
                                         class="btn btn-outline-secondary dropdown-toggle w-100 text-start pin-dropdown-btn"
                                         type="button"
                                         data-bs-toggle="dropdown"
-                                        aria-expanded="false">
+                                        aria-expanded="false"
+                                        title="GPIO19 (Pin 35 - TAPR Shutdown)">
                                         <?= htmlspecialchars($defaultShutdownGpio) ?>
                                     </button>
-                                    <?php
-                                    $dropdownId  = "shutdownDropdownButton";
-                                    $defaultGpio = "GPIO19";
-                                    include 'gpio_dropdown.php';
-                                    ?>
+                                    <?php include 'gpio_dropdown.php'; ?>
                                 </div>
                             </div>
                         </div>
