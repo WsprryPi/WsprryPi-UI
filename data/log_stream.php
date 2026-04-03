@@ -282,11 +282,21 @@ if (!$unitFilterDisabled && count($units) === 0) {
 $internalUnit = (!$unitFilterDisabled && count($units) > 0) ? $units[0] : null;
 $__internalUnitForErrors = $internalUnit;
 
-// Last-Event-ID → cursor resume
+// Resume cursor may arrive either from the SSE Last-Event-ID header
+// or from the explicit ?cursor= query parameter used by the client when it
+// creates a fresh EventSource instance.
 $lastEventIdRaw = $_SERVER['HTTP_LAST_EVENT_ID'] ?? null;
-$lastCursor = is_string($lastEventIdRaw) && $lastEventIdRaw !== ''
-    ? rawurldecode($lastEventIdRaw)
-    : null;
+$cursorParamRaw = $_GET['cursor'] ?? null;
+$lastCursor = null;
+
+if (is_string($lastEventIdRaw) && $lastEventIdRaw !== '') {
+    $lastCursor = rawurldecode($lastEventIdRaw);
+} elseif (is_string($cursorParamRaw) && $cursorParamRaw !== '') {
+    $lastCursor = trim($cursorParamRaw);
+    if ($lastCursor === '') {
+        $lastCursor = null;
+    }
+}
 
 function build_cmd(array $parts): string
 {
@@ -401,6 +411,8 @@ function drain_process(
     $stderrBuf = '';
     $lastCursor = null;
     $lastHeartbeatAt = 0;
+    $entryCount = 0;
+    $stderrFull = '';
 
     // Track whether each pipe is still open. When a pipe reaches EOF, it remains
     // "readable" forever, which can cause stream_select() to wake continuously.
@@ -512,6 +524,7 @@ function drain_process(
             $line = trim(substr($stderrBuf, 0, $pos));
             $stderrBuf = substr($stderrBuf, $pos + 1);
             if ($line !== '') {
+                $stderrFull .= ($stderrFull === '' ? '' : "\n") . $line;
                 emit_internal('[journalctl stderr] ' . $line, '4', $internalUnit, false);
             }
         }
@@ -531,6 +544,7 @@ function drain_process(
             }
 
             $c = send_entry($entry, $isPlayback);
+            $entryCount += 1;
             if ($c !== null) {
                 $lastCursor = $c;
             }
@@ -542,6 +556,7 @@ function drain_process(
         $line = trim(substr($stderrBuf, 0, $pos));
         $stderrBuf = substr($stderrBuf, $pos + 1);
         if ($line !== '') {
+            $stderrFull .= ($stderrFull === '' ? '' : "\n") . $line;
             emit_internal('[journalctl stderr] ' . $line, '4', $internalUnit, false);
         }
     }
@@ -560,6 +575,7 @@ function drain_process(
         }
 
         $c = send_entry($entry, $isPlayback);
+        $entryCount += 1;
         if ($c !== null) {
             $lastCursor = $c;
         }
@@ -573,7 +589,12 @@ function drain_process(
     }
     $exitcode = proc_close($proc);
 
-    return ['lastCursor' => $lastCursor, 'exitcode' => $exitcode];
+    return [
+        'lastCursor' => $lastCursor,
+        'exitcode' => $exitcode,
+        'entryCount' => $entryCount,
+        'stderrText' => trim($stderrFull),
+    ];
 }
 
 // Discover journalctl path.
@@ -623,82 +644,165 @@ emit_internal(
     false
 );
 
-// -----------------------------------------------------------------------------
-// Phase 1: Replay (optional)
-// -----------------------------------------------------------------------------
-$cursorForFollow = null;
 
-// If the client provided a cursor (Last-Event-ID), we will resume the follow
-// loop from that point. If playback is enabled, we will still emit a small
-// backlog for context, but we will scope that replay to entries after the
-// provided cursor so we do not skip forward and miss unseen messages.
-if ($lastCursor !== null) {
-    $cursorForFollow = $lastCursor;
-}
-
-if ($playbackEnabled && $initialBacklog > 0) {
-    $replayParts = array_merge(
-        [$journalctlPath, '--no-pager', '-o', 'json'],
-        $journalFilters
-    );
-
-    if ($lastCursor !== null) {
-        $replayParts[] = '--after-cursor';
-        $replayParts[] = $lastCursor;
-    }
-
-    $replayParts[] = '-n';
-    $replayParts[] = (string)$initialBacklog;
-
+function run_replay_command(
+    array $parts,
+    ?string $internalUnit,
+    int $heartbeatSec,
+    string $label
+): array {
     emit_playback_event('playback_start', true);
-    emit_internal('journalctl replay starting', '7', $internalUnit, true);
-    emit_internal('journalctl replay cmd: ' . build_cmd($replayParts), '7', $internalUnit, true);
+    emit_internal($label . ' starting', '7', $internalUnit, true);
+    emit_internal($label . ' cmd: ' . build_cmd($parts), '7', $internalUnit, true);
 
-    $started = proc_start(build_cmd($replayParts));
-
-    // `journalctl -n N` (replay) often exits quickly after writing output.
-    // If it exited immediately, still drain stdout/stderr so the client
-    // receives the backlog.
+    $started = proc_start(build_cmd($parts));
     if ($started['ok'] || !empty($started['exited_immediately'])) {
         if (!$started['ok'] && !empty($started['exited_immediately'])) {
-            emit_internal('journalctl replay exited quickly; draining output', '7', $internalUnit, true);
+            emit_internal($label . ' exited quickly; draining output', '7', $internalUnit, true);
         }
 
         $res = drain_process($started, false, $internalUnit, $heartbeatSec, true);
-        $cursorForFollow = $res['lastCursor'] ?? $cursorForFollow;
 
-        // Treat non-zero exit as a replay failure, but do not hide any drained
-        // output from the client.
         if (!$started['ok'] && (($res['exitcode'] ?? 0) !== 0)) {
+            $stderrText = (string)($res['stderrText'] ?? ($started['stderr'] ?? ''));
             emit_internal(
-                'journalctl replay failed: exitcode=' . (string)($res['exitcode'] ?? '') . ' stderr='
-                    . (string)($started['stderr'] ?? ''),
+                $label . ' failed: exitcode=' . (string)($res['exitcode'] ?? '') .
+                    ($stderrText !== '' ? ' stderr=' . $stderrText : ''),
                 '3',
                 $internalUnit,
                 false
             );
         } else {
-            emit_internal('journalctl replay complete', '7', $internalUnit, true);
+            emit_internal(
+                $label . ' complete: entries=' . (string)($res['entryCount'] ?? 0),
+                '7',
+                $internalUnit,
+                true
+            );
         }
 
-        // Signal to the client that initial catch-up is finished.
         emit_playback_event('playback_end', false);
-    } else {
-        emit_internal(
-            'journalctl replay failed: ' . (string)($started['stderr'] ?? ''),
-            '3',
+
+        return [
+            'ok' => (($res['exitcode'] ?? 0) === 0),
+            'started' => $started,
+            'result' => $res,
+        ];
+    }
+
+    emit_internal(
+        $label . ' failed: ' . (string)($started['stderr'] ?? ''),
+        '3',
+        $internalUnit,
+        false
+    );
+
+    if (isset($started['proc']) || isset($started['pipes'])) {
+        proc_cleanup($started);
+    }
+
+    emit_playback_event('playback_end', false);
+
+    return [
+        'ok' => false,
+        'started' => $started,
+        'result' => [
+            'lastCursor' => null,
+            'exitcode' => $started['exitcode'] ?? 1,
+            'entryCount' => 0,
+            'stderrText' => (string)($started['stderr'] ?? ''),
+        ],
+    ];
+}
+
+// -----------------------------------------------------------------------------
+// Phase 1: Replay (optional)
+// -----------------------------------------------------------------------------
+$cursorForFollow = null;
+$usedCursorReplay = false;
+
+if ($lastCursor !== null) {
+    $cursorForFollow = $lastCursor;
+    emit_internal('Resume cursor accepted from ' .
+        ((is_string($lastEventIdRaw) && $lastEventIdRaw !== '') ? 'Last-Event-ID' : 'query'),
+        '7',
+        $internalUnit,
+        false
+    );
+}
+
+if ($playbackEnabled && $initialBacklog > 0) {
+    $replayBaseParts = array_merge(
+        [$journalctlPath, '--no-pager', '-o', 'json'],
+        $journalFilters
+    );
+
+    $replayOutcome = null;
+
+    if ($lastCursor !== null) {
+        $usedCursorReplay = true;
+        $cursorReplayParts = $replayBaseParts;
+        $cursorReplayParts[] = '--after-cursor';
+        $cursorReplayParts[] = $lastCursor;
+        $cursorReplayParts[] = '-n';
+        $cursorReplayParts[] = (string)$initialBacklog;
+
+        $replayOutcome = run_replay_command(
+            $cursorReplayParts,
             $internalUnit,
-            false
+            $heartbeatSec,
+            'journalctl replay from cursor'
         );
 
-        // Ensure we do not leak pipes/proc handles on start failures that still
-        // created a process.
-        if (isset($started['proc']) || isset($started['pipes'])) {
-            proc_cleanup($started);
+        $cursorReplayEntries = (int)($replayOutcome['result']['entryCount'] ?? 0);
+        $cursorReplayLastCursor = $replayOutcome['result']['lastCursor'] ?? null;
+        if (is_string($cursorReplayLastCursor) && $cursorReplayLastCursor !== '') {
+            $cursorForFollow = $cursorReplayLastCursor;
         }
 
-        // Even on failure, end playback mode so the UI can switch to live follow.
-        emit_playback_event('playback_end', false);
+        $cursorReplayFailed = !$replayOutcome['ok'];
+        $cursorReplayEmpty = ($cursorReplayEntries === 0);
+
+        if ($cursorReplayFailed || $cursorReplayEmpty) {
+            $reason = $cursorReplayFailed ? 'cursor replay failed' : 'cursor replay returned 0 entries';
+            emit_internal(
+                'Falling back to current-boot backlog because ' . $reason,
+                '4',
+                $internalUnit,
+                false
+            );
+
+            $bootReplayParts = $replayBaseParts;
+            $bootReplayParts[] = '-b';
+            $bootReplayParts[] = '0';
+            $bootReplayParts[] = '-n';
+            $bootReplayParts[] = (string)$initialBacklog;
+
+            $replayOutcome = run_replay_command(
+                $bootReplayParts,
+                $internalUnit,
+                $heartbeatSec,
+                'journalctl replay current boot'
+            );
+
+            $cursorForFollow = $replayOutcome['result']['lastCursor'] ?? null;
+            if (!is_string($cursorForFollow) || $cursorForFollow === '') {
+                $cursorForFollow = null;
+            }
+        }
+    } else {
+        $tailReplayParts = $replayBaseParts;
+        $tailReplayParts[] = '-n';
+        $tailReplayParts[] = (string)$initialBacklog;
+
+        $replayOutcome = run_replay_command(
+            $tailReplayParts,
+            $internalUnit,
+            $heartbeatSec,
+            'journalctl replay backlog'
+        );
+
+        $cursorForFollow = $replayOutcome['result']['lastCursor'] ?? $cursorForFollow;
     }
 }
 // -----------------------------------------------------------------------------
@@ -721,10 +825,21 @@ while (true) {
 
     $started = proc_start(build_cmd($followParts));
     if (!$started['ok']) {
-        emit_internal('journalctl follow failed: ' . (string)($started['stderr'] ?? ''), '3', $internalUnit, false);
+        $followErr = (string)($started['stderr'] ?? '');
+        emit_internal('journalctl follow failed: ' . $followErr, '3', $internalUnit, false);
 
         if (isset($started['proc']) || isset($started['pipes'])) {
             proc_cleanup($started);
+        }
+
+        if ($cursorForFollow !== null) {
+            emit_internal(
+                'Clearing follow cursor and retrying live follow without cursor',
+                '4',
+                $internalUnit,
+                false
+            );
+            $cursorForFollow = null;
         }
 
         sleep(1);
