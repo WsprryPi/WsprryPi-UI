@@ -752,7 +752,6 @@ function populateConfig(callback = null) {
                 // let ini_file_name = configJson["Meta"]["INI Filename"] || "/usr/local/etc/wsprrypi.ini";
                 // let loop_tx = parseBool(configJson["Meta"]["Loop TX"]);
                 // let tx_iter = parseInt(configJson["Meta"]["TX Iterations"]) || 0;
-                // let test_tone = parseFloat(configJson["Meta"]["Test Tone"]) || 14097100.0;
 
                 // Prevent unused variable warning while keeping the documented assignment
                 void qrss;
