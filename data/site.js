@@ -49,6 +49,7 @@ let backendCurrentlyConnected = false;
 let websocketCurrentlyConnected = false;
 let outageBannerArmed = false;
 let pageUnloading = false;
+let currentRuntimeStatus = null;
 
 // Websocket Creation
 let ws;
@@ -940,6 +941,93 @@ function setConnectionState(state, timestamp = "") {
     inst.setContent({ ".tooltip-inner": text });
 }
 
+function normalizeRuntimeStatus(msg) {
+    if (!msg || typeof msg !== "object") {
+        return null;
+    }
+
+    const planType = typeof msg.plan_type === "string" ? msg.plan_type : "";
+    const frameCount = Number.isFinite(Number(msg.frame_count))
+        ? Number(msg.frame_count)
+        : 0;
+    const currentFrame = Number.isFinite(Number(msg.current_frame))
+        ? Number(msg.current_frame)
+        : 0;
+
+    return {
+        txState: typeof msg.tx_state === "string" ? msg.tx_state : "",
+        planType,
+        frameCount,
+        currentFrame,
+        callsignRaw: typeof msg.callsign_raw === "string" ? msg.callsign_raw : "",
+        callsignNormalized:
+            typeof msg.callsign_normalized === "string" ? msg.callsign_normalized : "",
+        locatorRaw: typeof msg.locator_raw === "string" ? msg.locator_raw : "",
+        locatorNormalized:
+            typeof msg.locator_normalized === "string" ? msg.locator_normalized : "",
+        frameCallsign: typeof msg.frame_callsign === "string" ? msg.frame_callsign : "",
+        frameLocator: typeof msg.frame_locator === "string" ? msg.frame_locator : "",
+        timestamp: typeof msg.timestamp === "string" ? msg.timestamp : ""
+    };
+}
+
+function renderRuntimeStatus(status) {
+    const node = document.getElementById("txRuntimeSummary");
+    if (!node) {
+        return;
+    }
+
+    if (!status || !status.planType) {
+        node.textContent = "";
+        node.setAttribute("title", "");
+        return;
+    }
+
+    let summary = status.planType;
+    if (status.frameCount > 1 && status.currentFrame > 0) {
+        summary += ` F${status.currentFrame}/${status.frameCount}`;
+    }
+
+    const frameIdentity = [status.frameCallsign, status.frameLocator]
+        .filter(Boolean)
+        .join(" ");
+    if (frameIdentity) {
+        summary += ` ${frameIdentity}`;
+    }
+
+    const overallIdentity = [status.callsignNormalized, status.locatorNormalized]
+        .filter(Boolean)
+        .join(" ");
+    const titleParts = [summary];
+    if (overallIdentity) {
+        titleParts.push(`Overall: ${overallIdentity}`);
+    }
+    if (
+        status.callsignRaw &&
+        status.locatorRaw &&
+        (status.callsignRaw !== status.callsignNormalized ||
+            status.locatorRaw !== status.locatorNormalized)
+    ) {
+        titleParts.push(`Raw: ${status.callsignRaw} ${status.locatorRaw}`);
+    }
+    if (status.timestamp) {
+        titleParts.push(`Updated: ${status.timestamp}`);
+    }
+
+    node.textContent = summary;
+    node.setAttribute("title", titleParts.join(" | "));
+}
+
+function applyRuntimeStatus(msg) {
+    const status = normalizeRuntimeStatus(msg);
+    if (!status) {
+        return;
+    }
+
+    currentRuntimeStatus = status;
+    renderRuntimeStatus(currentRuntimeStatus);
+}
+
 /**
  * Logs at the specified level, if it meets or exceeds the
  * configured CONSOLE_LOG_LEVEL.
@@ -1050,6 +1138,7 @@ function connectWebSocket(url, reconnectDelay = 5000) {
 
         // If the server is replying to our get_tx_state command:
         if (msg.tx_state !== undefined) {
+            applyRuntimeStatus(msg);
             setConnectionState(msg.tx_state === "transmitting" ? "transmitting" : "connected");
             debugConsole("debug", "Received tx_state:", msg.tx_state);
             return;
@@ -1057,6 +1146,7 @@ function connectWebSocket(url, reconnectDelay = 5000) {
 
         // If the server pushes a “transmit” event:
         if (msg.type === "transmit") {
+            applyRuntimeStatus(msg);
             if (msg.state === "starting") {
                 const ts = new Date(msg.timestamp);
                 setConnectionState("transmitting", ts);
@@ -1068,6 +1158,8 @@ function connectWebSocket(url, reconnectDelay = 5000) {
                     "Transmit finished at:",
                     new Date(msg.timestamp).toString()
                 );
+            } else if (msg.state === "canceled" || msg.state === "skipped") {
+                setConnectionState("connected");
             }
         }
         // {"state":"reload","timestamp":"2025-04-27T22:25:43Z","type":"configuration"}
@@ -1142,6 +1234,14 @@ function updateCallsign(forceCallsign) {
 
     const $text = $link.find(".ms-2");
     const $cs = $("#callsign");
+    const isLightweightCallsign = function (value) {
+        const trimmed = typeof value === "string" ? value.trim() : "";
+        if (!trimmed || /\s/.test(trimmed)) {
+            return false;
+        }
+
+        return /^(?:[A-Za-z0-9/]+|<[A-Za-z0-9/]+>)$/.test(trimmed);
+    };
 
     let callsign = "";
 
@@ -1153,11 +1253,7 @@ function updateCallsign(forceCallsign) {
         callsign = window.config.callsign.trim();
     }
 
-    const isValid =
-        $cs.length &&
-        $cs[0] &&
-        typeof $cs[0].checkValidity === "function" &&
-        $cs[0].checkValidity();
+    const isValid = isLightweightCallsign(callsign);
 
     if ((isValid || !$cs.length) && callsign !== "") {
         $link

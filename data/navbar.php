@@ -10,6 +10,7 @@
                 data-bs-original-title="Disconnected."
                 class="fa-solid fa-tower-broadcast"></i>
             <?= htmlspecialchars($currentPageMetadata['title']) ?>
+            <span id="txRuntimeSummary" class="ms-2 small text-white-50"></span>
         </span>
         <button
             class="navbar-toggler ms-auto"

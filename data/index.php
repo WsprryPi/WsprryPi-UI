@@ -108,11 +108,8 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                     type="text"
                                                     id="callsign"
                                                     class="form-control"
-                                                    minlength="3"
-                                                    maxlength="6"
                                                     data-bs-toggle="tooltip"
-                                                    title="1-3 letters/digits, then one digit (0-9), then 1-4 letters/digits.  Max 6 characters"
-                                                    pattern="^[A-Za-z0-9]{1,3}[0-9][A-Za-z0-9]{1,4}$"
+                                                    title="Enter a callsign, compound callsign, or explicit Type 3 callsign such as K1ABC, AA0NT/12, or <AA0NT>"
                                                     required />
                                             </div>
                                         </div>
@@ -127,8 +124,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                     id="gridsquare"
                                                     class="form-control"
                                                     data-bs-toggle="tooltip"
-                                                    title="Enter exactly 2 letters followed by 2 digits (e.g. FN20)"
-                                                    pattern="^[A-Za-z]{2}[0-9]{2}$"
+                                                    title="Enter a 4-character or 6-character Maidenhead locator such as FN20 or FN20AB"
                                                     required />
                                             </div>
                                         </div>

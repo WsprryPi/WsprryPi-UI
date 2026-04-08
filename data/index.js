@@ -241,6 +241,97 @@ function isPlaceholderGridSquare(gridSquare) {
     return gridSquare.trim().toUpperCase() === "ZZ99";
 }
 
+function trimIdentityValue(value) {
+    return typeof value === "string" ? value.trim() : "";
+}
+
+function isLightweightCallsign(value) {
+    const trimmed = trimIdentityValue(value);
+    if (!trimmed || /\s/.test(trimmed)) {
+        return false;
+    }
+
+    return /^(?:[A-Za-z0-9/]+|<[A-Za-z0-9/]+>)$/.test(trimmed);
+}
+
+function isLightweightGridSquare(value) {
+    const trimmed = trimIdentityValue(value);
+    if (!trimmed || /\s/.test(trimmed)) {
+        return false;
+    }
+
+    return /^[A-Za-z]{2}[0-9]{2}(?:[A-Za-z]{2})?$/.test(trimmed);
+}
+
+function setIdentityValidity(ctrl) {
+    if (ctrl.id === "callsign") {
+        const callsign = trimIdentityValue(ctrl.value);
+        if (!callsign) {
+            ctrl.setCustomValidity("Callsign is required.");
+        } else if (!isLightweightCallsign(callsign)) {
+            ctrl.setCustomValidity(
+                "Enter a callsign using letters, digits, '/', or explicit Type 3 form like <CALLSIGN>."
+            );
+        } else if (isPlaceholderCallsign(callsign)) {
+            ctrl.setCustomValidity("Placeholder callsign is not allowed.");
+        } else {
+            ctrl.setCustomValidity("");
+        }
+    }
+
+    if (ctrl.id === "gridsquare") {
+        const gridSquare = trimIdentityValue(ctrl.value);
+        if (!gridSquare) {
+            ctrl.setCustomValidity("Grid square is required.");
+        } else if (!isLightweightGridSquare(gridSquare)) {
+            ctrl.setCustomValidity(
+                "Enter a 4-character or 6-character Maidenhead locator such as FN20 or FN20AB."
+            );
+        } else if (isPlaceholderGridSquare(gridSquare)) {
+            ctrl.setCustomValidity("Placeholder grid square ZZ99 is not allowed.");
+        } else {
+            ctrl.setCustomValidity("");
+        }
+    }
+}
+
+function buildConfigErrorMessage(data, fallbackMessage) {
+    if (!data || typeof data !== "object") {
+        return fallbackMessage;
+    }
+
+    const lines = [];
+    if (typeof data.message === "string" && data.message.trim()) {
+        lines.push(data.message.trim());
+    } else {
+        lines.push(fallbackMessage);
+    }
+
+    if (typeof data.plan_status === "string" && data.plan_status.trim()) {
+        lines.push(`Plan status: ${data.plan_status.trim()}`);
+    }
+
+    if (typeof data.rationale === "string" && data.rationale.trim()) {
+        lines.push(data.rationale.trim());
+    }
+
+    if (
+        typeof data.normalized_callsign === "string" &&
+        data.normalized_callsign.trim()
+    ) {
+        lines.push(`Normalized callsign: ${data.normalized_callsign.trim()}`);
+    }
+
+    if (
+        typeof data.normalized_locator === "string" &&
+        data.normalized_locator.trim()
+    ) {
+        lines.push(`Normalized locator: ${data.normalized_locator.trim()}`);
+    }
+
+    return lines.join("\n");
+}
+
 function validatePage() {
     const form = document.getElementById("wsprform");
 
@@ -254,25 +345,7 @@ function validatePage() {
     form
         .querySelectorAll(".form-control:not(.form-check-input)")
         .forEach((ctrl) => {
-            if (ctrl.id === "callsign") {
-                if (isPlaceholderCallsign(ctrl.value)) {
-                    ctrl.setCustomValidity(
-                        "Placeholder callsign is not allowed."
-                    );
-                } else {
-                    ctrl.setCustomValidity("");
-                }
-            }
-
-            if (ctrl.id === "gridsquare") {
-                if (isPlaceholderGridSquare(ctrl.value)) {
-                    ctrl.setCustomValidity(
-                        "Placeholder grid square ZZ99 is not allowed."
-                    );
-                } else {
-                    ctrl.setCustomValidity("");
-                }
-            }
+            setIdentityValidity(ctrl);
 
             if (ctrl.checkValidity()) {
                 ctrl.classList.add("is-valid");
@@ -478,8 +551,8 @@ function savePage(e) {
     let band_gpio = collectBandGpioConfig();
 
     // Operator Information
-    let callsign = $("#callsign").val() || "";
-    let gridsquare = $("#gridsquare").val() || "";
+    let callsign = trimIdentityValue($("#callsign").val());
+    let gridsquare = trimIdentityValue($("#gridsquare").val());
 
     // Transmitter Information
     let dbm = parseInt($("#dbm").val());
@@ -568,14 +641,16 @@ function savePage(e) {
         })
         .fail(function (xhr) {
             let message = "Settings update failed with status: " + xhr.status;
+            let parsedError = null;
 
-            if (xhr.responseJSON && typeof xhr.responseJSON.message === "string") {
-                message = xhr.responseJSON.message;
+            if (xhr.responseJSON && typeof xhr.responseJSON === "object") {
+                parsedError = xhr.responseJSON;
+                message = buildConfigErrorMessage(parsedError, message);
             } else if (typeof xhr.responseText === "string" && xhr.responseText.trim()) {
                 try {
-                    const parsed = JSON.parse(xhr.responseText);
-                    if (parsed && typeof parsed.message === "string") {
-                        message = parsed.message;
+                    parsedError = JSON.parse(xhr.responseText);
+                    if (parsedError && typeof parsedError === "object") {
+                        message = buildConfigErrorMessage(parsedError, message);
                     }
                 } catch (error) {
                     debugConsole("warn", "Unable to parse settings error response:", error);
