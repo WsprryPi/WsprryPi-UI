@@ -544,6 +544,7 @@ function savePage(e) {
 
     // Hardware Control
     let transmit = parseBool($("#transmit").is(":checked"));
+    let planner_preference = String($("#planner_preference").val() || "auto");
     let use_led = parseBool($("#use_led").is(":checked"));
     let led_pin = parseInt(getLEDPin()) || 18;
     let use_shutdown = parseBool($("#use_shutdown").is(":checked"));
@@ -581,7 +582,8 @@ function savePage(e) {
     }
 
     var Meta = {
-        "Mode": mode
+        "Mode": mode,
+        "Planner Preference": planner_preference
     }
 
     var Control = {
@@ -772,6 +774,7 @@ function validateQRSSFrequencies() {
 function setHardwareControlsDisabled(disabled) {
     const controlIds = [
         "#transmit",
+        "#planner_preference",
         "#use_led",
         "#ledDropdownButton",
         "#use_shutdown",

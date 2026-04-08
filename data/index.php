@@ -186,6 +186,28 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                             </div>
                                         </div>
                                     </div>
+
+                                    <div class="row gx-2 align-items-center">
+                                        <div class="col-12 mb-3">
+                                            <label for="planner_preference" class="form-label">
+                                                Planner preference
+                                            </label>
+                                            <select
+                                                id="planner_preference"
+                                                class="form-select"
+                                                data-bs-toggle="tooltip"
+                                                title="Choose how WsprryPi selects single-frame or paired WSPR planning for extended identities.">
+                                                <option value="auto">Automatic</option>
+                                                <option value="prefer_paired">Prefer paired when available</option>
+                                                <option value="require_paired">Require paired</option>
+                                            </select>
+                                            <div class="form-text">
+                                                Automatic uses a single-frame plan when possible and upgrades to paired when required.<br>
+                                                Prefer paired when available chooses paired planning when supported.<br>
+                                                Require paired rejects identities that cannot be sent as a paired plan.
+                                            </div>
+                                        </div>
+                                    </div>
                                 </fieldset>
 
                                 <fieldset class="mb-4">

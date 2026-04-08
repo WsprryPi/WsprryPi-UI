@@ -90,7 +90,8 @@ const configSchema = {
     Meta: {
         required: false,
         keys: {
-            "Mode": { required: false, type: "string" }
+            "Mode": { required: false, type: "string" },
+            "Planner Preference": { required: false, type: "string" }
         }
     },
     Control: {
@@ -644,6 +645,19 @@ function populateConfig(callback = null) {
                 //
                 // [Meta]
                 let mode = getConfigValue(meta, "Meta", "Mode", "WSPR");
+                let plannerPreference = getConfigValue(
+                    meta,
+                    "Meta",
+                    "Planner Preference",
+                    "auto"
+                );
+                if (
+                    plannerPreference !== "auto" &&
+                    plannerPreference !== "prefer_paired" &&
+                    plannerPreference !== "require_paired"
+                ) {
+                    plannerPreference = "auto";
+                }
                 // let mode = configJson["Meta"]["Mode"] || "WSPR";
                 // [Control]
                 let transmit = getConfigBoolValue(
@@ -781,6 +795,7 @@ function populateConfig(callback = null) {
 
                     // Hardware Control
                     $("#transmit").prop("checked", transmit).trigger("change");
+                    $("#planner_preference").val(plannerPreference).trigger("change");
                     $("#use_led").prop("checked", use_led).trigger("change");
                     setLEDPin(led_pin);
                     $("#use_shutdown")
