@@ -21,15 +21,13 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                 <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-2">
                     <!-- Mode Toggle and Hostname -->
                     <div class="d-flex align-items-center gap-2 flex-wrap">
-                        <!--
                         <div class="btn-group" role="group" aria-label="Mode Toggle">
                             <input type="radio" class="btn-check" name="mode_toggle" id="wspr_mode" value="WSPR" autocomplete="off" checked>
                             <label class="btn btn-outline-primary" for="wspr_mode">WSPR</label>
 
                             <input type="radio" class="btn-check" name="mode_toggle" id="qrss_mode" value="QRSS" autocomplete="off">
-                            <label class="btn btn-outline-primary" for="qrss_mode">QRSS</label>
+                            <label class="btn btn-outline-primary" for="qrss_mode">CW Modes</label>
                         </div>
-                        -->
                         <span>Configuration for: <?php echo gethostname(); ?></span>
                     </div>
 
@@ -78,22 +76,22 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                             role="tabpanel"
                             aria-labelledby="radio-tab"
                             tabindex="0">
-                            <div id="wspr_config">
-                                <fieldset class="mb-4">
-                                    <legend>Radio Control</legend>
+                            <fieldset class="mb-4" id="global_runtime_control">
+                                <legend>Transmitter Control</legend>
 
-                                    <div class="row gx-2 gy-2 align-items-center">
-                                        <div class="col-12 col-md-4 d-flex align-items-center">
-                                            <div class="d-flex align-items-center gap-2">
-                                                <label class="form-label mb-0" for="transmit">Enable Transmit:</label>
-                                                <div class="form-check form-switch mb-0">
-                                                    <input class="form-check-input" type="checkbox" role="switch" id="transmit">
-                                                </div>
+                                <div class="row gx-2 gy-2 align-items-center">
+                                    <div class="col-12 col-md-4 d-flex align-items-center">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <label class="form-label mb-0" for="transmit">Enable Transmit:</label>
+                                            <div class="form-check form-switch mb-0">
+                                                <input class="form-check-input" type="checkbox" role="switch" id="transmit">
                                             </div>
                                         </div>
                                     </div>
-                                </fieldset>
+                                </div>
+                            </fieldset>
 
+                            <div id="wspr_config">
                                 <!-- Section 2: Operator Information -->
                                 <fieldset class="mb-4" id="op_info">
                                     <legend>Station Info</legend>
@@ -252,10 +250,10 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                     type="checkbox"
                                                     role="switch"
                                                     data-bs-toggle="tooltip"
-                                                    title="Add a random offset to frequencies"
+                                                    title="WSPR.Use Random Offset: randomize WSPR transmit frequency around the dial-derived RF frequency"
                                                     id="useoffset" />
                                                 <label class="form-check-label mb-0" for="useoffset">
-                                                    Randomize
+                                                    Use Random Offset
                                                 </label>
                                             </div>
                                         </div>
@@ -395,14 +393,14 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                     </div>
 
                     <div id="qrss_config" style="display: none;">
-                        <!-- Section 4: QRSS Control -->
+                        <!-- Shared CW settings used by QRSS, FSKCW, and DFCW. -->
                         <fieldset class="mb-4" id="qrss_control">
-                            <legend>QRSS Control</legend>
+                            <legend>CW Control</legend>
 
                             <!-- First Row -->
                             <div class="row gx-2 gy-3 align-items-center">
 
-                                <!-- QRSS Mode -->
+                                <!-- CW Mode -->
                                 <div class="col-12 col-lg-4">
                                     <fieldset class="d-flex align-items-center gap-3 flex-wrap border-0 p-0 m-0">
                                         <legend class="form-label mb-0 flex-shrink-0">Mode:</legend>
@@ -438,9 +436,9 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                     </fieldset>
                                 </div>
 
-                                <!-- Dot Length -->
+                                <!-- Dot Seconds -->
                                 <div class="col-12 col-lg-4 d-flex align-items-center">
-                                    <label for="dot_length" class="form-label mb-0 me-2 flex-shrink-0">Dot Length:</label>
+                                    <label for="dot_length" class="form-label mb-0 me-2 flex-shrink-0">Dot Seconds:</label>
                                     <div class="flex-grow-1">
                                         <input
                                             type="number"
@@ -450,15 +448,15 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                             max="60"
                                             step="1"
                                             data-bs-toggle="tooltip"
-                                            title="QRSS dot length in seconds"
+                                            title="CW.Dot Seconds: dot length in seconds for QRSS, FSKCW, and DFCW"
                                             value="3"
                                             required />
                                     </div>
                                 </div>
 
-                                <!-- FSK Offset -->
+                                <!-- Shift Hz -->
                                 <div class="col-12 col-lg-4 d-flex align-items-center">
-                                    <label for="fsk_offset" class="form-label mb-0 me-2 flex-shrink-0">FSK Offset:</label>
+                                    <label for="fsk_offset" class="form-label mb-0 me-2 flex-shrink-0">Shift Hz:</label>
                                     <div class="flex-grow-1">
                                         <input
                                             type="number"
@@ -468,7 +466,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                             max="1000"
                                             step="0.01"
                                             data-bs-toggle="tooltip"
-                                            title="FSK offset in Hz (used with FSKCW and DFCW)"
+                                            title="CW.Shift Hz: FSKCW mark and DFCW dash frequency are Base Frequency + Shift Hz. QRSS ignores this field."
                                             value="0"
                                             required />
                                     </div>
@@ -478,15 +476,15 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                             <!-- Second Row -->
                             <div class="row gx-2 gy-3 align-items-center mt-1">
 
-                                <!-- Transmit Frequency -->
+                                <!-- Base Frequency -->
                                 <div class="col-12 col-lg-4 d-flex align-items-center">
-                                    <label for="qrss_frequency" class="form-label mb-0 me-2 flex-shrink-0">Transmit Frequency:</label>
+                                    <label for="qrss_frequency" class="form-label mb-0 me-2 flex-shrink-0">Base Frequency:</label>
                                     <input
                                         type="text"
                                         class="form-control flex-grow-1"
                                         id="qrss_frequency"
                                         data-bs-toggle="tooltip"
-                                        title="Enter frequency in Hz, kHz, or MHz (e.g. 7040000.0 for 7.040 MHz)"
+                                        title="CW.Base Frequency in Hz. QRSS uses this directly; FSKCW/DFCW add Shift Hz for the second tone."
                                         value="7040000.0"
                                         required />
                                 </div>
@@ -514,20 +512,20 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                         type="number"
                                         class="form-control flex-grow-1"
                                         id="tx_repeat_every"
-                                        min="0"
+                                        min="1"
                                         max="60"
                                         step="1"
                                         data-bs-toggle="tooltip"
-                                        title="Repeat every N minutes (0 = continuous)"
+                                        title="CW.Repeat Minutes: repeat interval in minutes"
                                         value="10"
                                         required />
                                 </div>
                             </div>
                         </fieldset>
 
-                        <!-- Section 5: QRSS Messaging -->
+                        <!-- Section 5: CW Messaging -->
                         <fieldset class="mb-4" id="qrss_message_set">
-                            <legend>QRSS Message</legend>
+                            <legend>CW Message</legend>
                             <div class="row gx-2 gy-3 align-items-center mt-1">
                                 <!-- Start Time -->
                                 <div class="col-12 col-lg-12 d-flex align-items-center">
@@ -539,7 +537,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                         maxlength="59"
                                         step="1"
                                         data-bs-toggle="tooltip"
-                                        title="Message to be sent"
+                                        title="CW.Message sent by QRSS, FSKCW, or DFCW"
                                         value="Hello"
                                         required />
                                 </div>

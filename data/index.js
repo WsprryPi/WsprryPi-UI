@@ -2,7 +2,7 @@ function bindIndexActions() {
     // Bind the Mode Switch
     $('input[name="mode_toggle"]').on('change', clickModeToggle);
 
-    // Bind the QRSS Radio Buttons
+    // Bind the shared CW mode radio buttons
     $('input[name="qrss_type"]').on('change', clickQRSSModeToggle);
 
     // Bind the Use NTP Switch
@@ -40,7 +40,7 @@ function bindIndexActions() {
     $("#frequencies").on("input blur", validateFrequencies);
 
     // Run validation live as the user types:
-    $("#qrss_frequency").on("input blur", validateQRSSFrequencies);
+    $("#qrss_frequency").on("input blur", validateCwBaseFrequency);
 
     // Bind any text/number/select control changes
     $(document).on(
@@ -338,7 +338,7 @@ function validatePage() {
     let invalidCount = 0;
 
     validateFrequencies();
-    validateQRSSFrequencies();
+    validateCwBaseFrequency();
     validateBandGpioFields();
 
     // ONLY the .form-control elements (no switches, ranges, etc)
@@ -366,6 +366,10 @@ function clickModeToggle() {
     if (selected === "QRSS") {
         $('#wspr_config').hide();
         $('#qrss_config').show();
+        if (!$('input[name="qrss_type"]:checked').length) {
+            $('input[name="qrss_type"][value="QRSS"]').prop("checked", true);
+        }
+        clickQRSSModeToggle();
     } else {
         $('#qrss_config').hide();
         $('#wspr_config').show();
@@ -376,6 +380,7 @@ function clickModeToggle() {
 function clickQRSSModeToggle() {
     const selectedMode = $('input[name="qrss_type"]:checked').val();
 
+    // CW.Shift Hz is only used by FSKCW and DFCW.
     if (selectedMode === "QRSS") {
         $('#fsk_offset').prop('disabled', true);
     } else {
@@ -537,37 +542,40 @@ function savePage(e) {
     $("#reset").prop("disabled", true);
     toggleButtonLoading(btn, true);
 
-    // Load form elements
-    //
-    // Mode
+    // Mode: WSPR uses WSPR fields; QRSS/FSKCW/DFCW use the shared CW section.
     let mode = $('input[name="mode_toggle"]:checked').val();
+    if (mode !== "WSPR") {
+        mode = $('input[name="qrss_type"]:checked').val() || "QRSS";
+    }
 
-    // Hardware Control
+    // Runtime
     let transmit = parseBool($("#transmit").is(":checked"));
-    let planner_preference = String($("#planner_preference").val() || "auto");
     let use_led = parseBool($("#use_led").is(":checked"));
     let led_pin = parseInt(getLEDPin()) || 18;
     let use_shutdown = parseBool($("#use_shutdown").is(":checked"));
     let shutdown_pin = parseInt(getShutdownPin()) || 19;
     let band_gpio = collectBandGpioConfig();
 
-    // Operator Information
+    // WSPR
+    let planner_preference = String($("#planner_preference").val() || "auto");
     let callsign = trimIdentityValue($("#callsign").val());
     let gridsquare = trimIdentityValue($("#gridsquare").val());
-
-    // Transmitter Information
     let dbm = parseInt($("#dbm").val());
     let frequencies = $("#frequencies").val() || "";
     let useoffset = parseBool($("#useoffset").is(":checked"));
 
-    // QRSS Information
-    let qrss_type = $('input[name="qrss_type"]:checked').val();
-    let dot_length = parseInt($('#dot_length').val(), 10);
+    // CW shared non-WSPR settings
+    let dot_length = parseFloat($('#dot_length').val());
     let fsk_offset = parseFloat($('#fsk_offset').val());
-    let qrss_frequency = parseInt($('#qrss_frequency').val(), 10);
+    let cw_base_frequency = parseFloat($('#qrss_frequency').val());
     let tx_start_minute = parseInt($('#tx_start_minute').val(), 10);
     let tx_repeat_every = parseInt($('#tx_repeat_every').val(), 10);
-    let qrss_message = $('#qrss_message').val();
+    let cw_message = $('#qrss_message').val();
+    if (!Number.isFinite(dot_length)) dot_length = 3.0;
+    if (!Number.isFinite(fsk_offset)) fsk_offset = 0.0;
+    if (!Number.isFinite(cw_base_frequency)) cw_base_frequency = 0.0;
+    if (!Number.isInteger(tx_start_minute)) tx_start_minute = 0;
+    if (!Number.isInteger(tx_repeat_every)) tx_repeat_every = 10;
 
     // Frequency Calibration
     let use_ntp = parseBool($("#use_ntp").is(":checked"));
@@ -582,52 +590,47 @@ function savePage(e) {
     }
 
     var Meta = {
-        "Mode": mode,
-        "Planner Preference": planner_preference
+        "Mode": mode
     }
 
-    var Control = {
+    var Runtime = {
         "Transmit": transmit,
-    };
-
-    var Common = {
-        "Call Sign": callsign,
-        "Grid Square": gridsquare,
-        "TX Power": dbm,
-        "Frequency": frequencies,
-    };
-
-    var QRSS = {
-        "QRSS Mode": qrss_type,
-        "Dot Length": dot_length,
-        "FSK Offset": fsk_offset,
-        "QRSS Frequency": qrss_frequency,
-        "TX Start Minute": tx_start_minute,
-        "TX Repeat Every": tx_repeat_every,
-        "Message": qrss_message,
-    }
-
-    var Extended = {
-        "PPM": ppm_val,
-        "Use NTP": use_ntp,
-        "Offset": useoffset,
+        "Power Level": transmit_power,
         "Use LED": use_led,
         "LED Pin": led_pin,
-        "Power Level": transmit_power,
-    };
-
-    var Server = {
         "Use Shutdown": use_shutdown,
         "Shutdown Button": shutdown_pin,
     };
 
+    var Calibration = {
+        "PPM": ppm_val,
+        "Use NTP": use_ntp,
+    };
+
+    var WSPR = {
+        "Call Sign": callsign,
+        "Grid Square": gridsquare,
+        "TX Power": dbm,
+        "Frequency": frequencies,
+        "Planner Preference": planner_preference,
+        "Use Random Offset": useoffset,
+    };
+
+    var CW = {
+        "Message": cw_message,
+        "Base Frequency": cw_base_frequency,
+        "Shift Hz": fsk_offset,
+        "Dot Seconds": dot_length,
+        "Start Minute": tx_start_minute,
+        "Repeat Minutes": tx_repeat_every,
+    };
+
     var configJson = {
         Meta,
-        Control,
-        Common,
-        QRSS,
-        Extended,
-        Server,
+        Runtime,
+        Calibration,
+        WSPR,
+        CW,
         "Band GPIO": band_gpio,
     };
     var json = JSON.stringify(configJson);
@@ -743,10 +746,10 @@ function validateFrequencies() {
 }
 
 /**
- * Validate the “QRSS Frequencies” field.
+ * Validate the shared CW “Base Frequency” field.
  * @returns {boolean} true if valid, false otherwise.
  */
-function validateQRSSFrequencies() {
+function validateCwBaseFrequency() {
     const fld = document.getElementById("qrss_frequency");
     const raw = fld.value.trim();
 

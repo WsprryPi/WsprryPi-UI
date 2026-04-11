@@ -90,55 +90,51 @@ const configSchema = {
     Meta: {
         required: false,
         keys: {
-            "Mode": { required: false, type: "string" },
-            "Planner Preference": { required: false, type: "string" }
+            "Mode": { required: false, type: "string" }
         }
     },
-    Control: {
+    Runtime: {
         required: false,
         keys: {
-            "Transmit": { required: false, type: "boolean" }
+            "Transmit": { required: false, type: "boolean" },
+            "Transmit Pin": { required: false, type: "number" },
+            "Use LED": { required: false, type: "boolean" },
+            "LED Pin": { required: false, type: "number" },
+            "Power Level": { required: false, type: "number" },
+            "Frequency Control GPIO Polarity": { required: false, type: "boolean" },
+            "Web Port": { required: false, type: "number" },
+            "Socket Port": { required: false, type: "number" },
+            "Use Shutdown": { required: false, type: "boolean" },
+            "Shutdown Button": { required: false, type: "number" }
         }
     },
-    Common: {
+    Calibration: {
+        required: false,
+        keys: {
+            "PPM": { required: false, type: "number" },
+            "Use NTP": { required: false, type: "boolean" }
+        }
+    },
+    WSPR: {
         required: false,
         keys: {
             "Call Sign": { required: false, type: "string" },
             "Grid Square": { required: false, type: "string" },
             "TX Power": { required: false, type: "number" },
             "Frequency": { required: false, type: "string" },
-            "Transmit Pin": { required: false, type: "number" }
+            "Planner Preference": { required: false, type: "string" },
+            "Use Random Offset": { required: false, type: "boolean" }
         }
     },
-    QRSS: {
-        disabled: true, // Not yet in use
+    CW: {
         required: false,
         keys: {
-            "QRSS Mode": { required: false, type: "string" },
-            "Dot Length": { required: false, type: "number" },
-            "FSK Offset": { required: false, type: "number" },
-            "QRSS Frequency": { required: false, type: "number" },
-            "TX Start Minute": { required: false, type: "number" },
-            "TX Repeat Every": { required: false, type: "number" },
-            "Message": { required: false, type: "string" }
-        }
-    },
-    Extended: {
-        required: false,
-        keys: {
-            "Use LED": { required: false, type: "boolean" },
-            "LED Pin": { required: false, type: "number" },
-            "Use NTP": { required: false, type: "boolean" },
-            "PPM": { required: false, type: "number" },
-            "Offset": { required: false, type: "boolean" },
-            "Power Level": { required: false, type: "number" }
-        }
-    },
-    Server: {
-        required: false,
-        keys: {
-            "Use Shutdown": { required: false, type: "boolean" },
-            "Shutdown Button": { required: false, type: "number" }
+            "Message": { required: false, type: "string" },
+            "Base Frequency": { required: false, type: "number" },
+            "Shift Hz": { required: false, type: "number" },
+            "Dot Seconds": { required: false, type: "number" },
+            "Start Minute": { required: false, type: "number" },
+            "Repeat Minutes": { required: false, type: "number" }
         }
     },
     "Band GPIO": {
@@ -630,24 +626,20 @@ function populateConfig(callback = null) {
                 validateConfigSchema(configJson, configSchema);
 
                 const meta = getConfigSection(configJson, "Meta");
-                const control = getConfigSection(configJson, "Control");
-                const common = getConfigSection(configJson, "Common");
-                // A guard while we implement
-                let qrss = {};
-                if (configJson.QRSS) {
-                    qrss = getConfigSection(configJson, "QRSS");
-                }
-                const extended = getConfigSection(configJson, "Extended");
-                const server = getConfigSection(configJson, "Server");
+                const runtime = getConfigSection(configJson, "Runtime");
+                const calibration = getConfigSection(configJson, "Calibration");
+                const wspr = getConfigSection(configJson, "WSPR");
+                const cw = getConfigSection(configJson, "CW");
                 const bandGpio = getConfigSection(configJson, "Band GPIO");
 
-                // Safely assign values from JSON to temporary elements
-                //
-                // [Meta]
                 let mode = getConfigValue(meta, "Meta", "Mode", "WSPR");
+                if (!["WSPR", "QRSS", "FSKCW", "DFCW"].includes(mode)) {
+                    mode = "WSPR";
+                }
+
                 let plannerPreference = getConfigValue(
-                    meta,
-                    "Meta",
+                    wspr,
+                    "WSPR",
                     "Planner Preference",
                     "auto"
                 );
@@ -658,18 +650,16 @@ function populateConfig(callback = null) {
                 ) {
                     plannerPreference = "auto";
                 }
-                // let mode = configJson["Meta"]["Mode"] || "WSPR";
-                // [Control]
+
                 let transmit = getConfigBoolValue(
-                    control,
-                    "Control",
+                    runtime,
+                    "Runtime",
                     "Transmit",
                     false
                 );
-                // [Common]
                 let callsign = getConfigValue(
-                    common,
-                    "Common",
+                    wspr,
+                    "WSPR",
                     "Call Sign",
                     "N0CALL"
                 );
@@ -678,113 +668,102 @@ function populateConfig(callback = null) {
                     ["N0CALL", "NXXX"].includes(callsign.toUpperCase())
                 ) {
                     logConfigWarningOnce(
-                        'Config key "Common.Call Sign" is placeholder (' + callsign + ').'
+                        'Config key "WSPR.Call Sign" is placeholder (' + callsign + ').'
                     );
                 }
                 let gridsquare = getConfigValue(
-                    common,
-                    "Common",
+                    wspr,
+                    "WSPR",
                     "Grid Square",
                     "ZZ99"
                 );
                 if (typeof gridsquare === "string" && gridsquare.toUpperCase() === "ZZ99") {
                     logConfigWarningOnce(
-                        'Config key "Common.Grid Square" is placeholder (ZZ99).'
+                        'Config key "WSPR.Grid Square" is placeholder (ZZ99).'
                     );
                 }
-                let dbm = getConfigIntValue(common, "Common", "TX Power", 0);
+                let dbm = getConfigIntValue(wspr, "WSPR", "TX Power", 0);
                 let frequencies = getConfigValue(
-                    common,
-                    "Common",
+                    wspr,
+                    "WSPR",
                     "Frequency",
                     "20m"
                 );
                 let tx_pin = getConfigIntValue(
-                    common,
-                    "Common",
+                    runtime,
+                    "Runtime",
                     "Transmit Pin",
                     4
                 );
-                // [QRSS]
-                // let qrss_type = configJson["QRSS"]["QRSS Mode"] || "QRSS";
-                // let dot_length = parseInt(configJson["QRSS"]["Dot Length"]) || 10;
-                // let fsk_offset = parseInt(configJson["QRSS"]["FSK Offset"]) || 10;
-                // let qrss_frequency = parseFloat(configJson["QRSS"]["QRSS Frequency"]) || 7039900.0;
-                // let tx_start_minute = parseInt(configJson["QRSS"]["TX Start Minute"]) || 0;
-                // let tx_repeat_every = parseInt(configJson["QRSS"]["TX Repeat Every"]) || 10;
-                // let qrss_message_content = configJson["QRSS"]["Message"] || "AA0NT EM18";
-                // [Extended]
                 let use_led = getConfigBoolValue(
-                    extended,
-                    "Extended",
+                    runtime,
+                    "Runtime",
                     "Use LED",
                     false
                 );
                 let led_pin = getConfigIntValue(
-                    extended,
-                    "Extended",
+                    runtime,
+                    "Runtime",
                     "LED Pin",
                     18
                 );
                 let use_ntp = getConfigBoolValue(
-                    extended,
-                    "Extended",
+                    calibration,
+                    "Calibration",
                     "Use NTP",
                     false
                 );
-                let ppm = getConfigFloatValue(extended, "Extended", "PPM", 0.0);
+                let ppm = getConfigFloatValue(calibration, "Calibration", "PPM", 0.0);
                 let use_offset = getConfigBoolValue(
-                    extended,
-                    "Extended",
-                    "Offset",
+                    wspr,
+                    "WSPR",
+                    "Use Random Offset",
                     true
                 );
                 let power_level = getConfigIntValue(
-                    extended,
-                    "Extended",
+                    runtime,
+                    "Runtime",
                     "Power Level",
                     0
                 );
-                // [Server]
                 let use_shutdown = getConfigBoolValue(
-                    server,
-                    "Server",
+                    runtime,
+                    "Runtime",
                     "Use Shutdown",
                     false
                 );
                 let shutdown_pin = getConfigIntValue(
-                    server,
-                    "Server",
+                    runtime,
+                    "Runtime",
                     "Shutdown Button",
                     19
                 );
-                // let web_port = parseInt(configJson["Server"]["Web Port"]) || 3145;
-                // let socket_port = parseInt(configJson["Server"]["Socket Port"]) || 3146;
-                // [Meta]
-                // let center_frequency_set = parseFloat(configJson["Meta"]["Center Frequency Set"]) || 0.0;
-                // let date_time_log = parseBool(configJson["Meta"]["Date Time Log"]);
-                // let use_ini = parseBool(configJson["Meta"]["Use INI"]);
-                // let ini_file_name = configJson["Meta"]["INI Filename"] || "/usr/local/etc/wsprrypi.ini";
-                // let loop_tx = parseBool(configJson["Meta"]["Loop TX"]);
-                // let tx_iter = parseInt(configJson["Meta"]["TX Iterations"]) || 0;
+                let dot_length = getConfigFloatValue(cw, "CW", "Dot Seconds", 3.0);
+                let fsk_offset = getConfigFloatValue(cw, "CW", "Shift Hz", 500.0);
+                let cw_base_frequency = getConfigFloatValue(cw, "CW", "Base Frequency", 3572000.0);
+                let tx_start_minute = getConfigIntValue(cw, "CW", "Start Minute", 0);
+                let tx_repeat_every = getConfigIntValue(cw, "CW", "Repeat Minutes", 10);
+                let cw_message = getConfigValue(cw, "CW", "Message", "");
 
-                // Prevent unused variable warning while keeping the documented assignment
-                void qrss;
+                // TODO: add visible controls for Runtime.Transmit Pin,
+                // Runtime.Frequency Control GPIO Polarity, Runtime.Web Port,
+                // and Runtime.Socket Port. They are read here so schema drift
+                // is visible, but not written by this page yet.
                 void tx_pin;
 
                 // If we are on the config page
                 if (window.currentPage == "index.php") {
                     // Load form elements
                     //
-                    // Meta
-                    if (mode === "QRSS") {
-                        // Set to QRSS
-                        $('input[name="mode_toggle"][value="QRSS"]')
+                    if (mode === "WSPR") {
+                        $('input[name="mode_toggle"][value="WSPR"]')
                             .prop("checked", true)
                             .trigger("change");
                     } else {
-                        // Set to WSPR
-                        $('input[name="mode_toggle"][value="WSPR"]')
+                        $('input[name="mode_toggle"][value="QRSS"]')
+                            .prop("checked", true)
+                            .trigger("change");
+                        $(`input[name="qrss_type"][value="${mode}"]`)
                             .prop("checked", true)
                             .trigger("change");
                     }
@@ -794,7 +773,7 @@ function populateConfig(callback = null) {
                     }
 
                     // Hardware Control
-                    $("#transmit").prop("checked", transmit).trigger("change");
+                    $("#transmit").prop("checked", transmit);
                     $("#planner_preference").val(plannerPreference).trigger("change");
                     $("#use_led").prop("checked", use_led).trigger("change");
                     setLEDPin(led_pin);
@@ -815,14 +794,13 @@ function populateConfig(callback = null) {
                     $("#frequencies").val(frequencies).trigger("change");
                     $("#useoffset").prop("checked", use_offset).trigger("change");
 
-                    // QRSS Information
-                    // $(`input[name="qrss_type"][value="${qrss_type}"]`).prop("checked", true).trigger("change");
-                    // $("#dot_length").val(dot_length).trigger("change");
-                    // $("#fsk_offset").val(fsk_offset).trigger("change");
-                    // $("#qrss_frequency").val(qrss_frequency).trigger("change");
-                    // $("#tx_start_minute").val(tx_start_minute).trigger("change");
-                    // $("#tx_repeat_every").val(tx_repeat_every).trigger("change");
-                    // $('#qrss_message').val(qrss_message_content).trigger("change");
+                    // CW shared non-WSPR configuration
+                    $("#dot_length").val(dot_length).trigger("change");
+                    $("#fsk_offset").val(fsk_offset).trigger("change");
+                    $("#qrss_frequency").val(cw_base_frequency).trigger("change");
+                    $("#tx_start_minute").val(tx_start_minute).trigger("change");
+                    $("#tx_repeat_every").val(tx_repeat_every).trigger("change");
+                    $('#qrss_message').val(cw_message).trigger("change");
 
                     // Frequency Calibration
                     $("#use_ntp").prop("checked", use_ntp).trigger("change");
