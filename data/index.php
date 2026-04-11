@@ -79,14 +79,27 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                             <fieldset class="mb-4" id="global_runtime_control">
                                 <legend>Transmitter Control</legend>
 
-                                <div class="row gx-2 gy-2 align-items-center">
-                                    <div class="col-12 col-md-4 d-flex align-items-center">
+                                <div class="row gx-3 gy-3 align-items-start">
+                                    <div class="col-12 col-lg-4 d-flex align-items-center">
                                         <div class="d-flex align-items-center gap-2">
                                             <label class="form-label mb-0" for="transmit">Enable Transmit:</label>
                                             <div class="form-check form-switch mb-0">
                                                 <input class="form-check-input" type="checkbox" role="switch" id="transmit">
                                             </div>
                                         </div>
+                                    </div>
+                                    <div class="col-12 col-lg-2">
+                                        <button type="button" class="btn btn-danger btn-sm" id="stop_transmit">
+                                            Stop
+                                        </button>
+                                    </div>
+                                    <div class="col-12 col-lg-3">
+                                        <div class="small text-body-secondary">Runtime Status</div>
+                                        <div class="small">Mode: <span id="runtime_mode_value">Unknown</span></div>
+                                    </div>
+                                    <div class="col-12 col-lg-3">
+                                        <div class="small text-body-secondary">WSPR Runtime</div>
+                                        <div class="small" id="runtime_wspr_plan_value">Not available</div>
                                     </div>
                                 </div>
                             </fieldset>
@@ -533,7 +546,6 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                         type="text"
                                         class="form-control flex-grow-1"
                                         id="qrss_message"
-                                        minlength="3"
                                         maxlength="59"
                                         step="1"
                                         data-bs-toggle="tooltip"

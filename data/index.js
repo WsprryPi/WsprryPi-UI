@@ -7,6 +7,9 @@ function bindIndexActions() {
     // Runtime.Transmit is global and is patched immediately, independent of Save.
     $("#transmit").on("change", patchTransmitControl);
 
+    // Stop is an explicit operator action, separate from Runtime.Transmit PATCH.
+    $("#stop_transmit").on("click", stopTransmission);
+
     // Bind the shared CW mode radio buttons
     $('input[name="qrss_type"]').on('change', clickQRSSModeToggle);
 
@@ -71,6 +74,7 @@ function setTransmitFromBackend(enabled) {
     isUpdatingTransmitFromBackend = true;
     $("#transmit").prop("checked", !!enabled);
     isUpdatingTransmitFromBackend = false;
+    updateRuntimeControlStatusFromForm(null);
 }
 
 function patchTransmitControl() {
@@ -94,6 +98,7 @@ function patchTransmitControl() {
     })
         .done(function () {
             lastSaveTimestamp = Date.now();
+            updateRuntimeControlStatusFromForm(null);
         })
         .fail(function (xhr) {
             console.error("Failed to update Runtime.Transmit:", xhr);
@@ -102,6 +107,52 @@ function patchTransmitControl() {
         .always(function () {
             $transmit.prop("disabled", false);
         });
+}
+
+function stopTransmission() {
+    const $stop = $("#stop_transmit");
+    $stop.prop("disabled", true);
+
+    $.ajax({
+        url: CONTROL_STOP_URL,
+        type: "POST",
+        contentType: "application/json",
+        data: JSON.stringify({ command: "stop" }),
+    })
+        .done(function (data) {
+            if (data && data.transmit_disabled === true) {
+                setTransmitFromBackend(false);
+            }
+            if (typeof getTxState === "function") {
+                getTxState();
+            }
+        })
+        .fail(function (xhr) {
+            console.error("Failed to stop transmission:", xhr);
+        })
+        .always(function () {
+            $stop.prop("disabled", false);
+        });
+}
+
+function selectedConfigMode() {
+    const mode = $('input[name="mode_toggle"]:checked').val();
+    if (mode === "WSPR") {
+        return "WSPR";
+    }
+
+    return $('input[name="qrss_type"]:checked').val() || "QRSS";
+}
+
+function updateRuntimeControlStatusFromForm(mode) {
+    if (typeof updateRuntimeControlConfigStatus !== "function") {
+        return;
+    }
+
+    updateRuntimeControlConfigStatus(
+        mode || selectedConfigMode(),
+        $("#transmit").is(":checked")
+    );
 }
 
 // Transmit power slider update
@@ -375,17 +426,31 @@ function buildConfigErrorMessage(data, fallbackMessage) {
 }
 
 function validatePage() {
-    const form = document.getElementById("wsprform");
-
     let invalidCount = 0;
+    const activeSelectors = ["#global_runtime_control"];
+    const mode = selectedConfigMode();
 
-    validateFrequencies();
-    validateCwBaseFrequency();
+    if (mode === "WSPR") {
+        activeSelectors.push("#wspr_config");
+        if (!validateFrequencies()) {
+            invalidCount++;
+        }
+        clearValidationState("#qrss_config");
+    } else {
+        activeSelectors.push("#qrss_config");
+        if (!validateCwBaseFrequency()) {
+            invalidCount++;
+        }
+        clearValidationState("#wspr_config");
+    }
+
     validateBandGpioFields();
 
-    // ONLY the .form-control elements (no switches, ranges, etc)
-    form
-        .querySelectorAll(".form-control:not(.form-check-input)")
+    // ONLY visible/relevant .form-control elements for the selected mode.
+    document
+        .querySelectorAll(
+            activeSelectors.join(", ") + " .form-control:not(.form-check-input)"
+        )
         .forEach((ctrl) => {
             setIdentityValidity(ctrl);
 
@@ -402,6 +467,13 @@ function validatePage() {
     return invalidCount === 0;
 }
 
+function clearValidationState(selector) {
+    document.querySelectorAll(`${selector} .form-control`).forEach((ctrl) => {
+        ctrl.setCustomValidity("");
+        ctrl.classList.remove("is-valid", "is-invalid");
+    });
+}
+
 function clickModeToggle() {
     const selected = $('input[name="mode_toggle"]:checked').val();
 
@@ -416,6 +488,8 @@ function clickModeToggle() {
         $('#qrss_config').hide();
         $('#wspr_config').show();
     }
+
+    updateRuntimeControlStatusFromForm(null);
 }
 
 
@@ -428,6 +502,8 @@ function clickQRSSModeToggle() {
     } else {
         $('#fsk_offset').prop('disabled', false);
     }
+
+    updateRuntimeControlStatusFromForm(null);
 }
 
 // Function to enable/disable & reset PPM field when Use NTP toggles
@@ -585,10 +661,7 @@ function savePage(e) {
     toggleButtonLoading(btn, true);
 
     // Mode: WSPR uses WSPR fields; QRSS/FSKCW/DFCW use the shared CW section.
-    let mode = $('input[name="mode_toggle"]:checked').val();
-    if (mode !== "WSPR") {
-        mode = $('input[name="qrss_type"]:checked').val() || "QRSS";
-    }
+    let mode = selectedConfigMode();
 
     // Runtime
     let transmit = parseBool($("#transmit").is(":checked"));
@@ -819,6 +892,7 @@ function validateCwBaseFrequency() {
 function setHardwareControlsDisabled(disabled) {
     const controlIds = [
         "#transmit",
+        "#stop_transmit",
         "#planner_preference",
         "#use_led",
         "#ledDropdownButton",

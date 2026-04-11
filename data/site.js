@@ -22,6 +22,7 @@ const REPAIR_PATH =
     typeof PATHS.repairPath === "string"
         ? PATHS.repairPath
         : `${APP_BASE_PATH}/config/repair`;
+const CONTROL_STOP_PATH = `${APP_BASE_PATH}/control/stop`;
 const WEBSOCKET_PATH =
     typeof PATHS.socketPath === "string"
         ? PATHS.socketPath
@@ -35,6 +36,7 @@ const LOG_STREAM_PATH =
 const SETTINGS_URL = `${HTTP_ORIGIN}${SETTINGS_PATH}`;
 const VERSION_URL = `${HTTP_ORIGIN}${VERSION_PATH}`;
 const REPAIR_URL = `${HTTP_ORIGIN}${REPAIR_PATH}`;
+const CONTROL_STOP_URL = `${HTTP_ORIGIN}${CONTROL_STOP_PATH}`;
 const WEBSOCKET_URL = `${WS_ORIGIN}${WEBSOCKET_PATH}`;
 const LOG_STREAM_URL = `${HTTP_ORIGIN}${LOG_STREAM_PATH}`;
 const WSPRNET_URL =
@@ -50,6 +52,10 @@ let websocketCurrentlyConnected = false;
 let outageBannerArmed = false;
 let pageUnloading = false;
 let currentRuntimeStatus = null;
+let currentRuntimeConfigStatus = {
+    mode: "",
+    transmitEnabled: false
+};
 
 // Websocket Creation
 let ws;
@@ -405,6 +411,15 @@ function getConfigValue(section, sectionName, key, fallback) {
     return value;
 }
 
+function hasConfigValue(section, key) {
+    return !!(
+        section &&
+        typeof section === "object" &&
+        section[key] !== undefined &&
+        section[key] !== null
+    );
+}
+
 function getConfigIntValue(section, sectionName, key, fallback) {
     const rawValue = getConfigValue(section, sectionName, key, fallback);
     const value = parseInt(rawValue, 10);
@@ -657,6 +672,7 @@ function populateConfig(callback = null) {
                     "Transmit",
                     false
                 );
+                const callsignWasLoaded = hasConfigValue(wspr, "Call Sign");
                 let callsign = getConfigValue(
                     wspr,
                     "WSPR",
@@ -664,6 +680,7 @@ function populateConfig(callback = null) {
                     "N0CALL"
                 );
                 if (
+                    !callsignWasLoaded &&
                     typeof callsign === "string" &&
                     ["N0CALL", "NXXX"].includes(callsign.toUpperCase())
                 ) {
@@ -671,13 +688,18 @@ function populateConfig(callback = null) {
                         'Config key "WSPR.Call Sign" is placeholder (' + callsign + ').'
                     );
                 }
+                const gridSquareWasLoaded = hasConfigValue(wspr, "Grid Square");
                 let gridsquare = getConfigValue(
                     wspr,
                     "WSPR",
                     "Grid Square",
                     "ZZ99"
                 );
-                if (typeof gridsquare === "string" && gridsquare.toUpperCase() === "ZZ99") {
+                if (
+                    !gridSquareWasLoaded &&
+                    typeof gridsquare === "string" &&
+                    gridsquare.toUpperCase() === "ZZ99"
+                ) {
                     logConfigWarningOnce(
                         'Config key "WSPR.Grid Square" is placeholder (ZZ99).'
                     );
@@ -777,6 +799,9 @@ function populateConfig(callback = null) {
                         setTransmitFromBackend(transmit);
                     } else {
                         $("#transmit").prop("checked", transmit);
+                    }
+                    if (typeof updateRuntimeControlConfigStatus === "function") {
+                        updateRuntimeControlConfigStatus(mode, transmit);
                     }
                     $("#planner_preference").val(plannerPreference).trigger("change");
                     $("#use_led").prop("checked", use_led).trigger("change");
@@ -952,7 +977,10 @@ function normalizeRuntimeStatus(msg) {
         : 0;
 
     return {
-        txState: typeof msg.tx_state === "string" ? msg.tx_state : "",
+        txState:
+            typeof msg.tx_state === "string"
+                ? msg.tx_state
+                : (typeof msg.state === "string" ? msg.state : ""),
         planType,
         frameCount,
         currentFrame,
@@ -969,50 +997,7 @@ function normalizeRuntimeStatus(msg) {
 }
 
 function renderRuntimeStatus(status) {
-    const node = document.getElementById("txRuntimeSummary");
-    if (!node) {
-        return;
-    }
-
-    if (!status || !status.planType) {
-        node.textContent = "";
-        node.setAttribute("title", "");
-        return;
-    }
-
-    let summary = status.planType;
-    if (status.frameCount > 1 && status.currentFrame > 0) {
-        summary += ` F${status.currentFrame}/${status.frameCount}`;
-    }
-
-    const frameIdentity = [status.frameCallsign, status.frameLocator]
-        .filter(Boolean)
-        .join(" ");
-    if (frameIdentity) {
-        summary += ` ${frameIdentity}`;
-    }
-
-    const overallIdentity = [status.callsignNormalized, status.locatorNormalized]
-        .filter(Boolean)
-        .join(" ");
-    const titleParts = [summary];
-    if (overallIdentity) {
-        titleParts.push(`Overall: ${overallIdentity}`);
-    }
-    if (
-        status.callsignRaw &&
-        status.locatorRaw &&
-        (status.callsignRaw !== status.callsignNormalized ||
-            status.locatorRaw !== status.locatorNormalized)
-    ) {
-        titleParts.push(`Raw: ${status.callsignRaw} ${status.locatorRaw}`);
-    }
-    if (status.timestamp) {
-        titleParts.push(`Updated: ${status.timestamp}`);
-    }
-
-    node.textContent = summary;
-    node.setAttribute("title", titleParts.join(" | "));
+    renderRuntimeControlStatus();
 }
 
 function applyRuntimeStatus(msg) {
@@ -1023,6 +1008,81 @@ function applyRuntimeStatus(msg) {
 
     currentRuntimeStatus = status;
     renderRuntimeStatus(currentRuntimeStatus);
+}
+
+function updateRuntimeControlConfigStatus(mode, transmitEnabled) {
+    if (typeof mode === "string" && mode) {
+        currentRuntimeConfigStatus.mode = mode;
+    }
+
+    if (transmitEnabled !== undefined && transmitEnabled !== null) {
+        currentRuntimeConfigStatus.transmitEnabled = !!transmitEnabled;
+    }
+
+    renderRuntimeControlStatus();
+}
+
+function renderRuntimeControlStatus() {
+    const modeNode = document.getElementById("runtime_mode_value");
+    const planNode = document.getElementById("runtime_wspr_plan_value");
+
+    if (modeNode) {
+        modeNode.textContent = currentRuntimeConfigStatus.mode || "Unknown";
+    }
+
+    if (!planNode) {
+        return;
+    }
+
+    if (
+        currentRuntimeConfigStatus.mode !== "WSPR" ||
+        !currentRuntimeStatus ||
+        !currentRuntimeStatus.planType
+    ) {
+        planNode.textContent = "Not available";
+        planNode.setAttribute("title", "");
+        return;
+    }
+
+    let summary = currentRuntimeStatus.planType;
+    if (currentRuntimeStatus.frameCount > 1 && currentRuntimeStatus.currentFrame > 0) {
+        summary += ` F${currentRuntimeStatus.currentFrame}/${currentRuntimeStatus.frameCount}`;
+    }
+
+    const frameIdentity = [
+        currentRuntimeStatus.frameCallsign,
+        currentRuntimeStatus.frameLocator
+    ]
+        .filter(Boolean)
+        .join(" ");
+    if (frameIdentity) {
+        summary += ` ${frameIdentity}`;
+    }
+
+    const overallIdentity = [
+        currentRuntimeStatus.callsignNormalized,
+        currentRuntimeStatus.locatorNormalized
+    ]
+        .filter(Boolean)
+        .join(" ");
+    const titleParts = [summary];
+    if (overallIdentity) {
+        titleParts.push(`Overall: ${overallIdentity}`);
+    }
+    if (
+        currentRuntimeStatus.callsignRaw &&
+        currentRuntimeStatus.locatorRaw &&
+        (currentRuntimeStatus.callsignRaw !== currentRuntimeStatus.callsignNormalized ||
+            currentRuntimeStatus.locatorRaw !== currentRuntimeStatus.locatorNormalized)
+    ) {
+        titleParts.push(`Raw: ${currentRuntimeStatus.callsignRaw} ${currentRuntimeStatus.locatorRaw}`);
+    }
+    if (currentRuntimeStatus.timestamp) {
+        titleParts.push(`Updated: ${currentRuntimeStatus.timestamp}`);
+    }
+
+    planNode.textContent = summary;
+    planNode.setAttribute("title", titleParts.join(" | "));
 }
 
 /**
