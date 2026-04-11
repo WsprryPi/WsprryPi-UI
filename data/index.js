@@ -1,6 +1,11 @@
+let isUpdatingTransmitFromBackend = false;
+
 function bindIndexActions() {
     // Bind the Mode Switch
     $('input[name="mode_toggle"]').on('change', clickModeToggle);
+
+    // Runtime.Transmit is global and is patched immediately, independent of Save.
+    $("#transmit").on("change", patchTransmitControl);
 
     // Bind the shared CW mode radio buttons
     $('input[name="qrss_type"]').on('change', clickQRSSModeToggle);
@@ -60,6 +65,43 @@ function bindIndexActions() {
     // Bind Submit and Reset Buttons
     $("#submit").click(savePage);
     $("#reset").click(resetPage);
+}
+
+function setTransmitFromBackend(enabled) {
+    isUpdatingTransmitFromBackend = true;
+    $("#transmit").prop("checked", !!enabled);
+    isUpdatingTransmitFromBackend = false;
+}
+
+function patchTransmitControl() {
+    if (isUpdatingTransmitFromBackend) return;
+
+    const $transmit = $("#transmit");
+    const enabled = $transmit.is(":checked");
+    const previous = !enabled;
+
+    $transmit.prop("disabled", true);
+
+    $.ajax({
+        url: SETTINGS_URL,
+        type: "PATCH",
+        contentType: "application/merge-patch+json",
+        data: JSON.stringify({
+            Runtime: {
+                "Transmit": enabled,
+            },
+        }),
+    })
+        .done(function () {
+            lastSaveTimestamp = Date.now();
+        })
+        .fail(function (xhr) {
+            console.error("Failed to update Runtime.Transmit:", xhr);
+            setTransmitFromBackend(previous);
+        })
+        .always(function () {
+            $transmit.prop("disabled", false);
+        });
 }
 
 // Transmit power slider update
@@ -800,7 +842,7 @@ function setHardwareControlsDisabled(disabled) {
 }
 
 function setOfflineDefaults() {
-    $("#transmit").prop("checked", false);
+    setTransmitFromBackend(false);
     $("#use_led").prop("checked", false);
     $("#use_shutdown").prop("checked", false);
     populateBandGpioForm({});

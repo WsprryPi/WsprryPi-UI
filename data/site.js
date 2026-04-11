@@ -773,7 +773,11 @@ function populateConfig(callback = null) {
                     }
 
                     // Hardware Control
-                    $("#transmit").prop("checked", transmit);
+                    if (typeof setTransmitFromBackend === "function") {
+                        setTransmitFromBackend(transmit);
+                    } else {
+                        $("#transmit").prop("checked", transmit);
+                    }
                     $("#planner_preference").val(plannerPreference).trigger("change");
                     $("#use_led").prop("checked", use_led).trigger("change");
                     setLEDPin(led_pin);
