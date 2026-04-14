@@ -93,32 +93,31 @@ $(window).on("load", function () {
 });
 
 const configSchema = {
-    Meta: {
+    Operation: {
         required: false,
         keys: {
-            "Mode": { required: false, type: "string" }
-        }
-    },
-    Runtime: {
-        required: false,
-        keys: {
+            "Mode": { required: false, type: "string" },
             "Transmit": { required: false, type: "boolean" },
-            "Transmit Pin": { required: false, type: "number" },
             "Use LED": { required: false, type: "boolean" },
             "LED Pin": { required: false, type: "number" },
-            "Power Level": { required: false, type: "number" },
-            "Frequency Control GPIO Polarity": { required: false, type: "boolean" },
             "Web Port": { required: false, type: "number" },
             "Socket Port": { required: false, type: "number" },
             "Use Shutdown": { required: false, type: "boolean" },
             "Shutdown Button": { required: false, type: "number" }
         }
     },
+    GPIO: {
+        required: false,
+        keys: {
+            "Transmit Pin": { required: false, type: "number" },
+            "Power Level": { required: false, type: "number" },
+            "Frequency Control GPIO Polarity": { required: false, type: "boolean" }
+        }
+    },
     Calibration: {
         required: false,
         keys: {
-            "PPM": { required: false, type: "number" },
-            "Use NTP": { required: false, type: "boolean" }
+            "PPM": { required: false, type: "number" }
         }
     },
     WSPR: {
@@ -640,14 +639,14 @@ function populateConfig(callback = null) {
 
                 validateConfigSchema(configJson, configSchema);
 
-                const meta = getConfigSection(configJson, "Meta");
-                const runtime = getConfigSection(configJson, "Runtime");
+                const operation = getConfigSection(configJson, "Operation");
+                const gpio = getConfigSection(configJson, "GPIO");
                 const calibration = getConfigSection(configJson, "Calibration");
                 const wspr = getConfigSection(configJson, "WSPR");
                 const cw = getConfigSection(configJson, "CW");
                 const bandGpio = getConfigSection(configJson, "Band GPIO");
 
-                let mode = getConfigValue(meta, "Meta", "Mode", "WSPR");
+                let mode = getConfigValue(operation, "Operation", "Mode", "WSPR");
                 if (!["WSPR", "QRSS", "FSKCW", "DFCW"].includes(mode)) {
                     mode = "WSPR";
                 }
@@ -667,8 +666,8 @@ function populateConfig(callback = null) {
                 }
 
                 let transmit = getConfigBoolValue(
-                    runtime,
-                    "Runtime",
+                    operation,
+                    "Operation",
                     "Transmit",
                     false
                 );
@@ -712,26 +711,26 @@ function populateConfig(callback = null) {
                     "20m"
                 );
                 let tx_pin = getConfigIntValue(
-                    runtime,
-                    "Runtime",
+                    gpio,
+                    "GPIO",
                     "Transmit Pin",
                     4
                 );
                 let use_led = getConfigBoolValue(
-                    runtime,
-                    "Runtime",
+                    operation,
+                    "Operation",
                     "Use LED",
                     false
                 );
                 let led_pin = getConfigIntValue(
-                    runtime,
-                    "Runtime",
+                    operation,
+                    "Operation",
                     "LED Pin",
                     18
                 );
                 let use_ntp = getConfigBoolValue(
-                    calibration,
-                    "Calibration",
+                    gpio,
+                    "GPIO",
                     "Use NTP",
                     false
                 );
@@ -743,20 +742,20 @@ function populateConfig(callback = null) {
                     true
                 );
                 let power_level = getConfigIntValue(
-                    runtime,
-                    "Runtime",
+                    gpio,
+                    "GPIO",
                     "Power Level",
                     0
                 );
                 let use_shutdown = getConfigBoolValue(
-                    runtime,
-                    "Runtime",
+                    operation,
+                    "Operation",
                     "Use Shutdown",
                     false
                 );
                 let shutdown_pin = getConfigIntValue(
-                    runtime,
-                    "Runtime",
+                    operation,
+                    "Operation",
                     "Shutdown Button",
                     19
                 );
@@ -767,9 +766,9 @@ function populateConfig(callback = null) {
                 let tx_repeat_every = getConfigIntValue(cw, "CW", "Repeat Minutes", 10);
                 let cw_message = getConfigValue(cw, "CW", "Message", "");
 
-                // TODO: add visible controls for Runtime.Transmit Pin,
-                // Runtime.Frequency Control GPIO Polarity, Runtime.Web Port,
-                // and Runtime.Socket Port. They are read here so schema drift
+                // TODO: add visible controls for GPIO.Transmit Pin,
+                // GPIO.Frequency Control GPIO Polarity, Operation.Web Port,
+                // and Operation.Socket Port. They are read here so schema drift
                 // is visible, but not written by this page yet.
                 void tx_pin;
 

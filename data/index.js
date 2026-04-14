@@ -4,10 +4,10 @@ function bindIndexActions() {
     // Bind the Mode Switch
     $('input[name="mode_toggle"]').on('change', clickModeToggle);
 
-    // Runtime.Transmit is global and is patched immediately, independent of Save.
+    // Operation.Transmit is global and is patched immediately, independent of Save.
     $("#transmit").on("change", patchTransmitControl);
 
-    // Stop is an explicit operator action, separate from Runtime.Transmit PATCH.
+    // Stop is an explicit operator action, separate from Operation.Transmit PATCH.
     $("#stop_transmit").on("click", stopTransmission);
 
     // Bind the shared CW mode radio buttons
@@ -91,7 +91,7 @@ function patchTransmitControl() {
         type: "PATCH",
         contentType: "application/merge-patch+json",
         data: JSON.stringify({
-            Runtime: {
+            Operation: {
                 "Transmit": enabled,
             },
         }),
@@ -101,7 +101,7 @@ function patchTransmitControl() {
             updateRuntimeControlStatusFromForm(null);
         })
         .fail(function (xhr) {
-            console.error("Failed to update Runtime.Transmit:", xhr);
+            console.error("Failed to update Operation.Transmit:", xhr);
             setTransmitFromBackend(previous);
         })
         .always(function () {
@@ -692,7 +692,7 @@ function savePage(e) {
     if (!Number.isInteger(tx_start_minute)) tx_start_minute = 0;
     if (!Number.isInteger(tx_repeat_every)) tx_repeat_every = 10;
 
-    // Frequency Calibration
+    // GPIO timing calibration
     let use_ntp = parseBool($("#use_ntp").is(":checked"));
     let ppm_val = parseFloat($("#ppm").val()) || 0.0;
 
@@ -704,22 +704,22 @@ function savePage(e) {
         transmit_power = 7;
     }
 
-    var Meta = {
-        "Mode": mode
-    }
-
-    var Runtime = {
+    var Operation = {
+        "Mode": mode,
         "Transmit": transmit,
-        "Power Level": transmit_power,
         "Use LED": use_led,
         "LED Pin": led_pin,
         "Use Shutdown": use_shutdown,
         "Shutdown Button": shutdown_pin,
     };
 
+    var GPIO = {
+        "Power Level": transmit_power,
+        "Use NTP": use_ntp,
+    };
+
     var Calibration = {
         "PPM": ppm_val,
-        "Use NTP": use_ntp,
     };
 
     var WSPR = {
@@ -741,8 +741,8 @@ function savePage(e) {
     };
 
     var configJson = {
-        Meta,
-        Runtime,
+        Operation,
+        GPIO,
         Calibration,
         WSPR,
         CW,
