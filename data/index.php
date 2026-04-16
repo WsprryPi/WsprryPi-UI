@@ -280,21 +280,16 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
 
                                 <div class="row gx-3 gy-3 align-items-start">
                                     <div class="col-12 col-lg-4 d-flex align-items-center">
-                                        <label for="txPinDropdownButton" class="form-label mb-0 me-2 flex-shrink-0">Transmit Pin:</label>
-                                        <div class="dropdown flex-grow-1">
-                                            <?php
-                                            $dropdownId = "txPinDropdownButton";
-                                            $defaultGpio = 'GPIO4';
-                                            ?>
-                                            <button id="txPinDropdownButton"
-                                                class="btn btn-outline-secondary dropdown-toggle w-100 text-start pin-dropdown-btn"
-                                                type="button"
-                                                data-bs-toggle="dropdown"
-                                                aria-expanded="false"
-                                                title="GPIO4">
-                                                GPIO4
-                                            </button>
-                                            <?php include 'gpio_dropdown.php'; ?>
+                                        <label for="tx_pin" class="form-label mb-0 me-2 flex-shrink-0">Transmit Pin:</label>
+                                        <div class="flex-grow-1">
+                                            <select
+                                                id="tx_pin"
+                                                class="form-select"
+                                                data-bs-toggle="tooltip"
+                                                title="Only GPIO4 and GPIO20 support GPCLK0 clock output on the 40-pin header.">
+                                                <option value="4">GPIO4</option>
+                                                <option value="20">GPIO20</option>
+                                            </select>
                                         </div>
                                     </div>
 

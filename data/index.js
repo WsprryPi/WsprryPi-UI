@@ -29,8 +29,8 @@ function bindIndexActions() {
 
     // Wire up the pin dropdown menus (only in the form)
     $('#wsprform')
-        .off('click.pin', '[aria-labelledby="txPinDropdownButton"] .dropdown-item, [aria-labelledby="ledDropdownButton"] .dropdown-item, [aria-labelledby="shutdownDropdownButton"] .dropdown-item', selectPin)
-        .on('click.pin', '[aria-labelledby="txPinDropdownButton"] .dropdown-item, [aria-labelledby="ledDropdownButton"] .dropdown-item, [aria-labelledby="shutdownDropdownButton"] .dropdown-item', selectPin);
+        .off('click.pin', '[aria-labelledby="ledDropdownButton"] .dropdown-item, [aria-labelledby="shutdownDropdownButton"] .dropdown-item', selectPin)
+        .on('click.pin', '[aria-labelledby="ledDropdownButton"] .dropdown-item, [aria-labelledby="shutdownDropdownButton"] .dropdown-item', selectPin);
 
     // Bind the transmit power slider
     $("#gpio-power-range").on("input", updateGpioPowerLabel);
@@ -576,21 +576,14 @@ function clickUseNTP() {
 }
 
 function setTxPin(gpioNumber) {
-    const code = "GPIO" + gpioNumber;
-    const $btn = $("#txPinDropdownButton");
-    const $item = $(`.dropdown-item[data-val="${code}"]`);
-    if ($item.length) {
-        $btn.text(code);
-        $btn.attr("title", $item.text().trim());
-    } else {
-        debugConsole("warn", "GPIO value not found:", code);
-    }
+    const normalizedPin = gpioNumber === 20 ? 20 : 4;
+    $("#tx_pin").val(String(normalizedPin));
 }
 
 function getTxPin() {
-    const txt = $("#txPinDropdownButton").text().trim();
-    const m = txt.match(/\d+/);
-    return m ? parseInt(m[0], 10) : null;
+    const raw = String($("#tx_pin").val() || "").trim();
+    const pin = parseInt(raw, 10);
+    return Number.isInteger(pin) ? pin : null;
 }
 
 function formatSi5351Address(value) {
@@ -658,10 +651,22 @@ function validateTransmitterHardwareFields() {
     const si5351Reference = normalizeIntegerInputValue("#si5351_reference_frequency", 27000000);
     const si5351Power = normalizeIntegerInputValue("#si5351-power-range", 1);
 
-    const txPinValid = Number.isInteger(getTxPin());
-    $("#txPinDropdownButton").toggleClass("is-invalid", backend === "gpio" && !txPinValid);
+    const txPin = getTxPin();
+    const txPinValid = txPin === 4 || txPin === 20;
+    const txPinField = document.getElementById("tx_pin");
+    if (txPinField) {
+        txPinField.setCustomValidity(
+            backend === "gpio" && !txPinValid
+                ? "Only GPIO4 and GPIO20 support GPCLK0 clock output."
+                : ""
+        );
+    }
+    $("#tx_pin").toggleClass("is-invalid", backend === "gpio" && !txPinValid);
+    $("#tx_pin").toggleClass("is-valid", backend === "gpio" && txPinValid);
     if (backend === "gpio" && !txPinValid) {
         invalidCount++;
+    } else if (backend !== "gpio") {
+        $("#tx_pin").removeClass("is-valid is-invalid");
     }
 
     const gpioPowerValid = gpioPower >= 0 && gpioPower <= 7;
@@ -886,7 +891,7 @@ function savePage(e) {
     let ppm_val = parseFloat($("#ppm").val()) || 0.0;
 
     let gpio_tx_pin = parseInt(getTxPin(), 10);
-    if (!Number.isInteger(gpio_tx_pin)) {
+    if (gpio_tx_pin !== 4 && gpio_tx_pin !== 20) {
         gpio_tx_pin = 4;
     }
 
@@ -1119,7 +1124,7 @@ function setHardwareControlsDisabled(disabled) {
         "#stop_transmit",
         "#planner_preference",
         "#transmit_backend",
-        "#txPinDropdownButton",
+        "#tx_pin",
         "#gpio-power-range",
         "#use_ntp",
         "#si5351_i2c_bus",
