@@ -248,6 +248,156 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                         </div>
                                     </div>
                                 </fieldset>
+
+                                <div id="qrss_config" style="display: none;">
+                                    <!-- Shared CW settings used by QRSS, FSKCW, and DFCW. -->
+                                    <fieldset class="mb-4" id="qrss_control">
+                                        <legend>CW Control</legend>
+
+                                        <!-- First Row -->
+                                        <div class="row gx-2 gy-3 align-items-center">
+
+                                            <!-- CW Mode -->
+                                            <div class="col-12 col-lg-4">
+                                                <fieldset class="d-flex align-items-center gap-3 flex-wrap border-0 p-0 m-0">
+                                                    <legend class="form-label mb-0 flex-shrink-0">Mode:</legend>
+                                                    <div id="mode_select" class="d-flex flex-wrap gap-3">
+                                                        <div class="form-check">
+                                                            <input
+                                                                class="form-check-input"
+                                                                type="radio"
+                                                                name="qrss_type"
+                                                                id="mode_qrss"
+                                                                value="QRSS">
+                                                            <label class="form-check-label" for="mode_qrss">QRSS</label>
+                                                        </div>
+                                                        <div class="form-check">
+                                                            <input
+                                                                class="form-check-input"
+                                                                type="radio"
+                                                                name="qrss_type"
+                                                                id="mode_fskcw"
+                                                                value="FSKCW">
+                                                            <label class="form-check-label" for="mode_fskcw">FSKCW</label>
+                                                        </div>
+                                                        <div class="form-check">
+                                                            <input
+                                                                class="form-check-input"
+                                                                type="radio"
+                                                                name="qrss_type"
+                                                                id="mode_dfcw"
+                                                                value="DFCW">
+                                                            <label class="form-check-label" for="mode_dfcw">DFCW</label>
+                                                        </div>
+                                                    </div>
+                                                </fieldset>
+                                            </div>
+
+                                            <!-- Dot Seconds -->
+                                            <div class="col-12 col-lg-4 d-flex align-items-center">
+                                                <label for="dot_length" class="form-label mb-0 me-2 flex-shrink-0">Dot Seconds:</label>
+                                                <div class="flex-grow-1">
+                                                    <input
+                                                        type="number"
+                                                        class="form-control flex-grow-1"
+                                                        id="dot_length"
+                                                        min="1"
+                                                        max="60"
+                                                        step="1"
+                                                        data-bs-toggle="tooltip"
+                                                        title="CW.Dot Seconds: dot length in seconds for QRSS, FSKCW, and DFCW"
+                                                        value="3"
+                                                        required />
+                                                </div>
+                                            </div>
+
+                                            <!-- Shift Hz -->
+                                            <div class="col-12 col-lg-4 d-flex align-items-center">
+                                                <label for="fsk_offset" class="form-label mb-0 me-2 flex-shrink-0">Shift Hz:</label>
+                                                <div class="flex-grow-1">
+                                                    <input
+                                                        type="number"
+                                                        class="form-control flex-grow-1"
+                                                        id="fsk_offset"
+                                                        min="0"
+                                                        max="1000"
+                                                        step="0.01"
+                                                        data-bs-toggle="tooltip"
+                                                        title="CW.Shift Hz: FSKCW mark and DFCW dash frequency are Base Frequency + Shift Hz. QRSS ignores this field."
+                                                        value="0"
+                                                        required />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Second Row -->
+                                        <div class="row gx-2 gy-3 align-items-center mt-1">
+
+                                            <!-- Base Frequency -->
+                                            <div class="col-12 col-lg-4 d-flex align-items-center">
+                                                <label for="qrss_frequency" class="form-label mb-0 me-2 flex-shrink-0">Base Frequency:</label>
+                                                <input
+                                                    type="text"
+                                                    class="form-control flex-grow-1"
+                                                    id="qrss_frequency"
+                                                    data-bs-toggle="tooltip"
+                                                    title="CW.Base Frequency in Hz. QRSS uses this directly; FSKCW/DFCW add Shift Hz for the second tone."
+                                                    value="7040000.0"
+                                                    required />
+                                            </div>
+
+                                            <!-- Start Time -->
+                                            <div class="col-12 col-lg-4 d-flex align-items-center">
+                                                <label for="tx_start_minute" class="form-label mb-0 me-2 flex-shrink-0">Start Time:</label>
+                                                <input
+                                                    type="number"
+                                                    class="form-control flex-grow-1"
+                                                    id="tx_start_minute"
+                                                    min="0"
+                                                    max="59"
+                                                    step="1"
+                                                    data-bs-toggle="tooltip"
+                                                    title="Start time in minutes after the hour (0-59)"
+                                                    value="0"
+                                                    required />
+                                            </div>
+
+                                            <!-- Repeat Every -->
+                                            <div class="col-12 col-lg-4 d-flex align-items-center">
+                                                <label for="tx_repeat_every" class="form-label mb-0 me-2 flex-shrink-0">Repeat Every:</label>
+                                                <input
+                                                    type="number"
+                                                    class="form-control flex-grow-1"
+                                                    id="tx_repeat_every"
+                                                    min="1"
+                                                    max="60"
+                                                    step="1"
+                                                    data-bs-toggle="tooltip"
+                                                    title="CW.Repeat Minutes: repeat interval in minutes"
+                                                    value="10"
+                                                    required />
+                                            </div>
+                                        </div>
+                                    </fieldset>
+
+                                    <fieldset class="mb-4" id="qrss_message_set">
+                                        <legend>CW Message</legend>
+                                        <div class="row gx-2 gy-3 align-items-center mt-1">
+                                            <div class="col-12 col-lg-12 d-flex align-items-center">
+                                                <input
+                                                    type="text"
+                                                    class="form-control flex-grow-1"
+                                                    id="qrss_message"
+                                                    maxlength="59"
+                                                    step="1"
+                                                    data-bs-toggle="tooltip"
+                                                    title="CW.Message sent by QRSS, FSKCW, or DFCW"
+                                                    value="Hello"
+                                                    required />
+                                            </div>
+                                        </div>
+                                    </fieldset>
+                                </div>
                             </div>
                         </div>
 
@@ -521,158 +671,6 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                 </div>
                             </fieldset>
                         </div>
-                    </div>
-
-                    <div id="qrss_config" style="display: none;">
-                        <!-- Shared CW settings used by QRSS, FSKCW, and DFCW. -->
-                        <fieldset class="mb-4" id="qrss_control">
-                            <legend>CW Control</legend>
-
-                            <!-- First Row -->
-                            <div class="row gx-2 gy-3 align-items-center">
-
-                                <!-- CW Mode -->
-                                <div class="col-12 col-lg-4">
-                                    <fieldset class="d-flex align-items-center gap-3 flex-wrap border-0 p-0 m-0">
-                                        <legend class="form-label mb-0 flex-shrink-0">Mode:</legend>
-                                        <div id="mode_select" class="d-flex flex-wrap gap-3">
-                                            <div class="form-check">
-                                                <input
-                                                    class="form-check-input"
-                                                    type="radio"
-                                                    name="qrss_type"
-                                                    id="mode_qrss"
-                                                    value="QRSS">
-                                                <label class="form-check-label" for="mode_qrss">QRSS</label>
-                                            </div>
-                                            <div class="form-check">
-                                                <input
-                                                    class="form-check-input"
-                                                    type="radio"
-                                                    name="qrss_type"
-                                                    id="mode_fskcw"
-                                                    value="FSKCW">
-                                                <label class="form-check-label" for="mode_fskcw">FSKCW</label>
-                                            </div>
-                                            <div class="form-check">
-                                                <input
-                                                    class="form-check-input"
-                                                    type="radio"
-                                                    name="qrss_type"
-                                                    id="mode_dfcw"
-                                                    value="DFCW">
-                                                <label class="form-check-label" for="mode_dfcw">DFCW</label>
-                                            </div>
-                                        </div>
-                                    </fieldset>
-                                </div>
-
-                                <!-- Dot Seconds -->
-                                <div class="col-12 col-lg-4 d-flex align-items-center">
-                                    <label for="dot_length" class="form-label mb-0 me-2 flex-shrink-0">Dot Seconds:</label>
-                                    <div class="flex-grow-1">
-                                        <input
-                                            type="number"
-                                            class="form-control flex-grow-1"
-                                            id="dot_length"
-                                            min="1"
-                                            max="60"
-                                            step="1"
-                                            data-bs-toggle="tooltip"
-                                            title="CW.Dot Seconds: dot length in seconds for QRSS, FSKCW, and DFCW"
-                                            value="3"
-                                            required />
-                                    </div>
-                                </div>
-
-                                <!-- Shift Hz -->
-                                <div class="col-12 col-lg-4 d-flex align-items-center">
-                                    <label for="fsk_offset" class="form-label mb-0 me-2 flex-shrink-0">Shift Hz:</label>
-                                    <div class="flex-grow-1">
-                                        <input
-                                            type="number"
-                                            class="form-control flex-grow-1"
-                                            id="fsk_offset"
-                                            min="0"
-                                            max="1000"
-                                            step="0.01"
-                                            data-bs-toggle="tooltip"
-                                            title="CW.Shift Hz: FSKCW mark and DFCW dash frequency are Base Frequency + Shift Hz. QRSS ignores this field."
-                                            value="0"
-                                            required />
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Second Row -->
-                            <div class="row gx-2 gy-3 align-items-center mt-1">
-
-                                <!-- Base Frequency -->
-                                <div class="col-12 col-lg-4 d-flex align-items-center">
-                                    <label for="qrss_frequency" class="form-label mb-0 me-2 flex-shrink-0">Base Frequency:</label>
-                                    <input
-                                        type="text"
-                                        class="form-control flex-grow-1"
-                                        id="qrss_frequency"
-                                        data-bs-toggle="tooltip"
-                                        title="CW.Base Frequency in Hz. QRSS uses this directly; FSKCW/DFCW add Shift Hz for the second tone."
-                                        value="7040000.0"
-                                        required />
-                                </div>
-
-                                <!-- Start Time -->
-                                <div class="col-12 col-lg-4 d-flex align-items-center">
-                                    <label for="tx_start_minute" class="form-label mb-0 me-2 flex-shrink-0">Start Time:</label>
-                                    <input
-                                        type="number"
-                                        class="form-control flex-grow-1"
-                                        id="tx_start_minute"
-                                        min="0"
-                                        max="59"
-                                        step="1"
-                                        data-bs-toggle="tooltip"
-                                        title="Start time in minutes after the hour (0-59)"
-                                        value="0"
-                                        required />
-                                </div>
-
-                                <!-- Repeat Every -->
-                                <div class="col-12 col-lg-4 d-flex align-items-center">
-                                    <label for="tx_repeat_every" class="form-label mb-0 me-2 flex-shrink-0">Repeat Every:</label>
-                                    <input
-                                        type="number"
-                                        class="form-control flex-grow-1"
-                                        id="tx_repeat_every"
-                                        min="1"
-                                        max="60"
-                                        step="1"
-                                        data-bs-toggle="tooltip"
-                                        title="CW.Repeat Minutes: repeat interval in minutes"
-                                        value="10"
-                                        required />
-                                </div>
-                            </div>
-                        </fieldset>
-
-                        <!-- Section 5: CW Messaging -->
-                        <fieldset class="mb-4" id="qrss_message_set">
-                            <legend>CW Message</legend>
-                            <div class="row gx-2 gy-3 align-items-center mt-1">
-                                <!-- Start Time -->
-                                <div class="col-12 col-lg-12 d-flex align-items-center">
-                                    <input
-                                        type="text"
-                                        class="form-control flex-grow-1"
-                                        id="qrss_message"
-                                        maxlength="59"
-                                        step="1"
-                                        data-bs-toggle="tooltip"
-                                        title="CW.Message sent by QRSS, FSKCW, or DFCW"
-                                        value="Hello"
-                                        required />
-                                </div>
-                            </div>
-                        </fieldset>
                     </div>
 
                     <!-- Section 8: Submit/Cancel/Test Tone -->
