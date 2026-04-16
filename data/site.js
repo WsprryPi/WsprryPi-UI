@@ -98,6 +98,7 @@ const configSchema = {
         keys: {
             "Mode": { required: false, type: "string" },
             "Transmit": { required: false, type: "boolean" },
+            "Transmit Backend": { required: false, type: "string" },
             "Use LED": { required: false, type: "boolean" },
             "LED Pin": { required: false, type: "number" },
             "Web Port": { required: false, type: "number" },
@@ -111,7 +112,18 @@ const configSchema = {
         keys: {
             "Transmit Pin": { required: false, type: "number" },
             "Power Level": { required: false, type: "number" },
+            "Use NTP": { required: false, type: "boolean" },
             "Frequency Control GPIO Polarity": { required: false, type: "boolean" }
+        }
+    },
+    Si5351: {
+        required: false,
+        keys: {
+            "I2C Bus": { required: false, type: "number" },
+            "I2C Address": { required: false, type: "string" },
+            "Reference Frequency": { required: false, type: "number" },
+            "TX Output": { required: false, type: "string" },
+            "Power Level": { required: false, type: "number" }
         }
     },
     Calibration: {
@@ -642,6 +654,7 @@ function populateConfig(callback = null) {
                 const operation = getConfigSection(configJson, "Operation");
                 const gpio = getConfigSection(configJson, "GPIO");
                 const calibration = getConfigSection(configJson, "Calibration");
+                const si5351 = getConfigSection(configJson, "Si5351");
                 const wspr = getConfigSection(configJson, "WSPR");
                 const cw = getConfigSection(configJson, "CW");
                 const bandGpio = getConfigSection(configJson, "Band GPIO");
@@ -671,6 +684,17 @@ function populateConfig(callback = null) {
                     "Transmit",
                     false
                 );
+                let transmitBackend = String(
+                    getConfigValue(
+                        operation,
+                        "Operation",
+                        "Transmit Backend",
+                        "gpio"
+                    ) || "gpio"
+                ).toLowerCase();
+                if (transmitBackend !== "gpio" && transmitBackend !== "si5351") {
+                    transmitBackend = "gpio";
+                }
                 const callsignWasLoaded = hasConfigValue(wspr, "Call Sign");
                 let callsign = getConfigValue(
                     wspr,
@@ -745,7 +769,31 @@ function populateConfig(callback = null) {
                     gpio,
                     "GPIO",
                     "Power Level",
-                    0
+                    7
+                );
+                let si5351I2cBus = getConfigIntValue(
+                    si5351,
+                    "Si5351",
+                    "I2C Bus",
+                    1
+                );
+                let si5351I2cAddressRaw = getConfigValue(
+                    si5351,
+                    "Si5351",
+                    "I2C Address",
+                    "0x60"
+                );
+                let si5351ReferenceFrequency = getConfigIntValue(
+                    si5351,
+                    "Si5351",
+                    "Reference Frequency",
+                    27000000
+                );
+                let si5351PowerLevel = getConfigIntValue(
+                    si5351,
+                    "Si5351",
+                    "Power Level",
+                    1
                 );
                 let use_shutdown = getConfigBoolValue(
                     operation,
@@ -766,11 +814,9 @@ function populateConfig(callback = null) {
                 let tx_repeat_every = getConfigIntValue(cw, "CW", "Repeat Minutes", 10);
                 let cw_message = getConfigValue(cw, "CW", "Message", "");
 
-                // TODO: add visible controls for GPIO.Transmit Pin,
                 // GPIO.Frequency Control GPIO Polarity, Operation.Web Port,
-                // and Operation.Socket Port. They are read here so schema drift
-                // is visible, but not written by this page yet.
-                void tx_pin;
+                // and Operation.Socket Port remain backend-managed settings
+                // without visible controls on this page.
 
                 // If we are on the config page
                 if (window.currentPage == "index.php") {
@@ -803,6 +849,10 @@ function populateConfig(callback = null) {
                         updateRuntimeControlConfigStatus(mode, transmit);
                     }
                     $("#planner_preference").val(plannerPreference).trigger("change");
+                    $("#transmit_backend").val(transmitBackend).trigger("change");
+                    if (typeof setTxPin === "function") {
+                        setTxPin(tx_pin);
+                    }
                     $("#use_led").prop("checked", use_led).trigger("change");
                     setLEDPin(led_pin);
                     $("#use_shutdown")
@@ -834,8 +884,17 @@ function populateConfig(callback = null) {
                     $("#use_ntp").prop("checked", use_ntp).trigger("change");
                     $("#ppm").val(ppm).trigger("change");
 
-                    // Transmit Power
-                    $("#tx-power-range").val(power_level).trigger("input");
+                    $("#gpio-power-range").val(power_level).trigger("input");
+                    $("#si5351_i2c_bus").val(si5351I2cBus).trigger("change");
+                    if (typeof setSi5351AddressValue === "function") {
+                        setSi5351AddressValue(si5351I2cAddressRaw);
+                    } else {
+                        $("#si5351_i2c_address").val(si5351I2cAddressRaw).trigger("change");
+                    }
+                    $("#si5351_reference_frequency")
+                        .val(si5351ReferenceFrequency)
+                        .trigger("change");
+                    $("#si5351-power-range").val(si5351PowerLevel).trigger("input");
 
                     // Enable the form
                     $("#submit").prop("disabled", false);

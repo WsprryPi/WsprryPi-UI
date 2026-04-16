@@ -15,6 +15,7 @@ function bindIndexActions() {
 
     // Bind the Use NTP Switch
     $("#use_ntp").on("change", clickUseNTP);
+    $("#transmit_backend").on("change", clickTransmitBackend);
 
     // Wire up the LED switch
     $("#use_led").on("change", clickUseLED);
@@ -28,11 +29,12 @@ function bindIndexActions() {
 
     // Wire up the pin dropdown menus (only in the form)
     $('#wsprform')
-        .off('click.pin', '[aria-labelledby="ledDropdownButton"] .dropdown-item, [aria-labelledby="shutdownDropdownButton"] .dropdown-item', selectPin)
-        .on('click.pin', '[aria-labelledby="ledDropdownButton"] .dropdown-item, [aria-labelledby="shutdownDropdownButton"] .dropdown-item', selectPin);
+        .off('click.pin', '[aria-labelledby="txPinDropdownButton"] .dropdown-item, [aria-labelledby="ledDropdownButton"] .dropdown-item, [aria-labelledby="shutdownDropdownButton"] .dropdown-item', selectPin)
+        .on('click.pin', '[aria-labelledby="txPinDropdownButton"] .dropdown-item, [aria-labelledby="ledDropdownButton"] .dropdown-item, [aria-labelledby="shutdownDropdownButton"] .dropdown-item', selectPin);
 
     // Bind the transmit power slider
-    $("#tx-power-range").on("input", updateTxPowerLabel);
+    $("#gpio-power-range").on("input", updateGpioPowerLabel);
+    $("#si5351-power-range").on("input", updateSi5351PowerLabel);
 
     // Bind clicks on buttons/switches for resetting tooltips
     $(document).on(
@@ -49,6 +51,11 @@ function bindIndexActions() {
 
     // Run validation live as the user types:
     $("#qrss_frequency").on("input blur", validateCwBaseFrequency);
+    $("#si5351_i2c_address").on("input blur", validateSi5351I2cAddress);
+    $("#si5351_i2c_bus, #si5351_reference_frequency").on(
+        "input blur",
+        validateTransmitterHardwareFields
+    );
 
     // Bind any text/number/select control changes
     $(document).on(
@@ -155,8 +162,48 @@ function updateRuntimeControlStatusFromForm(mode) {
     );
 }
 
-// Transmit power slider update
-function updateTxPowerLabel() {
+function selectedTransmitBackend() {
+    const backend = String($("#transmit_backend").val() || "gpio").toLowerCase();
+    return backend === "si5351" ? "si5351" : "gpio";
+}
+
+function syncCalibrationControls() {
+    const backend = selectedTransmitBackend();
+    const useNtp = backend === "gpio" && $("#use_ntp").is(":checked");
+    const $ppm = $("#ppm");
+
+    $ppm.prop("disabled", useNtp);
+
+    if (useNtp) {
+        $ppm.removeClass("is-valid is-invalid").prop("required", false);
+    } else {
+        $ppm.prop("required", true);
+    }
+}
+
+function clickTransmitBackend() {
+    const backend = selectedTransmitBackend();
+    const gpioActive = backend === "gpio";
+    const $gpioPanel = $("#gpio-backend-panel");
+    const $si5351Panel = $("#si5351-backend-panel");
+
+    $gpioPanel.toggleClass("d-none", !gpioActive);
+    $si5351Panel.toggleClass("d-none", gpioActive);
+
+    $gpioPanel
+        .find("input, select, button")
+        .prop("disabled", !gpioActive);
+    $si5351Panel
+        .find("input, select, button")
+        .prop("disabled", gpioActive);
+
+    syncCalibrationControls();
+    validateTransmitterHardwareFields();
+    validatePage();
+}
+
+// GPIO transmit power slider update
+function updateGpioPowerLabel() {
     var val = this.value;
     var rangeValues = {
         0: "2mA<br/>3.0dBm",
@@ -169,7 +216,19 @@ function updateTxPowerLabel() {
         7: "16mA<br/>12.0dBm",
     };
     var label = rangeValues[val] || val;
-    $("#tx-power-range-value").html(label);
+    $("#gpio-power-range-value").html(label);
+}
+
+function updateSi5351PowerLabel() {
+    var val = this.value;
+    var rangeValues = {
+        1: "2mA",
+        2: "4mA",
+        3: "6mA",
+        4: "8mA",
+    };
+    var label = rangeValues[val] || val;
+    $("#si5351-power-range-value").html(label);
 }
 
 function clickUseLED() {
@@ -444,6 +503,10 @@ function validatePage() {
         clearValidationState("#wspr_config");
     }
 
+    if (!validateTransmitterHardwareFields()) {
+        invalidCount++;
+    }
+
     validateBandGpioFields();
 
     // ONLY visible/relevant .form-control elements for the selected mode.
@@ -508,20 +571,145 @@ function clickQRSSModeToggle() {
 
 // Function to enable/disable & reset PPM field when Use NTP toggles
 function clickUseNTP() {
-    const $ntp = $("#use_ntp");
-    const $ppm = $("#ppm");
-    const useNtp = $ntp.is(":checked");
+    syncCalibrationControls();
+    validatePage();
+}
 
-    // disable/enable the PPM input
-    $ppm.prop("disabled", useNtp);
-
-    if (useNtp) {
-        // when disabling, clear & reset validation
-        $ppm.removeClass("is-valid is-invalid").prop("required", false);
+function setTxPin(gpioNumber) {
+    const code = "GPIO" + gpioNumber;
+    const $btn = $("#txPinDropdownButton");
+    const $item = $(`.dropdown-item[data-val="${code}"]`);
+    if ($item.length) {
+        $btn.text(code);
+        $btn.attr("title", $item.text().trim());
     } else {
-        // when enabling, make it required again
-        $ppm.prop("required", true);
+        debugConsole("warn", "GPIO value not found:", code);
     }
+}
+
+function getTxPin() {
+    const txt = $("#txPinDropdownButton").text().trim();
+    const m = txt.match(/\d+/);
+    return m ? parseInt(m[0], 10) : null;
+}
+
+function formatSi5351Address(value) {
+    const raw = String(value ?? "").trim();
+    if (!raw) {
+        return "";
+    }
+
+    if (!/^(?:0[xX][0-9A-Fa-f]+|[0-9]+)$/.test(raw)) {
+        return raw;
+    }
+
+    const parsed = Number.parseInt(raw, 0);
+    if (!Number.isInteger(parsed) || parsed < 0) {
+        return raw;
+    }
+
+    return "0x" + parsed.toString(16).toUpperCase();
+}
+
+function setSi5351AddressValue(value) {
+    $("#si5351_i2c_address").val(formatSi5351Address(value)).trigger("change");
+}
+
+function normalizeIntegerInputValue(selector, fallback) {
+    const parsed = parseInt($(selector).val(), 10);
+    return Number.isInteger(parsed) ? parsed : fallback;
+}
+
+function validateSi5351I2cAddress() {
+    const fld = document.getElementById("si5351_i2c_address");
+    if (!fld) return true;
+
+    const raw = String(fld.value || "").trim();
+    let valid = true;
+
+    if (!raw) {
+        fld.setCustomValidity("I2C address is required.");
+        valid = false;
+    } else if (!/^(?:0[xX][0-9A-Fa-f]+|[0-9]+)$/.test(raw)) {
+        fld.setCustomValidity("Enter a decimal or 0x-prefixed hexadecimal I2C address.");
+        valid = false;
+    } else {
+        const parsed = Number.parseInt(raw, 0);
+        if (!Number.isInteger(parsed) || parsed < 0x03 || parsed > 0x77) {
+            fld.setCustomValidity("Enter an I2C address from 0x03 through 0x77.");
+            valid = false;
+        } else {
+            fld.setCustomValidity("");
+            fld.value = formatSi5351Address(raw);
+        }
+    }
+
+    fld.classList.toggle("is-invalid", !valid);
+    fld.classList.toggle("is-valid", valid);
+    return valid;
+}
+
+function validateTransmitterHardwareFields() {
+    const backend = selectedTransmitBackend();
+    let invalidCount = 0;
+
+    const gpioPower = normalizeIntegerInputValue("#gpio-power-range", 7);
+    const si5351Bus = normalizeIntegerInputValue("#si5351_i2c_bus", 1);
+    const si5351Reference = normalizeIntegerInputValue("#si5351_reference_frequency", 27000000);
+    const si5351Power = normalizeIntegerInputValue("#si5351-power-range", 1);
+
+    const txPinValid = Number.isInteger(getTxPin());
+    $("#txPinDropdownButton").toggleClass("is-invalid", backend === "gpio" && !txPinValid);
+    if (backend === "gpio" && !txPinValid) {
+        invalidCount++;
+    }
+
+    const gpioPowerValid = gpioPower >= 0 && gpioPower <= 7;
+    $("#gpio-power-range").toggleClass("is-invalid", backend === "gpio" && !gpioPowerValid);
+    if (backend === "gpio" && !gpioPowerValid) {
+        invalidCount++;
+    }
+
+    const busValid = si5351Bus >= 0;
+    $("#si5351_i2c_bus")
+        .get(0)
+        .setCustomValidity(busValid ? "" : "I2C bus must be 0 or greater.");
+    $("#si5351_i2c_bus").toggleClass("is-invalid", backend === "si5351" && !busValid);
+    $("#si5351_i2c_bus").toggleClass("is-valid", backend === "si5351" && busValid);
+    if (backend === "si5351" && !busValid) {
+        invalidCount++;
+    }
+
+    const refValid = si5351Reference > 0;
+    $("#si5351_reference_frequency")
+        .get(0)
+        .setCustomValidity(refValid ? "" : "Reference frequency must be greater than 0.");
+    $("#si5351_reference_frequency")
+        .toggleClass("is-invalid", backend === "si5351" && !refValid);
+    $("#si5351_reference_frequency")
+        .toggleClass("is-valid", backend === "si5351" && refValid);
+    if (backend === "si5351" && !refValid) {
+        invalidCount++;
+    }
+
+    const si5351PowerValid = si5351Power >= 1 && si5351Power <= 4;
+    $("#si5351-power-range")
+        .toggleClass("is-invalid", backend === "si5351" && !si5351PowerValid);
+    if (backend === "si5351" && !si5351PowerValid) {
+        invalidCount++;
+    }
+
+    if (backend === "si5351" && !validateSi5351I2cAddress()) {
+        invalidCount++;
+    } else if (backend !== "si5351") {
+        const fld = document.getElementById("si5351_i2c_address");
+        if (fld) {
+            fld.setCustomValidity("");
+            fld.classList.remove("is-valid", "is-invalid");
+        }
+    }
+
+    return invalidCount === 0;
 }
 
 function setLEDPin(gpioNumber) {
@@ -530,7 +718,6 @@ function setLEDPin(gpioNumber) {
     const $item = $(`.dropdown-item[data-val="${code}"]`);
     if ($item.length) {
         $btn.text(code);
-    $btn.attr("title", $item.text().trim());
         $btn.attr("title", $item.text().trim());
     } else {
         debugConsole("warn", "GPIO value not found:", code);
@@ -553,13 +740,13 @@ function getLEDPin() {
  */
 function selectPin(e) {
     const $item = $(this);
-    const code = $item.data('val');                     // just "GPIO18"
+    const code = $item.data('val');
     const menuId = $item.closest('.dropdown-menu').attr('aria-labelledby');
     const $btn = $('#' + menuId);
 
     // Update the toggle button text with the short code
     $btn.text(code);
-        $btn.attr("title", $item.text().trim());
+    $btn.attr("title", $item.text().trim());
 
     // Mark this item active, clear others
     const $menu = $item.closest('.dropdown-menu');
@@ -582,6 +769,7 @@ function setShutdownPin(gpioNumber) {
     const $item = $(`.dropdown-item[data-val="${code}"]`);
     if ($item.length) {
         $btn.text(code);
+        $btn.attr("title", $item.text().trim());
     } else {
         debugConsole("warn", "GPIO value not found:", code);
     }
@@ -670,6 +858,7 @@ function savePage(e) {
     let use_shutdown = parseBool($("#use_shutdown").is(":checked"));
     let shutdown_pin = parseInt(getShutdownPin()) || 19;
     let band_gpio = collectBandGpioConfig();
+    let transmit_backend = selectedTransmitBackend();
 
     // WSPR
     let planner_preference = String($("#planner_preference").val() || "auto");
@@ -696,17 +885,43 @@ function savePage(e) {
     let use_ntp = parseBool($("#use_ntp").is(":checked"));
     let ppm_val = parseFloat($("#ppm").val()) || 0.0;
 
-    // Transmit Power
-    const raw = $("#tx-power-range").val();
+    let gpio_tx_pin = parseInt(getTxPin(), 10);
+    if (!Number.isInteger(gpio_tx_pin)) {
+        gpio_tx_pin = 4;
+    }
+
+    const raw = $("#gpio-power-range").val();
     let transmit_power = parseInt(raw, 10);
-    // Use 7 if parsing fails
     if (!(transmit_power >= 0 && transmit_power <= 7)) {
         transmit_power = 7;
+    }
+
+    let si5351_i2c_bus = parseInt($("#si5351_i2c_bus").val(), 10);
+    if (!Number.isInteger(si5351_i2c_bus) || si5351_i2c_bus < 0) {
+        si5351_i2c_bus = 1;
+    }
+
+    let si5351_i2c_address = formatSi5351Address(
+        $("#si5351_i2c_address").val() || "0x60"
+    );
+    if (!si5351_i2c_address) {
+        si5351_i2c_address = "0x60";
+    }
+
+    let si5351_reference_frequency = parseInt($("#si5351_reference_frequency").val(), 10);
+    if (!Number.isInteger(si5351_reference_frequency) || si5351_reference_frequency <= 0) {
+        si5351_reference_frequency = 27000000;
+    }
+
+    let si5351_power_level = parseInt($("#si5351-power-range").val(), 10);
+    if (!(si5351_power_level >= 1 && si5351_power_level <= 4)) {
+        si5351_power_level = 1;
     }
 
     var Operation = {
         "Mode": mode,
         "Transmit": transmit,
+        "Transmit Backend": transmit_backend,
         "Use LED": use_led,
         "LED Pin": led_pin,
         "Use Shutdown": use_shutdown,
@@ -716,6 +931,14 @@ function savePage(e) {
     var GPIO = {
         "Power Level": transmit_power,
         "Use NTP": use_ntp,
+        "Transmit Pin": gpio_tx_pin,
+    };
+
+    var Si5351 = {
+        "I2C Bus": si5351_i2c_bus,
+        "I2C Address": si5351_i2c_address,
+        "Reference Frequency": si5351_reference_frequency,
+        "Power Level": si5351_power_level,
     };
 
     var Calibration = {
@@ -743,6 +966,7 @@ function savePage(e) {
     var configJson = {
         Operation,
         GPIO,
+        Si5351,
         Calibration,
         WSPR,
         CW,
@@ -894,6 +1118,14 @@ function setHardwareControlsDisabled(disabled) {
         "#transmit",
         "#stop_transmit",
         "#planner_preference",
+        "#transmit_backend",
+        "#txPinDropdownButton",
+        "#gpio-power-range",
+        "#use_ntp",
+        "#si5351_i2c_bus",
+        "#si5351_i2c_address",
+        "#si5351_reference_frequency",
+        "#si5351-power-range",
         "#use_led",
         "#ledDropdownButton",
         "#use_shutdown",
@@ -907,6 +1139,8 @@ function setHardwareControlsDisabled(disabled) {
         $(selector).prop("disabled", disabled);
     });
 
+    syncCalibrationControls();
+
     getBandGpioRows().each(function () {
         const $row = $(this);
         $row.find(".band-gpio-enabled").prop("disabled", disabled);
@@ -917,6 +1151,17 @@ function setHardwareControlsDisabled(disabled) {
 
 function setOfflineDefaults() {
     setTransmitFromBackend(false);
+    $("#transmit_backend").val("gpio");
+    setTxPin(4);
+    $("#gpio-power-range").val(7);
+    updateGpioPowerLabel.call(document.getElementById("gpio-power-range"));
+    $("#use_ntp").prop("checked", true);
+    $("#si5351_i2c_bus").val(1);
+    setSi5351AddressValue(0x60);
+    $("#si5351_reference_frequency").val(27000000);
+    $("#si5351-power-range").val(1);
+    updateSi5351PowerLabel.call(document.getElementById("si5351-power-range"));
+    clickTransmitBackend();
     $("#use_led").prop("checked", false);
     $("#use_shutdown").prop("checked", false);
     populateBandGpioForm({});
@@ -934,4 +1179,5 @@ function setOfflineDefaults() {
 
 function clearOfflineDefaults() {
     setHardwareControlsDisabled(false);
+    clickTransmitBackend();
 }

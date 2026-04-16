@@ -52,6 +52,19 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                     <li class="nav-item" role="presentation">
                         <button
                             class="nav-link"
+                            id="transmitter-hardware-tab"
+                            data-bs-toggle="tab"
+                            data-bs-target="#transmitter-hardware-pane"
+                            type="button"
+                            role="tab"
+                            aria-controls="transmitter-hardware-pane"
+                            aria-selected="false">
+                            Transmitter Hardware
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button
+                            class="nav-link"
                             id="pi-hardware-tab"
                             data-bs-toggle="tab"
                             data-bs-target="#pi-hardware-pane"
@@ -180,26 +193,6 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
 
                                     <div class="row gx-2 align-items-center">
                                         <div class="col-12 mb-3">
-                                            <label for="tx-power-range" class="form-label">Power Level</label>
-                                            <div class="d-flex justify-content-center align-items-center">
-                                                <input
-                                                    type="range"
-                                                    id="tx-power-range"
-                                                    class="form-range me-3"
-                                                    style="width: 60%;"
-                                                    min="0"
-                                                    max="7"
-                                                    step="1"
-                                                    value="0" />
-                                                <label for="tx-power-range" class="form-label small mb-0">
-                                                    <span id="tx-power-range-value" class="small"></span>
-                                                </label>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div class="row gx-2 align-items-center">
-                                        <div class="col-12 mb-3">
                                             <label for="planner_preference" class="form-label">
                                                 Planner preference
                                             </label>
@@ -224,24 +217,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                 <fieldset class="mb-4">
                                     <legend>Frequency Calibration</legend>
                                     <div class="row gx-2 align-items-center">
-                                        <div class="col-md-4 mb-3 d-flex align-items-center">
-                                            <div class="form-check form-switch form-check-reverse mb-0">
-                                                <input
-                                                    class="form-check-input"
-                                                    type="checkbox"
-                                                    role="switch"
-                                                    data-bs-toggle="tooltip"
-                                                    title="Use NTP for frequency calibration"
-                                                    id="use_ntp" />
-                                                <label
-                                                    class="form-check-label mb-0"
-                                                    for="use_ntp">
-                                                    Use NTP
-                                                </label>
-                                            </div>
-                                        </div>
-
-                                        <div class="col-md-4 mb-3 d-flex align-items-center">
+                                        <div class="col-md-6 mb-3 d-flex align-items-center">
                                             <label for="ppm" class="form-label mb-0 me-2 flex-shrink-0">PPM Offset</label>
                                             <div class="flex-grow-1">
                                                 <input
@@ -256,7 +232,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                             </div>
                                         </div>
 
-                                        <div class="col-md-4 mb-3 d-flex align-items-center">
+                                        <div class="col-md-6 mb-3 d-flex align-items-center">
                                             <div class="form-check form-switch form-check-reverse mb-0">
                                                 <input
                                                     class="form-check-input"
@@ -273,6 +249,153 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                     </div>
                                 </fieldset>
                             </div>
+                        </div>
+
+                        <div
+                            class="tab-pane fade"
+                            id="transmitter-hardware-pane"
+                            role="tabpanel"
+                            aria-labelledby="transmitter-hardware-tab"
+                            tabindex="0">
+                            <fieldset class="mb-4">
+                                <legend>Transmit Backend</legend>
+
+                                <div class="row gx-3 gy-3 align-items-start">
+                                    <div class="col-12 col-lg-4">
+                                        <label for="transmit_backend" class="form-label">Transmit Backend</label>
+                                        <select
+                                            id="transmit_backend"
+                                            class="form-select"
+                                            data-bs-toggle="tooltip"
+                                            title="Choose the RF hardware backend used for transmission.">
+                                            <option value="gpio">GPIO</option>
+                                            <option value="si5351">Si5351</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </fieldset>
+
+                            <fieldset class="mb-4 backend-settings-panel" id="gpio-backend-panel">
+                                <legend>GPIO Hardware</legend>
+
+                                <div class="row gx-3 gy-3 align-items-start">
+                                    <div class="col-12 col-lg-4 d-flex align-items-center">
+                                        <label for="txPinDropdownButton" class="form-label mb-0 me-2 flex-shrink-0">Transmit Pin:</label>
+                                        <div class="dropdown flex-grow-1">
+                                            <?php
+                                            $dropdownId = "txPinDropdownButton";
+                                            $defaultGpio = 'GPIO4';
+                                            ?>
+                                            <button id="txPinDropdownButton"
+                                                class="btn btn-outline-secondary dropdown-toggle w-100 text-start pin-dropdown-btn"
+                                                type="button"
+                                                data-bs-toggle="dropdown"
+                                                aria-expanded="false"
+                                                title="GPIO4">
+                                                GPIO4
+                                            </button>
+                                            <?php include 'gpio_dropdown.php'; ?>
+                                        </div>
+                                    </div>
+
+                                    <div class="col-12 col-lg-4">
+                                        <label for="gpio-power-range" class="form-label">Power Level</label>
+                                        <div class="d-flex justify-content-center align-items-center">
+                                            <input
+                                                type="range"
+                                                id="gpio-power-range"
+                                                class="form-range me-3"
+                                                style="width: 60%;"
+                                                min="0"
+                                                max="7"
+                                                step="1"
+                                                value="7" />
+                                            <label for="gpio-power-range" class="form-label small mb-0">
+                                                <span id="gpio-power-range-value" class="small"></span>
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <div class="col-12 col-lg-4 d-flex align-items-center">
+                                        <div class="form-check form-switch form-check-reverse mb-0">
+                                            <input
+                                                class="form-check-input"
+                                                type="checkbox"
+                                                role="switch"
+                                                data-bs-toggle="tooltip"
+                                                title="Use NTP for GPIO frequency calibration"
+                                                id="use_ntp" />
+                                            <label
+                                                class="form-check-label mb-0"
+                                                for="use_ntp">
+                                                Use NTP
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </fieldset>
+
+                            <fieldset class="mb-4 backend-settings-panel d-none" id="si5351-backend-panel">
+                                <legend>Si5351 Hardware</legend>
+
+                                <div class="row gx-3 gy-3 align-items-start">
+                                    <div class="col-12 col-lg-3">
+                                        <label for="si5351_i2c_bus" class="form-label">I2C Bus</label>
+                                        <input
+                                            type="number"
+                                            id="si5351_i2c_bus"
+                                            class="form-control"
+                                            min="0"
+                                            step="1"
+                                            inputmode="numeric"
+                                            data-bs-toggle="tooltip"
+                                            title="Linux I2C bus number for the Si5351 device." />
+                                    </div>
+
+                                    <div class="col-12 col-lg-3">
+                                        <label for="si5351_i2c_address" class="form-label">I2C Address</label>
+                                        <input
+                                            type="text"
+                                            id="si5351_i2c_address"
+                                            class="form-control"
+                                            pattern="^(?:0[xX][0-9A-Fa-f]+|[0-9]+)$"
+                                            inputmode="text"
+                                            data-bs-toggle="tooltip"
+                                            title="Enter a decimal or 0x-prefixed hexadecimal I2C address." />
+                                    </div>
+
+                                    <div class="col-12 col-lg-3">
+                                        <label for="si5351_reference_frequency" class="form-label">Reference Frequency</label>
+                                        <input
+                                            type="number"
+                                            id="si5351_reference_frequency"
+                                            class="form-control"
+                                            min="1"
+                                            step="1"
+                                            inputmode="numeric"
+                                            data-bs-toggle="tooltip"
+                                            title="Reference oscillator frequency in Hz." />
+                                    </div>
+
+                                    <div class="col-12 col-lg-3">
+                                        <label for="si5351-power-range" class="form-label">Power Level</label>
+                                        <div class="d-flex justify-content-center align-items-center">
+                                            <input
+                                                type="range"
+                                                id="si5351-power-range"
+                                                class="form-range me-3"
+                                                style="width: 60%;"
+                                                min="1"
+                                                max="4"
+                                                step="1"
+                                                value="1" />
+                                            <label for="si5351-power-range" class="form-label small mb-0">
+                                                <span id="si5351-power-range-value" class="small"></span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </fieldset>
                         </div>
 
                         <div
