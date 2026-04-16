@@ -1,4 +1,5 @@
 let isUpdatingTransmitFromBackend = false;
+let stopRequestInFlight = false;
 
 function bindIndexActions() {
     // Bind the Mode Switch
@@ -84,6 +85,29 @@ function setTransmitFromBackend(enabled) {
     updateRuntimeControlStatusFromForm(null);
 }
 
+function syncStopButtonState() {
+    const $stop = $("#stop_transmit");
+    if (!$stop.length) {
+        return;
+    }
+
+    const runtimeStatus =
+        typeof currentRuntimeStatus === "object" && currentRuntimeStatus !== null
+            ? currentRuntimeStatus
+            : null;
+    const runtimeConfigStatus =
+        typeof currentRuntimeConfigStatus === "object" &&
+        currentRuntimeConfigStatus !== null
+            ? currentRuntimeConfigStatus
+            : null;
+
+    const transmitting = runtimeStatus && runtimeStatus.txState === "transmitting";
+    const transmitEnabled =
+        runtimeConfigStatus && runtimeConfigStatus.transmitEnabled === true;
+
+    $stop.prop("disabled", stopRequestInFlight || (!transmitEnabled && !transmitting));
+}
+
 function patchTransmitControl() {
     if (isUpdatingTransmitFromBackend) return;
 
@@ -148,7 +172,12 @@ function patchTransmitControl() {
 
 function stopTransmission() {
     const $stop = $("#stop_transmit");
-    $stop.prop("disabled", true);
+    if ($stop.prop("disabled")) {
+        return;
+    }
+
+    stopRequestInFlight = true;
+    syncStopButtonState();
 
     $.ajax({
         url: CONTROL_STOP_URL,
@@ -166,9 +195,23 @@ function stopTransmission() {
         })
         .fail(function (xhr) {
             console.error("Failed to stop transmission:", xhr);
+
+            const data =
+                xhr && xhr.responseJSON && typeof xhr.responseJSON === "object"
+                    ? xhr.responseJSON
+                    : null;
+            if (data && (data.transmit_disabled === true || data.stop_performed === true)) {
+                if (data.transmit_disabled === true) {
+                    setTransmitFromBackend(false);
+                }
+                if (typeof getTxState === "function") {
+                    getTxState();
+                }
+            }
         })
         .always(function () {
-            $stop.prop("disabled", false);
+            stopRequestInFlight = false;
+            syncStopButtonState();
         });
 }
 
@@ -190,6 +233,8 @@ function updateRuntimeControlStatusFromForm(mode) {
         mode || selectedConfigMode(),
         $("#transmit").is(":checked")
     );
+
+    syncStopButtonState();
 }
 
 function selectedTransmitBackend() {
@@ -1344,6 +1389,10 @@ function setHardwareControlsDisabled(disabled) {
     controlIds.forEach((selector) => {
         $(selector).prop("disabled", disabled);
     });
+
+    if (!disabled) {
+        syncStopButtonState();
+    }
 
     syncCalibrationControls();
 

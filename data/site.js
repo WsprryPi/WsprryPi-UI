@@ -1133,6 +1133,10 @@ function renderRuntimeControlStatus() {
     const modeNode = document.getElementById("runtime_mode_value");
     const planNode = document.getElementById("runtime_wspr_plan_value");
 
+    if (typeof syncStopButtonState === "function") {
+        syncStopButtonState();
+    }
+
     if (modeNode) {
         modeNode.textContent = currentRuntimeConfigStatus.mode || "Unknown";
     }

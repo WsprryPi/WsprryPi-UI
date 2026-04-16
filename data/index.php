@@ -102,7 +102,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                         </div>
                                     </div>
                                     <div class="col-12 col-lg-2">
-                                        <button type="button" class="btn btn-danger btn-sm" id="stop_transmit">
+                                        <button type="button" class="btn btn-danger btn-sm" id="stop_transmit" disabled>
                                             Stop
                                         </button>
                                     </div>
