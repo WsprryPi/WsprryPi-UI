@@ -22,7 +22,6 @@ const REPAIR_PATH =
     typeof PATHS.repairPath === "string"
         ? PATHS.repairPath
         : `${APP_BASE_PATH}/config/repair`;
-const CONTROL_STOP_PATH = `${APP_BASE_PATH}/control/stop`;
 const WEBSOCKET_PATH =
     typeof PATHS.socketPath === "string"
         ? PATHS.socketPath
@@ -36,7 +35,6 @@ const LOG_STREAM_PATH =
 const SETTINGS_URL = `${HTTP_ORIGIN}${SETTINGS_PATH}`;
 const VERSION_URL = `${HTTP_ORIGIN}${VERSION_PATH}`;
 const REPAIR_URL = `${HTTP_ORIGIN}${REPAIR_PATH}`;
-const CONTROL_STOP_URL = `${HTTP_ORIGIN}${CONTROL_STOP_PATH}`;
 const WEBSOCKET_URL = `${WS_ORIGIN}${WEBSOCKET_PATH}`;
 const LOG_STREAM_URL = `${HTTP_ORIGIN}${LOG_STREAM_PATH}`;
 const WSPRNET_URL =
@@ -1304,6 +1302,13 @@ function connectWebSocket(url, reconnectDelay = 5000) {
             return;
         }
 
+        if (msg.command === "stop") {
+            if (typeof handleStopCommandResponse === "function") {
+                handleStopCommandResponse(msg);
+            }
+            return;
+        }
+
         // If the server is replying to our get_tx_state command:
         if (msg.tx_state !== undefined) {
             applyRuntimeStatus(msg);
@@ -1326,7 +1331,11 @@ function connectWebSocket(url, reconnectDelay = 5000) {
                     "Transmit finished at:",
                     new Date(msg.timestamp).toString()
                 );
-            } else if (msg.state === "canceled" || msg.state === "skipped") {
+            } else if (
+                msg.state === "canceled" ||
+                msg.state === "skipped" ||
+                msg.state === "stopped"
+            ) {
                 setConnectionState("connected");
             }
         }

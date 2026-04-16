@@ -176,43 +176,35 @@ function stopTransmission() {
         return;
     }
 
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        console.error("Failed to stop transmission: WebSocket is not connected.");
+        return;
+    }
+
     stopRequestInFlight = true;
     syncStopButtonState();
 
-    $.ajax({
-        url: CONTROL_STOP_URL,
-        type: "POST",
-        contentType: "application/json",
-        data: JSON.stringify({ command: "stop" }),
-    })
-        .done(function (data) {
-            if (data && data.transmit_disabled === true) {
-                setTransmitFromBackend(false);
-            }
-            if (typeof getTxState === "function") {
-                getTxState();
-            }
-        })
-        .fail(function (xhr) {
-            console.error("Failed to stop transmission:", xhr);
+    ws.send(JSON.stringify({ command: "stop" }));
+}
 
-            const data =
-                xhr && xhr.responseJSON && typeof xhr.responseJSON === "object"
-                    ? xhr.responseJSON
-                    : null;
-            if (data && (data.transmit_disabled === true || data.stop_performed === true)) {
-                if (data.transmit_disabled === true) {
-                    setTransmitFromBackend(false);
-                }
-                if (typeof getTxState === "function") {
-                    getTxState();
-                }
-            }
-        })
-        .always(function () {
-            stopRequestInFlight = false;
-            syncStopButtonState();
-        });
+function handleStopCommandResponse(message) {
+    const response = message && typeof message === "object" ? message : {};
+    const stopSucceeded =
+        response.transmit_disabled === true || response.stop_performed === true;
+
+    if (response.transmit_disabled === true) {
+        setTransmitFromBackend(false);
+    }
+    if (typeof getTxState === "function") {
+        getTxState();
+    }
+
+    stopRequestInFlight = false;
+    syncStopButtonState();
+
+    if (!stopSucceeded) {
+        console.error("Failed to stop transmission:", response);
+    }
 }
 
 function selectedConfigMode() {
