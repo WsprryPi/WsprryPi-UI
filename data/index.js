@@ -91,6 +91,17 @@ function patchTransmitControl() {
     const enabled = $transmit.is(":checked");
     const previous = !enabled;
 
+    if (enabled) {
+        const unavailableMessage = selectedBackendUnavailableMessage();
+        if (unavailableMessage) {
+            const formattedMessage = formatTransmitFailureMessage(unavailableMessage);
+            setTransmitFromBackend(previous);
+            showBackendStatus(formattedMessage, "danger", "runtime");
+            alert(formattedMessage);
+            return;
+        }
+    }
+
     $transmit.prop("disabled", true);
 
     $.ajax({
@@ -106,10 +117,29 @@ function patchTransmitControl() {
         .done(function () {
             lastSaveTimestamp = Date.now();
             updateRuntimeControlStatusFromForm(null);
+            clearBackendStatus("runtime");
         })
         .fail(function (xhr) {
+            let message = "Failed to update transmit state.";
             console.error("Failed to update Operation.Transmit:", xhr);
+
+            if (xhr.responseJSON && typeof xhr.responseJSON === "object") {
+                message = buildConfigErrorMessage(xhr.responseJSON, message);
+            } else if (typeof xhr.responseText === "string" && xhr.responseText.trim()) {
+                try {
+                    const parsedError = JSON.parse(xhr.responseText);
+                    if (parsedError && typeof parsedError === "object") {
+                        message = buildConfigErrorMessage(parsedError, message);
+                    }
+                } catch (error) {
+                    console.warn("Unable to parse transmit toggle error response:", error);
+                }
+            }
+
+            message = formatTransmitFailureMessage(message);
             setTransmitFromBackend(previous);
+            showBackendStatus(message, "danger", "runtime");
+            alert(message);
         })
         .always(function () {
             $transmit.prop("disabled", false);
@@ -167,6 +197,176 @@ function selectedTransmitBackend() {
     return backend === "si5351" ? "si5351" : "gpio";
 }
 
+function showBackendStatus(message, level = "warning", source = "runtime") {
+    const $status = $("#backendStatus");
+    if (!$status.length) {
+        return;
+    }
+
+    const alertClass =
+        level === "danger" ? "alert-danger" :
+        level === "info" ? "alert-info" :
+        "alert-warning";
+
+    $status
+        .removeClass("d-none alert-warning alert-danger alert-info")
+        .addClass(alertClass)
+        .attr("data-source", source)
+        .text(message);
+}
+
+function clearBackendStatus(source = null) {
+    const $status = $("#backendStatus");
+    if (!$status.length) {
+        return;
+    }
+
+    if (source && $status.attr("data-source") !== source) {
+        return;
+    }
+
+    $status
+        .addClass("d-none")
+        .removeClass("alert-warning alert-danger alert-info")
+        .removeAttr("data-source")
+        .text("");
+}
+
+function gpioPlatformRestrictionMessage() {
+    const platform = window.WSPRRYPI_PLATFORM || {};
+    if (
+        typeof platform.gpioClockTransmissionError === "string" &&
+        platform.gpioClockTransmissionError.trim()
+    ) {
+        return platform.gpioClockTransmissionError.trim();
+    }
+
+    return "GPIO transmission is supported only on Raspberry Pi 1 through 4.";
+}
+
+function si5351UnavailableMessage() {
+    const platform = window.WSPRRYPI_PLATFORM || {};
+    if (
+        typeof platform.si5351DetectionError === "string" &&
+        platform.si5351DetectionError.trim()
+    ) {
+        return platform.si5351DetectionError.trim();
+    }
+
+    return "Si5351 transmission is unavailable because no Si5351 device was detected on the I2C bus.";
+}
+
+function selectedBackendUnavailableMessage() {
+    const platform = window.WSPRRYPI_PLATFORM || {};
+    const backend = selectedTransmitBackend();
+
+    if (backend === "gpio" && platform.gpioClockTransmissionSupported === false) {
+        return gpioPlatformRestrictionMessage();
+    }
+
+    if (backend === "si5351" && platform.si5351Detected === false) {
+        return si5351UnavailableMessage();
+    }
+
+    return "";
+}
+
+function isGpioUnsupportedReason(reason) {
+    const normalized = String(reason || "").toLowerCase();
+    if (!normalized) {
+        return false;
+    }
+
+    return (
+        normalized.includes("gpio transmission") ||
+        normalized.includes("raspberry pi 5 and newer") ||
+        normalized.includes("supported only on raspberry pi 1 through 4") ||
+        normalized.includes("unsupported on this raspberry pi")
+    );
+}
+
+function isSi5351MissingReason(reason) {
+    const normalized = String(reason || "").toLowerCase();
+    if (!normalized) {
+        return false;
+    }
+
+    return (
+        normalized.includes("no si5351") ||
+        normalized.includes("si5351 device was detected") ||
+        normalized.includes("i2c bus")
+    );
+}
+
+function backendInlineHintMessage() {
+    const platform = window.WSPRRYPI_PLATFORM || {};
+    const backend = selectedTransmitBackend();
+
+    if (backend === "si5351" && platform.si5351Detected === false) {
+        return "No Si5351 detected on the configured I2C bus.";
+    }
+
+    if (backend === "gpio" && platform.gpioClockTransmissionSupported === false) {
+        return "GPIO transmission is supported only on Raspberry Pi 1 through 4.";
+    }
+
+    return "";
+}
+
+function formatBackendBannerMessage(reason) {
+    if (isGpioUnsupportedReason(reason)) {
+        return "Transmission is unavailable with the GPIO backend on this Raspberry Pi. Use the Si5351 backend to enable transmission.";
+    }
+
+    if (isSi5351MissingReason(reason)) {
+        return "Transmission is unavailable because no Si5351 was detected on the configured I2C bus. Check I2C bus, address, wiring, and power, or select a different backend.";
+    }
+
+    return reason;
+}
+
+function formatTransmitFailureMessage(reason) {
+    if (isGpioUnsupportedReason(reason)) {
+        return "Transmit cannot be enabled with the GPIO backend on this Raspberry Pi.";
+    }
+
+    if (isSi5351MissingReason(reason)) {
+        return "Transmit cannot be enabled because no Si5351 was detected on the configured I2C bus.";
+    }
+
+    return reason;
+}
+
+function formatReloadFailureMessage(reason) {
+    if (isGpioUnsupportedReason(reason)) {
+        return "Configuration rejected: GPIO transmission is not supported on this Raspberry Pi.";
+    }
+
+    if (isSi5351MissingReason(reason)) {
+        return "Configuration rejected: no Si5351 device was detected on the configured I2C bus.";
+    }
+
+    return reason;
+}
+
+function updateBackendPlatformSupportUi() {
+    const platform = window.WSPRRYPI_PLATFORM || {};
+    const gpioSupported = platform.gpioClockTransmissionSupported !== false;
+    const backendWarning = selectedBackendUnavailableMessage();
+    const $gpioOption = $('#transmit_backend option[value="gpio"]');
+    const $hint = $("#backendPlatformHint");
+
+    $gpioOption.text(gpioSupported ? "GPIO" : "GPIO (Unsupported on this Pi)");
+    $gpioOption.prop("disabled", !gpioSupported);
+    $hint.text(backendInlineHintMessage());
+
+    if (backendWarning) {
+        showBackendStatus(formatBackendBannerMessage(backendWarning), "warning", "platform");
+    } else {
+        clearBackendStatus("platform");
+    }
+}
+
 function syncCalibrationControls() {
     const backend = selectedTransmitBackend();
     const useNtp = backend === "gpio" && $("#use_ntp").is(":checked");
@@ -198,6 +398,7 @@ function clickTransmitBackend() {
         .prop("disabled", gpioActive);
 
     syncCalibrationControls();
+    updateBackendPlatformSupportUi();
     validateTransmitterHardwareFields();
     validatePage();
 }

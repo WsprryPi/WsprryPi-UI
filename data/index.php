@@ -421,8 +421,10 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                             <option value="gpio">GPIO</option>
                                             <option value="si5351">Si5351</option>
                                         </select>
+                                        <div id="backendPlatformHint" class="form-text mt-2"></div>
                                     </div>
                                 </div>
+                                <div id="backendStatus" class="alert d-none mt-3 mb-0" role="alert"></div>
                             </fieldset>
 
                             <fieldset class="mb-4 backend-settings-panel" id="gpio-backend-panel">

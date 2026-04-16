@@ -116,6 +116,17 @@ const configSchema = {
             "Frequency Control GPIO Polarity": { required: false, type: "boolean" }
         }
     },
+    Platform: {
+        required: false,
+        keys: {
+            "Model": { required: false, type: "string" },
+            "Raspberry Pi Generation": { required: false, type: "number" },
+            "GPIO Clock Transmission Supported": { required: false, type: "boolean" },
+            "GPIO Clock Transmission Error": { required: false, type: "string" },
+            "Si5351 Detected": { required: false, type: "boolean" },
+            "Si5351 Detection Error": { required: false, type: "string" }
+        }
+    },
     Si5351: {
         required: false,
         keys: {
@@ -658,6 +669,41 @@ function populateConfig(callback = null) {
                 const wspr = getConfigSection(configJson, "WSPR");
                 const cw = getConfigSection(configJson, "CW");
                 const bandGpio = getConfigSection(configJson, "Band GPIO");
+                const platform = getConfigSection(configJson, "Platform");
+
+                window.WSPRRYPI_PLATFORM = {
+                    model: getConfigValue(platform, "Platform", "Model", ""),
+                    raspberryPiGeneration: getConfigIntValue(
+                        platform,
+                        "Platform",
+                        "Raspberry Pi Generation",
+                        -1
+                    ),
+                    gpioClockTransmissionSupported: getConfigBoolValue(
+                        platform,
+                        "Platform",
+                        "GPIO Clock Transmission Supported",
+                        true
+                    ),
+                    gpioClockTransmissionError: getConfigValue(
+                        platform,
+                        "Platform",
+                        "GPIO Clock Transmission Error",
+                        ""
+                    ),
+                    si5351Detected: getConfigBoolValue(
+                        platform,
+                        "Platform",
+                        "Si5351 Detected",
+                        true
+                    ),
+                    si5351DetectionError: getConfigValue(
+                        platform,
+                        "Platform",
+                        "Si5351 Detection Error",
+                        ""
+                    )
+                };
 
                 let mode = getConfigValue(operation, "Operation", "Mode", "WSPR");
                 if (!["WSPR", "QRSS", "FSKCW", "DFCW"].includes(mode)) {
@@ -850,6 +896,9 @@ function populateConfig(callback = null) {
                     }
                     $("#planner_preference").val(plannerPreference).trigger("change");
                     $("#transmit_backend").val(transmitBackend).trigger("change");
+                    if (typeof updateBackendPlatformSupportUi === "function") {
+                        updateBackendPlatformSupportUi();
+                    }
                     if (typeof setTxPin === "function") {
                         setTxPin(tx_pin);
                     }
@@ -1291,6 +1340,21 @@ function connectWebSocket(url, reconnectDelay = 5000) {
                 debugConsole("debug", "Reloading config by notification.");
                 populateConfig();
             }
+        }
+
+        if (msg.type === "configuration" && msg.state === "reload_failed") {
+            const message =
+                typeof msg.message === "string" && msg.message.trim()
+                    ? msg.message.trim()
+                    : "Configuration reload failed.";
+            const formattedMessage =
+                typeof formatReloadFailureMessage === "function"
+                    ? formatReloadFailureMessage(message)
+                    : message;
+            if (typeof showBackendStatus === "function") {
+                showBackendStatus(formattedMessage, "danger", "runtime");
+            }
+            alert(formattedMessage);
         }
 
         // …any other message types…
