@@ -40,33 +40,33 @@
                     <ul class="dropdown-menu dropdown-menu-start" aria-labelledby="wsprpiDropdown">
                         <li>
                             <a
-                                class="dropdown-item <?= $current === 'index.php' ? 'disabled' : '' ?>"
+                                class="dropdown-item <?= $activeView === 'config' ? 'disabled' : '' ?>"
                                 href="index.php"
-                                <?= $current === 'index.php' ? 'tabindex=\"-1\" aria-disabled=\"true\"' : '' ?>>
+                                <?= $activeView === 'config' ? 'tabindex=\"-1\" aria-disabled=\"true\"' : '' ?>>
                                 Configuration
                             </a>
                         </li>
                         <li>
                             <a
-                                class="dropdown-item <?= $current === 'view_logs.php' ? 'disabled' : '' ?>"
-                                href="view_logs.php"
-                                <?= $current === 'view_logs.php' ? 'tabindex=\"-1\" aria-disabled=\"true\"' : '' ?>>
+                                class="dropdown-item <?= $activeView === 'logs' ? 'disabled' : '' ?>"
+                                href="index.php?page=logs"
+                                <?= $activeView === 'logs' ? 'tabindex=\"-1\" aria-disabled=\"true\"' : '' ?>>
                                 Logs
                             </a>
                         </li>
                         <li>
                             <a
-                                class="dropdown-item <?= $current === 'view_spots.php' ? 'disabled' : '' ?>"
-                                href="view_spots.php"
-                                <?= $current === 'view_spots.php' ? 'tabindex=\"-1\" aria-disabled=\"true\"' : '' ?>>
+                                class="dropdown-item <?= $activeView === 'spots' ? 'disabled' : '' ?>"
+                                href="index.php?page=spots"
+                                <?= $activeView === 'spots' ? 'tabindex=\"-1\" aria-disabled=\"true\"' : '' ?>>
                                 Spots
                             </a>
                         </li>
                         <li>
                             <a
-                                class="dropdown-item <?= $current === 'maintenance.php' ? 'disabled' : '' ?>"
-                                href="maintenance.php"
-                                <?= $current === 'maintenance.php' ? 'tabindex=\"-1\" aria-disabled=\"true\"' : '' ?>>
+                                class="dropdown-item <?= $activeView === 'maintenance' ? 'disabled' : '' ?>"
+                                href="index.php?page=maintenance"
+                                <?= $activeView === 'maintenance' ? 'tabindex=\"-1\" aria-disabled=\"true\"' : '' ?>>
                                 Maintenance
                             </a>
                         </li>
