@@ -1,23 +1,15 @@
 <?php
-$current = basename($_SERVER['PHP_SELF']);
+require_once __DIR__ . '/app_state.php';
 
-$pageMetadata = [
-    'index.php' => [
-        'title' => 'Wsprry Pi Configuration',
-    ],
-    'view_logs.php' => [
-        'title' => 'Wsprry Pi Log',
-    ],
-    'view_spots.php' => [
-        'title' => 'Wsprry Pi Spots',
-    ],
-    'maintenance.php' => [
-        'title' => 'Wsprry Pi Maintenance',
-    ],
-];
+$current = $legacyCurrentPage;
 
-$defaultPageMetadata = [
-    'title' => 'Wsprry Pi Configuration',
-];
+$pageMetadata = [];
+foreach ($viewMetadata as $viewKey => $metadata) {
+    $pageMetadata[$metadata['legacyScript']] = [
+        'title' => $metadata['title'],
+        'view' => $viewKey,
+    ];
+}
 
+$defaultPageMetadata = $pageMetadata['index.php'];
 $currentPageMetadata = $pageMetadata[$current] ?? $defaultPageMetadata;

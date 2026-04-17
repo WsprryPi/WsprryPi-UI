@@ -18,7 +18,8 @@ $pathConfig = [
 ?>
 
 <script>
-    window.currentPage = <?= json_encode(basename($_SERVER['SCRIPT_NAME'])) ?>;
+    window.currentPage = <?= json_encode($legacyCurrentPage) ?>;
+    window.WSPRRYPI_VIEW = <?= json_encode($activeView) ?>;
     window.WSPRRYPI_PATHS = <?= json_encode($pathConfig, JSON_UNESCAPED_SLASHES) ?>;
 </script>
 
