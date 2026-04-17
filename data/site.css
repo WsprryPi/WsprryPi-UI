@@ -369,6 +369,21 @@ legend {
     align-items: center;
 }
 
+.navbar-nav-secondary .nav-link {
+    flex-wrap: nowrap;
+    padding-inline: 0.7rem;
+}
+
+.navbar-nav-secondary .dropdown-toggle {
+    border-radius: 0.55rem;
+    transition: background-color 120ms ease-in-out, color 120ms ease-in-out;
+}
+
+.navbar-nav-secondary .dropdown-toggle:hover,
+.navbar-nav-secondary .dropdown-toggle:focus {
+    background-color: rgba(var(--wspr-accent-text-rgb), 0.08);
+}
+
 .navbar-signal-status {
     display: inline-flex;
     align-items: center;
@@ -655,6 +670,8 @@ footer .container {
 .footer-meta summary {
     cursor: pointer;
     list-style: none;
+    font-weight: 600;
+    letter-spacing: 0.02em;
 }
 
 .footer-meta summary::-webkit-details-marker {

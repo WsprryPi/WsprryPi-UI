@@ -246,10 +246,15 @@ legend {
 
 .config-actions--operator {
     justify-content: flex-start;
+    align-items: center;
 }
 
 .config-actions > .btn {
     min-width: 8.75rem;
+}
+
+.config-operator-strip .btn {
+    align-self: start;
 }
 
 #bandGpioTable {
