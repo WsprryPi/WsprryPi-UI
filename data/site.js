@@ -194,6 +194,7 @@ function logConfigWarningOnce(message) {
 
 function loadPage() {
     initThemeToggle();
+    syncFixedChromeOffsets();
     hideConnectionAlert();
     setConnectionState("disconnected");
     connectWebSocket(WEBSOCKET_URL, WS_RECONNECT);
@@ -236,6 +237,14 @@ function bindActions() {
 
     // Bind the theme toggle
     $("#themeToggle").on("click", clickThemeToggle);
+
+    const navbar = document.getElementById("mainNavbar");
+    const mainNav = document.getElementById("mainNav");
+    if (navbar && mainNav) {
+        mainNav.addEventListener("shown.bs.collapse", syncFixedChromeOffsets);
+        mainNav.addEventListener("hidden.bs.collapse", syncFixedChromeOffsets);
+    }
+    window.addEventListener("resize", syncFixedChromeOffsets);
 
     // Grab the modal element and its Bootstrap instance
     const systemModalEl = document.getElementById("systemModal");
@@ -285,6 +294,20 @@ function bindActions() {
     // Spot viewer bindings
     if (typeof bindViewSpotsActions === "function") {
         bindViewSpotsActions();
+    }
+}
+
+function syncFixedChromeOffsets() {
+    const root = document.documentElement;
+    const navbar = document.getElementById("mainNavbar");
+    const footer = document.querySelector("footer.fixed-bottom");
+
+    if (navbar) {
+        root.style.setProperty("--navbar-offset", `${Math.ceil(navbar.getBoundingClientRect().height)}px`);
+    }
+
+    if (footer) {
+        root.style.setProperty("--footer-offset", `${Math.ceil(footer.getBoundingClientRect().height)}px`);
     }
 }
 
@@ -1486,6 +1509,7 @@ function updateWsprryPiVersion() {
                 versionElement.removeAttribute("title");
                 debugConsole("error", "Invalid JSON format from version.");
             }
+            syncFixedChromeOffsets();
         })
         .fail(function (jqXHR, textStatus, errorThrown) {
             versionElement.textContent = "Service unavailable";
@@ -1497,6 +1521,7 @@ function updateWsprryPiVersion() {
                 + textStatus
                 + (errorThrown ? " (" + errorThrown + ")" : "")
             );
+            syncFixedChromeOffsets();
         });
 }
 

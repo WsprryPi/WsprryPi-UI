@@ -39,7 +39,7 @@
 ------------------------------------------------------------ */
 #connection-alert {
     position: fixed;
-    top: 56px;
+    top: var(--navbar-offset);
     left: 50%;
     z-index: 1080;
     min-width: min(36rem, calc(100vw - 2rem));
@@ -64,12 +64,6 @@
     transform: translate(-50%, 0);
     transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out,
         visibility 0s linear 0s;
-}
-
-@media (max-width: 1399.98px) {
-    #connection-alert {
-        top: 72px;
-    }
 }
 
 /* ------------------------------------------------------------
@@ -175,6 +169,8 @@ input#themeToggle.form-check-input:focus {
 ------------------------------------------------------------ */
 
 :root {
+    --navbar-offset: 56px;
+    --footer-offset: 56px;
     --page-space-xs: 0.5rem;
     --page-space-sm: 0.75rem;
     --page-space-md: 1rem;
@@ -184,14 +180,12 @@ input#themeToggle.form-check-input:focus {
 }
 
 body {
-    padding-top: 56px;
-    /* navbar height */
-    padding-bottom: 56px;
-    /* footer height */
+    padding-top: var(--navbar-offset);
+    padding-bottom: var(--footer-offset);
 }
 
 .page-shell {
-    min-height: calc(100vh - 112px);
+    min-height: calc(100vh - var(--navbar-offset) - var(--footer-offset));
     padding-block: var(--page-space-xl);
 }
 
@@ -207,14 +201,26 @@ body {
 
 /* Increased top padding when navbar is collapsed (mobile/hamburger view) */
 @media (max-width: 1399.98px) {
-    body {
-        padding-top: 72px;
-        padding-bottom: 35px;
+    :root {
+        --footer-offset: 35px;
     }
+}
 
-    .page-shell {
-        min-height: calc(100vh - 107px);
-    }
+.navbar-brand-app {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    min-width: 0;
+    margin-right: 1rem;
+    flex: 1 1 auto;
+}
+
+.navbar-title {
+    min-width: 0;
+}
+
+#mainNavbar .container {
+    align-items: center;
 }
 
 /* ------------------------------------------------------------
@@ -284,6 +290,27 @@ body {
         padding-block: var(--page-space-lg);
     }
 
+    .navbar {
+        --bs-navbar-padding-y: 0.5rem;
+    }
+
+    .navbar-brand-app {
+        max-width: calc(100vw - 5.75rem);
+        margin-right: 0.75rem;
+    }
+
+    .navbar-title {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .navbar-toggler {
+        flex: 0 0 auto;
+        margin-left: 0;
+    }
+
     .card .card-body {
         padding-left: var(--page-space-lg);
         padding-right: var(--page-space-lg);
@@ -300,4 +327,51 @@ body {
 footer .container {
     font-size: 0.75rem;
     padding: 0.4rem 0;
+}
+
+.footer-content {
+    display: grid;
+    gap: 0.15rem;
+}
+
+.footer-line {
+    min-width: 0;
+}
+
+.footer-version-line {
+    display: inline-flex;
+    justify-content: center;
+    align-items: baseline;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+}
+
+.footer-version-label {
+    flex: 0 0 auto;
+}
+
+.footer-version-value {
+    display: inline-block;
+    min-width: 0;
+    max-width: min(32rem, 100%);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+}
+
+@media (max-width: 575.98px) {
+    .footer-content {
+        gap: 0.2rem;
+    }
+
+    .footer-version-line {
+        display: grid;
+        justify-items: center;
+        gap: 0;
+    }
+
+    .footer-version-value {
+        max-width: min(18rem, calc(100vw - 2rem));
+    }
 }

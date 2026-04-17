@@ -1,15 +1,15 @@
 <?php require_once 'page_metadata.php'; ?>
 
 <!-- Fixed Navbar -->
-<nav class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top">
+<nav id="mainNavbar" class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top">
     <div class="container">
-        <span class="navbar-brand">
+        <span class="navbar-brand navbar-brand-app">
             <i
                 id="connIcon"
                 data-bs-toggle="tooltip"
                 data-bs-original-title="Disconnected."
                 class="fa-solid fa-tower-broadcast"></i>
-            <?= htmlspecialchars($currentPageMetadata['title']) ?>
+            <span class="navbar-title"><?= htmlspecialchars($currentPageMetadata['title']) ?></span>
         </span>
         <button
             class="navbar-toggler ms-auto"
