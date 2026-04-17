@@ -286,3 +286,10 @@
 .glass-clear:active {
     background-color: rgba(var(--btn-clear-rgb), var(--btn-glass-active-alpha));
 }
+
+@media (prefers-reduced-motion: reduce) {
+    .btn-soft,
+    .glass-btn {
+        transition: none !important;
+    }
+}

@@ -16,6 +16,7 @@
     --wspr-state-warning: #b79256;
     --wspr-state-success: #5f8f74;
     --wspr-state-active: #c8a85d;
+    --focus-ring: 0 0 0 0.2rem rgba(var(--wspr-accent-soft-rgb), 0.22);
 }
 
 [data-bs-theme="dark"] {
@@ -258,6 +259,16 @@ legend {
     font-weight: 500;
 }
 
+.navbar-toggler:focus-visible,
+.navbar-nav .nav-link:focus-visible,
+.dropdown-item:focus-visible,
+.btn:focus-visible,
+.form-control:focus-visible,
+.form-select:focus-visible,
+.form-check-input:focus-visible {
+    box-shadow: var(--focus-ring);
+}
+
 .page-shell {
     min-height: calc(100vh - var(--navbar-offset) - var(--footer-offset));
     padding-block: var(--page-space-xl);
@@ -331,6 +342,7 @@ legend {
     #mainNav .dropdown-item {
         white-space: normal;
         color: rgb(var(--wspr-accent-text-rgb));
+        border-radius: 0.35rem;
     }
 
     #mainNav .dropdown-item:hover,
@@ -485,6 +497,7 @@ footer .container {
     min-width: 0;
     vertical-align: bottom;
     opacity: 0.92;
+    font-variant-numeric: tabular-nums;
 }
 
 @media (max-width: 575.98px) {
@@ -503,5 +516,17 @@ footer .container {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #connection-alert,
+    input#themeToggle.form-check-input,
+    input#themeToggle.form-check-input::before,
+    .btn,
+    .dropdown-menu,
+    .dropdown-item,
+    .navbar-toggler {
+        transition: none !important;
     }
 }
