@@ -5,7 +5,13 @@ require __DIR__ . '/../card_header.php';
 ?>
 
             <div class="card-body" style="position: relative;">
-                <div id="sse-status-badge" class="sse-disconnected logs-overlay" title="Disconnected">Disconnected</div>
+                <div
+                    id="sse-status-badge"
+                    class="sse-disconnected logs-overlay"
+                    role="status"
+                    aria-live="polite"
+                    aria-atomic="true"
+                    title="Disconnected">Disconnected</div>
 
                 <div id="logs-overlay-controls" aria-label="Log controls" class="logs-overlay">
                     <button id="btn-clear"

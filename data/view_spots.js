@@ -56,20 +56,40 @@
     let _cacheData = null,
         _cacheTS = 0;
 
+    function renderState(title, body, actionLabel = "") {
+        const actionMarkup = actionLabel
+            ? `<button type="button" class="btn btn-outline-primary btn-sm mt-3" id="spotsRetryButton">${actionLabel}</button>`
+            : "";
+
+        $(".card-body.tab-content").html(`
+            <div class="py-5 px-3 text-center" role="status" aria-live="polite">
+                <div class="fw-semibold mb-2">${title}</div>
+                <p class="text-body-secondary mb-0">${body}</p>
+                ${actionMarkup}
+            </div>
+        `);
+    }
+
     // Show a Bootstrap spinner in the card-body
     function renderLoading() {
         $(".card-body.tab-content").html(`
-            <div class="d-flex justify-content-center my-5">
-                <div class="spinner-border text-primary" role="status">
-                  <span class="visually-hidden">Loading…</span>
+            <div class="py-5 px-3 text-center" role="status" aria-live="polite">
+                <div class="spinner-border text-primary mb-3" role="status">
+                    <span class="visually-hidden">Loading…</span>
                 </div>
+                <div class="fw-semibold">Loading recent spots</div>
+                <p class="text-body-secondary mb-0">Querying the last hour of spot reports for the configured transmitter.</p>
             </div>
         `);
     }
 
     // Render an error message in the card-body
     function renderError(msg) {
-        $(".card-body.tab-content").html(`<p class="text-danger">${msg}</p>`);
+        renderState(
+            "Unable to load spots",
+            `${msg} Check the configured callsign and network path to WSPRNet, then try again.`,
+            "Try again"
+        );
     }
 
     // Helper: format UTC date → "YYYY-MM-DD HH:MM:SS"
@@ -93,7 +113,10 @@
     function renderTable(spots) {
         const $c = $(".card-body.tab-content").empty();
         if (!Array.isArray(spots) || spots.length === 0) {
-            return $c.html("<p>No spots in the last hour.</p>");
+            return renderState(
+                "No recent spots",
+                "No spot reports were found in the last hour for the configured transmitter. This can be normal if the station has not transmitted recently or propagation is poor."
+            );
         }
 
         const $wrap = $("<div>").addClass("table-responsive");
@@ -192,5 +215,7 @@
     // Expose for external callers
     window.fetchSpots = fetchSpots;
     window.refreshSpotsHeader = refreshSpotsHeader;
+
+    $(document).on("click", "#spotsRetryButton", fetchSpots);
 
 })(jQuery);

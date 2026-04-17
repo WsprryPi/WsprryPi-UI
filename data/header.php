@@ -22,6 +22,18 @@ $pathConfig = [
     window.WSPRRYPI_VIEW = <?= json_encode($activeView) ?>;
     window.WSPRRYPI_PATHS = <?= json_encode($pathConfig, JSON_UNESCAPED_SLASHES) ?>;
 </script>
+<script>
+    (function () {
+        try {
+            var storedTheme = localStorage.getItem("theme");
+            if (storedTheme === "light" || storedTheme === "dark" || storedTheme === "auto") {
+                document.documentElement.setAttribute("data-bs-theme", storedTheme);
+            }
+        } catch (error) {
+            // Keep the server-rendered theme if storage is unavailable.
+        }
+    })();
+</script>
 
 <meta charset="UTF-8" />
 
