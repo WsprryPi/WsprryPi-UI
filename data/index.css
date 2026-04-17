@@ -106,6 +106,64 @@
     line-height: 1.2;
 }
 
+.config-header-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem 1.5rem;
+}
+
+.config-header-context {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem 1rem;
+    min-width: 0;
+}
+
+.config-hostname {
+    color: var(--bs-secondary-color);
+    line-height: 1.3;
+}
+
+.runtime-grid {
+    align-items: stretch;
+}
+
+.runtime-primary,
+.runtime-action,
+.runtime-meta {
+    display: flex;
+    min-width: 0;
+}
+
+.runtime-primary {
+    align-items: center;
+}
+
+.runtime-action {
+    align-items: center;
+}
+
+.runtime-action .btn {
+    min-width: 11rem;
+}
+
+.runtime-meta {
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.15rem;
+    padding-top: 0.15rem;
+}
+
+.config-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.75rem;
+}
+
 #bandGpioTable {
     min-width: 28rem;
 }
@@ -121,6 +179,37 @@
 }
 
 @media (max-width: 575.98px) {
+    .config-header-context {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    #configTabs {
+        display: flex;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        overflow-y: hidden;
+        gap: 0.35rem;
+        scrollbar-width: thin;
+    }
+
+    #configTabs .nav-item {
+        flex: 0 0 auto;
+    }
+
+    .runtime-action .btn {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .config-actions {
+        justify-content: stretch;
+    }
+
+    .config-actions > .btn {
+        flex: 1 1 100%;
+    }
+
     #bandGpioTable {
         min-width: 0;
     }

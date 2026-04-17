@@ -5,8 +5,8 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
 ?>
 
             <div class="card-header pb-0">
-                <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-2">
-                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                <div class="config-header-bar mb-2">
+                    <div class="config-header-context">
                         <div class="btn-group" role="group" aria-label="Mode Toggle">
                             <input type="radio" class="btn-check" name="mode_toggle" id="wspr_mode" value="WSPR" autocomplete="off" checked>
                             <label class="btn btn-outline-primary" for="wspr_mode">WSPR</label>
@@ -14,7 +14,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                             <input type="radio" class="btn-check" name="mode_toggle" id="qrss_mode" value="QRSS" autocomplete="off">
                             <label class="btn btn-outline-primary" for="qrss_mode">CW Modes</label>
                         </div>
-                        <span>Editing settings for <?php echo gethostname(); ?></span>
+                        <span class="config-hostname">Editing settings for <?php echo gethostname(); ?></span>
                     </div>
 
                     <?php require_once __DIR__ . '/../clock_and_reboot.php'; ?>
@@ -77,25 +77,25 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                             <fieldset class="mb-4" id="global_runtime_control">
                                 <legend>Transmitter Control</legend>
 
-                                <div class="row gx-3 gy-3 align-items-start">
-                                    <div class="col-12 col-lg-4 d-flex align-items-center">
-                                        <div class="d-flex align-items-center gap-2">
+                                <div class="row gx-3 gy-3 align-items-start runtime-grid">
+                                    <div class="col-12 col-lg-4 d-flex align-items-center runtime-primary">
+                                        <div class="d-flex align-items-center gap-2 flex-wrap">
                                             <label class="form-label mb-0" for="transmit">Transmit enabled:</label>
                                             <div class="form-check form-switch mb-0">
                                                 <input class="form-check-input" type="checkbox" role="switch" id="transmit">
                                             </div>
                                         </div>
                                     </div>
-                                    <div class="col-12 col-lg-2">
+                                    <div class="col-12 col-sm-6 col-lg-2 runtime-action">
                                         <button type="button" class="btn btn-danger btn-sm" id="stop_transmit" disabled>
                                             Stop transmission
                                         </button>
                                     </div>
-                                    <div class="col-12 col-lg-3">
+                                    <div class="col-12 col-sm-6 col-lg-3 runtime-meta">
                                         <div class="small text-body-secondary">Current transmit mode</div>
                                         <div class="small">Mode: <span id="runtime_mode_value">Unknown</span></div>
                                     </div>
-                                    <div class="col-12 col-lg-3">
+                                    <div class="col-12 col-lg-3 runtime-meta">
                                         <div class="small text-body-secondary">Current WSPR plan</div>
                                         <div class="small" id="runtime_wspr_plan_value">Not available</div>
                                     </div>
@@ -644,7 +644,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                     </div>
 
                     <fieldset class="mb-4">
-                        <div class="d-flex justify-content-center gap-3">
+                        <div class="config-actions">
                             <button
                                 id="submit"
                                 type="submit"
