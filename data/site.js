@@ -54,6 +54,9 @@ let currentRuntimeConfigStatus = {
     mode: "",
     transmitEnabled: false
 };
+let chromeOffsetSyncHandle = null;
+let lastNavbarOffset = null;
+let lastFooterOffset = null;
 
 // Websocket Creation
 let ws;
@@ -194,7 +197,7 @@ function logConfigWarningOnce(message) {
 
 function loadPage() {
     initThemeToggle();
-    syncFixedChromeOffsets();
+    scheduleChromeOffsetSync();
     hideConnectionAlert();
     setConnectionState("disconnected");
     connectWebSocket(WEBSOCKET_URL, WS_RECONNECT);
@@ -241,10 +244,10 @@ function bindActions() {
     const navbar = document.getElementById("mainNavbar");
     const mainNav = document.getElementById("mainNav");
     if (navbar && mainNav) {
-        mainNav.addEventListener("shown.bs.collapse", syncFixedChromeOffsets);
-        mainNav.addEventListener("hidden.bs.collapse", syncFixedChromeOffsets);
+        mainNav.addEventListener("shown.bs.collapse", scheduleChromeOffsetSync);
+        mainNav.addEventListener("hidden.bs.collapse", scheduleChromeOffsetSync);
     }
-    window.addEventListener("resize", syncFixedChromeOffsets);
+    window.addEventListener("resize", scheduleChromeOffsetSync, { passive: true });
 
     // Grab the modal element and its Bootstrap instance
     const systemModalEl = document.getElementById("systemModal");
@@ -303,12 +306,29 @@ function syncFixedChromeOffsets() {
     const footer = document.querySelector("footer.fixed-bottom");
 
     if (navbar) {
-        root.style.setProperty("--navbar-offset", `${Math.ceil(navbar.getBoundingClientRect().height)}px`);
+        const navbarOffset = Math.ceil(navbar.getBoundingClientRect().height);
+        if (navbarOffset !== lastNavbarOffset) {
+            root.style.setProperty("--navbar-offset", `${navbarOffset}px`);
+            lastNavbarOffset = navbarOffset;
+        }
     }
 
     if (footer) {
-        root.style.setProperty("--footer-offset", `${Math.ceil(footer.getBoundingClientRect().height)}px`);
+        const footerOffset = Math.ceil(footer.getBoundingClientRect().height);
+        if (footerOffset !== lastFooterOffset) {
+            root.style.setProperty("--footer-offset", `${footerOffset}px`);
+            lastFooterOffset = footerOffset;
+        }
     }
+}
+
+function scheduleChromeOffsetSync() {
+    if (chromeOffsetSyncHandle !== null) return;
+
+    chromeOffsetSyncHandle = window.requestAnimationFrame(() => {
+        chromeOffsetSyncHandle = null;
+        syncFixedChromeOffsets();
+    });
 }
 
 // Initialize on page load: read saved theme, set switch & label

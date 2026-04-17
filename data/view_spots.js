@@ -54,7 +54,8 @@
     };
 
     let _cacheData = null,
-        _cacheTS = 0;
+        _cacheTS = 0,
+        _refreshTimer = null;
 
     function renderState(title, body, actionLabel = "") {
         const actionMarkup = actionLabel
@@ -145,12 +146,20 @@
 
         // Scroll to bottom
         const $pane = $(".spots-card .table-responsive");
-        setTimeout(() => $pane.scrollTop($pane.prop("scrollHeight")), 0);
+        window.requestAnimationFrame(() => {
+            $pane.scrollTop($pane.prop("scrollHeight"));
+        });
     }
 
     // Schedule next refresh
     function scheduleNext() {
-        setTimeout(fetchSpots, REFRESH_MS);
+        if (_refreshTimer !== null) {
+            clearTimeout(_refreshTimer);
+        }
+        _refreshTimer = setTimeout(() => {
+            _refreshTimer = null;
+            fetchSpots();
+        }, REFRESH_MS);
     }
 
     // Fetch, parse, render, cache & repeat
