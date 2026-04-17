@@ -361,6 +361,7 @@ legend {
 ------------------------------------------------------------ */
 .card-header {
     padding: 0.5rem 1.25rem;
+    gap: 0.75rem 1rem;
 }
 
 .card-header > span:first-child {
@@ -373,8 +374,9 @@ legend {
     margin: 0;
     padding: 0;
     line-height: 1.2;
-    flex: 0 0 27ch;
-    width: 27ch;
+    flex: 0 1 auto;
+    width: auto;
+    min-width: max-content;
 }
 
 .card-header .text-end.small {
@@ -392,26 +394,42 @@ legend {
 /* ------------------------------------------------------------
            Times‑wrapper (Local/UTC times)
 ------------------------------------------------------------ */
+.group-wrapper {
+    gap: 0.5rem 0.75rem;
+}
+
+.icons-wrapper {
+    flex: 0 0 auto;
+}
+
+.times-wrapper {
+    display: grid;
+    gap: 0.1rem;
+    min-width: max-content;
+}
+
 .times-wrapper .time-line {
     font-size: var(--text-caption);
     margin-bottom: 0.1rem;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
 }
 
 .times-wrapper .time-label {
     display: inline-block;
-    width: 9ch;
-    /* wide enough for “Local Time:” */
+    min-width: 6rem;
     text-align: right;
     margin-right: 0.5rem;
     flex-shrink: 0;
+    white-space: nowrap;
 }
 
 .times-wrapper .time-value {
-    width: 8ch;
-    /* exactly HH:MM:SS */
-    flex: 0 0 8ch;
+    min-width: 4.75rem;
+    flex: 0 0 auto;
     text-align: left;
     font-variant-numeric: tabular-nums;
+    white-space: nowrap;
 }
 
 /* ------------------------------------------------------------
@@ -459,6 +477,15 @@ legend {
 
     .card-header {
         padding: var(--page-space-sm) var(--page-space-lg);
+    }
+
+    .group-wrapper {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .times-wrapper .time-label {
+        min-width: 5.75rem;
     }
 }
 
