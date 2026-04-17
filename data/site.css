@@ -4,11 +4,22 @@
 :root {
     --font-body: "Source Sans 3", "Segoe UI", sans-serif;
     --font-display: "Barlow Semi Condensed", "Segoe UI", sans-serif;
-    --text-caption: 0.8125rem;
+    --text-kicker: 0.75rem;
+    --text-caption: 0.875rem;
     --text-body: 1rem;
-    --text-body-strong: 1.0625rem;
-    --text-section: 1.1875rem;
-    --text-title: 1.35rem;
+    --text-body-strong: 1.125rem;
+    --text-section: 1.25rem;
+    --text-title: 1.5625rem;
+    --leading-tight: 1.12;
+    --leading-snug: 1.3;
+    --leading-body: 1.55;
+    --leading-copy: 1.6;
+    --tracking-kicker: 0.08em;
+    --tracking-display: 0.012em;
+    --weight-regular: 400;
+    --weight-medium: 500;
+    --weight-semibold: 600;
+    --weight-bold: 700;
     --wspr-accent-rgb: 64, 94, 122;
     --wspr-accent-soft-rgb: 107, 128, 150;
     --wspr-accent-text-rgb: 236, 241, 246;
@@ -233,7 +244,7 @@ input#themeToggle.form-check-input::before {
 body {
     font-family: var(--font-body);
     font-size: var(--text-body);
-    line-height: 1.5;
+    line-height: var(--leading-body);
     font-kerning: normal;
     text-rendering: optimizeLegibility;
     padding-top: var(--navbar-offset);
@@ -250,18 +261,30 @@ h6,
 .card-header > span:first-child,
 legend {
     font-family: var(--font-display);
-    letter-spacing: 0.01em;
+    letter-spacing: var(--tracking-display);
+}
+
+p,
+.form-text,
+.text-body-secondary {
+    line-height: var(--leading-copy);
+}
+
+p,
+legend {
+    max-width: 68ch;
 }
 
 .navbar-brand {
     font-size: var(--text-title);
-    font-weight: 600;
-    line-height: 1.1;
+    font-weight: var(--weight-semibold);
+    line-height: var(--leading-tight);
 }
 
 .navbar-nav .nav-link,
 .dropdown-item {
-    font-weight: 500;
+    font-weight: var(--weight-medium);
+    letter-spacing: 0.01em;
 }
 
 .navbar-toggler:focus-visible,
@@ -314,9 +337,9 @@ legend {
 .navbar-kicker {
     color: rgba(var(--wspr-accent-text-rgb), 0.66);
     font-family: var(--font-body);
-    font-size: 0.7rem;
-    font-weight: 600;
-    letter-spacing: 0.1em;
+    font-size: var(--text-kicker);
+    font-weight: var(--weight-semibold);
+    letter-spacing: var(--tracking-kicker);
     text-transform: uppercase;
 }
 
@@ -397,9 +420,9 @@ legend {
 }
 
 .navbar-signal-status__label {
-    font-size: 0.74rem;
-    font-weight: 600;
-    letter-spacing: 0.08em;
+    font-size: var(--text-kicker);
+    font-weight: var(--weight-semibold);
+    letter-spacing: var(--tracking-kicker);
     text-transform: uppercase;
 }
 
@@ -494,8 +517,8 @@ legend {
 
 .card-header > span:first-child {
     font-size: var(--text-section);
-    font-weight: 600;
-    line-height: 1.15;
+    font-weight: var(--weight-semibold);
+    line-height: var(--leading-tight);
 }
 
 .card-header .time-block {
@@ -599,7 +622,7 @@ legend {
     }
 
     .navbar-kicker {
-        font-size: 0.66rem;
+        font-size: 0.6875rem;
     }
 
     .card .card-body {
@@ -626,7 +649,7 @@ legend {
 ------------------------------------------------------------ */
 footer .container {
     font-size: var(--text-caption);
-    line-height: 1.3;
+    line-height: 1.4;
     padding: 0.4rem 0;
 }
 
@@ -670,7 +693,7 @@ footer .container {
 .footer-meta summary {
     cursor: pointer;
     list-style: none;
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
     letter-spacing: 0.02em;
 }
 

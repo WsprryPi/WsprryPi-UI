@@ -64,12 +64,12 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                         <div class="config-operator-panel">
                             <div class="config-operator-label">Signal mode</div>
                             <p class="config-operator-copy mb-0">Choose the transmit workflow first. The matching settings stay below in this tab.</p>
-                            <div class="btn-group config-mode-toggle" role="group" aria-label="Mode Toggle">
+                            <div class="btn-group config-mode-toggle" role="group" aria-label="Signal mode">
                                 <input type="radio" class="btn-check" name="mode_toggle" id="wspr_mode" value="WSPR" autocomplete="off" checked>
-                                <label class="btn btn-outline-primary" for="wspr_mode">WSPR</label>
+                                <label class="btn config-mode-toggle__segment" for="wspr_mode">WSPR</label>
 
                                 <input type="radio" class="btn-check" name="mode_toggle" id="qrss_mode" value="QRSS" autocomplete="off">
-                                <label class="btn btn-outline-primary" for="qrss_mode">CW Modes</label>
+                                <label class="btn config-mode-toggle__segment" for="qrss_mode">CW Modes</label>
                             </div>
                         </div>
 
@@ -179,7 +179,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                 <fieldset class="mb-4" id="tx_info">
                                     <legend>Transmission Settings</legend>
                                     <div class="row gx-2 align-items-center">
-                                        <div class="col-md-8 mb-3 d-flex align-items-center">
+                                        <div class="col-12 col-lg-5 mb-3 d-flex align-items-center">
                                             <label for="frequencies" class="form-label mb-0 me-2 flex-shrink-0">
                                                 Frequencies:
                                             </label>
@@ -194,7 +194,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                             </div>
                                         </div>
 
-                                        <div class="col-md-4 mb-3 d-flex align-items-center">
+                                        <div class="col-12 col-md-6 col-lg-3 mb-3 d-flex align-items-center">
                                             <label for="dbm" class="form-label mb-0 me-2 flex-shrink-0">
                                                 TX dBm:
                                             </label>
@@ -209,16 +209,31 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                     required />
                                             </div>
                                         </div>
+
+                                        <div class="col-12 col-md-6 col-lg-4 mb-3 d-flex align-items-center">
+                                            <div class="form-check form-switch form-check-reverse mb-0">
+                                                <input
+                                                    class="form-check-input"
+                                                    type="checkbox"
+                                                    role="switch"
+                                                    data-bs-toggle="tooltip"
+                                                    title="Randomly shift each WSPR transmission around the dial-derived RF frequency."
+                                                    id="useoffset" />
+                                                <label class="form-check-label mb-0" for="useoffset">
+                                                    Randomize WSPR offset
+                                                </label>
+                                            </div>
+                                        </div>
                                     </div>
 
-                                    <div class="row gx-2 align-items-center">
-                                        <div class="col-12 mb-3">
+                                    <div class="row gx-3 align-items-start">
+                                        <div class="col-12 col-xl-7 mb-3 config-planner-field">
                                             <label for="planner_preference" class="form-label">
                                                 WSPR planning mode
                                             </label>
                                             <select
                                                 id="planner_preference"
-                                                class="form-select"
+                                                class="form-select config-planner-field__select"
                                                 data-bs-toggle="tooltip"
                                                 title="Choose how WsprryPi selects single-frame or paired WSPR planning for extended identities.">
                                                 <option value="auto">Automatic</option>
@@ -231,56 +246,39 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                 Require paired rejects identities that cannot be sent as a paired plan.
                                             </div>
                                         </div>
-                                    </div>
-                                </fieldset>
 
-                                <fieldset class="mb-4">
-                                    <legend>Frequency Calibration</legend>
-                                    <div class="row gx-2 align-items-center">
-                                        <div class="col-md-4 mb-3 d-flex align-items-center">
-                                            <label for="ppm" class="form-label mb-0 me-2 flex-shrink-0">PPM Offset</label>
-                                            <div class="flex-grow-1">
-                                                <input
-                                                    type="number"
-                                                    class="form-control flex-grow-1"
-                                                    id="ppm"
-                                                    min="-200"
-                                                    max="200"
-                                                    step="0.000001"
-                                                data-bs-toggle="tooltip"
-                                                title="Enter a decimal value between -200.000000 to 200.000000">
-                                            </div>
-                                        </div>
+                                        <div class="col-12 col-xl-5 mb-3 config-calibration-field">
+                                            <div class="config-calibration-field__label">Frequency calibration</div>
+                                            <div class="config-calibration-field__controls">
+                                                <div class="config-calibration-field__ppm d-flex align-items-center">
+                                                    <label for="ppm" class="form-label mb-0 me-2 flex-shrink-0">PPM Offset</label>
+                                                    <div class="flex-grow-1">
+                                                        <input
+                                                            type="number"
+                                                            class="form-control config-calibration-field__input"
+                                                            id="ppm"
+                                                            min="-200"
+                                                            max="200"
+                                                            step="0.000001"
+                                                            data-bs-toggle="tooltip"
+                                                            title="Enter a decimal value between -200.000000 to 200.000000">
+                                                    </div>
+                                                </div>
 
-                                        <div class="col-md-4 mb-3 d-flex align-items-center">
-                                            <div class="form-check form-switch form-check-reverse mb-0">
-                                                <input
-                                                    class="form-check-input"
-                                                    type="checkbox"
-                                                    role="switch"
-                                                    data-bs-toggle="tooltip"
-                                                    title="Use NTP for GPIO frequency calibration"
-                                                    id="use_ntp" />
-                                                <label
-                                                    class="form-check-label mb-0"
-                                                    for="use_ntp">
-                                                    Use NTP
-                                                </label>
-                                            </div>
-                                        </div>
-
-                                        <div class="col-md-4 mb-3 d-flex align-items-center">
-                                            <div class="form-check form-switch form-check-reverse mb-0">
-                                                <input
-                                                    class="form-check-input"
-                                                    type="checkbox"
-                                                    role="switch"
-                                                    data-bs-toggle="tooltip"
-                                                    title="Randomly shift each WSPR transmission around the dial-derived RF frequency."
-                                                    id="useoffset" />
-                                                <label class="form-check-label mb-0" for="useoffset">
-                                                    Randomize WSPR offset
-                                                </label>
+                                                <div class="form-check form-switch form-check-reverse mb-0">
+                                                    <input
+                                                        class="form-check-input"
+                                                        type="checkbox"
+                                                        role="switch"
+                                                        data-bs-toggle="tooltip"
+                                                        title="Use NTP for GPIO frequency calibration"
+                                                        id="use_ntp" />
+                                                    <label
+                                                        class="form-check-label mb-0"
+                                                        for="use_ntp">
+                                                        Use NTP
+                                                    </label>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>

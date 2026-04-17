@@ -45,6 +45,11 @@ $pathConfig = [
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Logs</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap">
 
     <script>
         window.WSPRRYPI_PATHS = <?= json_encode($pathConfig, JSON_UNESCAPED_SLASHES) ?>;
@@ -56,10 +61,25 @@ $pathConfig = [
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
     <style>
+        :root {
+            --font-body: "Source Sans 3", "Segoe UI", sans-serif;
+            --font-display: "Barlow Semi Condensed", "Segoe UI", sans-serif;
+            --text-kicker: 0.75rem;
+            --text-caption: 0.875rem;
+            --text-body: 1rem;
+            --text-title: 1.5rem;
+        }
+
+        body {
+            font-family: var(--font-body);
+            line-height: 1.55;
+        }
+
         .logs-card .card-body {
             position: relative;
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-            font-size: 0.9rem;
+            font-size: 1rem;
+            line-height: 1.5;
             background: #0b0f14;
             color: #d9e1ea;
             border-radius: 0 0 .5rem .5rem;
@@ -73,7 +93,10 @@ $pathConfig = [
             z-index: 12;
             padding: 2px 10px;
             border-radius: 999px;
-            font-size: 0.75rem;
+            font-size: var(--text-kicker);
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
             line-height: 1.4;
             border: 1px solid rgba(255, 255, 255, 0.15);
             background: rgba(255, 255, 255, 0.06);
@@ -122,13 +145,22 @@ $pathConfig = [
         }
 
         .logs-header {
-            font-size: 0.95rem;
+            font-size: var(--text-body);
+            line-height: 1.45;
         }
 
         .logs-toolbar .form-select,
         .logs-toolbar .form-control,
         .logs-toolbar .btn {
-            font-size: 0.9rem;
+            font-size: var(--text-caption);
+        }
+
+        .logs-toolbar .form-label {
+            font-family: var(--font-display);
+            font-size: var(--text-kicker);
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
         }
 
         .log-emerg {
@@ -182,7 +214,7 @@ $pathConfig = [
 
         <div class="d-flex align-items-center justify-content-between mb-3">
             <div>
-                <div class="h4 mb-0">Log Stream</div>
+                <div class="mb-0" style="font-family: var(--font-display); font-size: var(--text-title); font-weight: 600; letter-spacing: 0.012em; line-height: 1.15;">Log Stream</div>
                 <div class="text-body-secondary logs-header">systemd-journald via SSE</div>
             </div>
             <div class="d-flex gap-2">

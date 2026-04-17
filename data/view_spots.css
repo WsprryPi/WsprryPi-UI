@@ -30,10 +30,25 @@
 }
 
 #spotsFor small {
-    font-size: 0.8em;
-    /* a bit smaller if you like */
+    font-size: var(--text-caption);
     color: var(--bs-gray-600);
-    /* or any muted color you prefer */
+    line-height: 1.45;
+}
+
+.spots-state {
+    display: grid;
+    justify-items: center;
+    text-align: center;
+}
+
+.spots-state__title {
+    max-width: 28rem;
+}
+
+.spots-state__body {
+    width: min(100%, 42rem);
+    margin-inline: auto;
+    text-align: left;
 }
 
 @media (max-width: 767.98px) {

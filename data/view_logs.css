@@ -28,7 +28,8 @@
     position: relative;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
         "Liberation Mono", "Courier New", monospace;
-    font-size: 0.95rem;
+    font-size: 1rem;
+    line-height: 1.5;
     background: var(--logs-surface);
     color: var(--logs-text);
     border-radius: 0 0 .5rem .5rem;
@@ -104,6 +105,8 @@
 
     /* Keep buttons the same width so the cluster does not wobble. */
     min-width: 88px;
+    font-size: var(--text-caption);
+    font-weight: var(--weight-semibold);
 
     background-color: color-mix(in srgb, var(--logs-surface) 88%, transparent);
 
@@ -119,7 +122,10 @@
     z-index: 12;
     padding: 2px 10px;
     border-radius: 999px;
-    font-size: 0.75rem;
+    font-size: var(--text-kicker);
+    font-weight: var(--weight-semibold);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
     line-height: 1.4;
     border: 1px solid var(--logs-overlay-border);
     color: var(--logs-text);
@@ -167,13 +173,21 @@
 }
 
 .logs-header {
-    font-size: 0.95rem;
+    font-size: var(--text-body);
+    line-height: 1.45;
 }
 
 .logs-toolbar .form-select,
 .logs-toolbar .form-control,
 .logs-toolbar .btn {
-    font-size: 0.9rem;
+    font-size: var(--text-caption);
+}
+
+.logs-toolbar .form-label {
+    font-size: var(--text-kicker);
+    font-weight: var(--weight-semibold);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
 }
 
 .log-emerg {

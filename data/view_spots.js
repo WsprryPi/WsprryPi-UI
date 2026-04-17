@@ -63,9 +63,9 @@
             : "";
 
         $(".card-body.tab-content").html(`
-            <div class="py-5 px-3 text-center" role="status" aria-live="polite">
-                <div class="fw-semibold mb-2">${title}</div>
-                <p class="text-body-secondary mb-0">${body}</p>
+            <div class="spots-state py-5 px-3" role="status" aria-live="polite">
+                <div class="spots-state__title fw-semibold mb-2">${title}</div>
+                <p class="spots-state__body text-body-secondary mb-0">${body}</p>
                 ${actionMarkup}
             </div>
         `);
@@ -74,12 +74,12 @@
     // Show a Bootstrap spinner in the card-body
     function renderLoading() {
         $(".card-body.tab-content").html(`
-            <div class="py-5 px-3 text-center" role="status" aria-live="polite">
+            <div class="spots-state py-5 px-3" role="status" aria-live="polite">
                 <div class="spinner-border text-primary mb-3" role="status">
                     <span class="visually-hidden">Loading…</span>
                 </div>
-                <div class="fw-semibold">Loading recent spots</div>
-                <p class="text-body-secondary mb-0">Checking the last hour of WSPRNet spot reports for this transmitter.</p>
+                <div class="spots-state__title fw-semibold">Loading recent spots</div>
+                <p class="spots-state__body text-body-secondary mb-0">Checking the last hour of WSPRNet spot reports for this transmitter.</p>
             </div>
         `);
     }
