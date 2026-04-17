@@ -13,6 +13,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const restoreButton = document.getElementById("restoreConfigButton");
     const globalToastContainer =
         document.getElementById("globalToastContainer");
+    const resultPanel = document.getElementById("maintenanceResult");
+    const resultTitle = document.getElementById("maintenanceResultTitle");
+    const resultBody = document.getElementById("maintenanceResultBody");
 
     /**
      * Removes any existing toasts from the global container.
@@ -99,6 +102,13 @@ document.addEventListener("DOMContentLoaded", () => {
         restoreButton.disabled = disabled;
     }
 
+    function showResult(state, title, body) {
+        resultPanel.dataset.state = state;
+        resultTitle.textContent = title;
+        resultBody.textContent = body;
+        resultPanel.classList.remove("d-none");
+    }
+
     /**
      * Sets a temporary working label on the active button.
      *
@@ -160,17 +170,29 @@ document.addEventListener("DOMContentLoaded", () => {
         const workingText = isRepair
             ? "Repairing Configuration..."
             : "Restoring to Stock...";
-
+        const successTitle = isRepair
+            ? "Configuration repaired"
+            : "Configuration reset to stock defaults";
         const successText = isRepair
-            ? "Configuration repaired successfully."
-            : "Configuration restored to stock successfully.";
-
+            ? "Review the configuration page now. Confirm the repaired settings, then save any adjustments you still need."
+            : "Review station, transmit mode, and hardware settings now. The stock baseline is loaded, but you still need to save your intended operating values.";
+        const warningText = isRepair
+            ? "The repair completed, but the updated configuration could not be reloaded automatically. Reload the page and verify the repaired values before transmitting."
+            : "The reset completed, but the stock configuration could not be reloaded automatically. Reload the page before making further changes.";
         const fallbackFailureText = isRepair
             ? "Configuration repair failed."
-            : "Configuration restore failed.";
+            : "Configuration reset failed.";
 
         showToast("Processing request...", "info");
+        showResult(
+            "warning",
+            isRepair ? "Repair in progress" : "Reset in progress",
+            isRepair
+                ? "The UI is checking the configuration and writing repaired values where possible."
+                : "The UI is replacing the current configuration with the stock baseline."
+        );
         setButtonWorkingState(button, workingText);
+        setButtonsDisabled(true);
 
         try {
             const response = await fetch(REPAIR_URL, {
@@ -196,26 +218,39 @@ document.addEventListener("DOMContentLoaded", () => {
                         : fallbackFailureText;
 
                 showToast(message, "danger");
+                showResult(
+                    "danger",
+                    isRepair ? "Repair did not complete" : "Reset did not complete",
+                    `${message} No further changes were applied. Review the current configuration before trying again.`
+                );
                 return;
             }
 
             const configReloaded = await refreshConfig();
 
             if (configReloaded) {
-                showToast(successText, "success");
+                showToast(successTitle, "success");
+                showResult("success", successTitle, successText);
             } else {
                 showToast(
-                    `${successText} The updated configuration could not be reloaded.`,
+                    `${successTitle}. The updated configuration could not be reloaded.`,
                     "warning"
                 );
+                showResult("warning", successTitle, warningText);
             }
         } catch {
             showToast(
                 "Unable to contact the server for the configuration operation.",
                 "danger"
             );
+            showResult(
+                "danger",
+                isRepair ? "Repair could not reach the server" : "Reset could not reach the server",
+                "The request did not complete. Leave the current configuration unchanged, verify controller connectivity, then try again."
+            );
         } finally {
             restoreButtonText(button);
+            setButtonsDisabled(false);
         }
     }
 

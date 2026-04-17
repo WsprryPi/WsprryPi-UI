@@ -143,7 +143,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                             tabindex="0">
                             <div id="wspr_config">
                                 <fieldset class="mb-4" id="op_info">
-                                    <legend>Station Info</legend>
+                                    <legend>WSPR Station Configuration</legend>
                                     <div class="row gx-2 align-items-center">
                                         <div class="col-md-6 mb-3 d-flex align-items-center">
                                             <label for="callsign" class="form-label mb-0 me-2 flex-shrink-0">
@@ -155,7 +155,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                     id="callsign"
                                                     class="form-control"
                                                     data-bs-toggle="tooltip"
-                                                    title="Enter a callsign, compound callsign, or explicit Type 3 callsign such as K1ABC, AA0NT/12, or <AA0NT>"
+                                                    title="Enter a callsign, compound callsign, or explicit Type 3 callsign such as AA0NT, AA0NT/12, or <AA0NT>"
                                                     required />
                                             </div>
                                         </div>
@@ -169,7 +169,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                     id="gridsquare"
                                                     class="form-control"
                                                     data-bs-toggle="tooltip"
-                                                    title="Enter a 4-character or 6-character Maidenhead locator such as FN20 or FN20AB"
+                                                    title="Enter a 4-character or 6-character Maidenhead locator such as EM18 or EM18IG"
                                                     required />
                                             </div>
                                         </div>
@@ -237,7 +237,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                 <fieldset class="mb-4">
                                     <legend>Frequency Calibration</legend>
                                     <div class="row gx-2 align-items-center">
-                                        <div class="col-md-6 mb-3 d-flex align-items-center">
+                                        <div class="col-md-4 mb-3 d-flex align-items-center">
                                             <label for="ppm" class="form-label mb-0 me-2 flex-shrink-0">PPM Offset</label>
                                             <div class="flex-grow-1">
                                                 <input
@@ -247,12 +247,29 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                     min="-200"
                                                     max="200"
                                                     step="0.000001"
-                                                    data-bs-toggle="tooltip"
-                                                    title="Enter a decimal value between -200.000000 to 200.000000">
+                                                data-bs-toggle="tooltip"
+                                                title="Enter a decimal value between -200.000000 to 200.000000">
                                             </div>
                                         </div>
 
-                                        <div class="col-md-6 mb-3 d-flex align-items-center">
+                                        <div class="col-md-4 mb-3 d-flex align-items-center">
+                                            <div class="form-check form-switch form-check-reverse mb-0">
+                                                <input
+                                                    class="form-check-input"
+                                                    type="checkbox"
+                                                    role="switch"
+                                                    data-bs-toggle="tooltip"
+                                                    title="Use NTP for GPIO frequency calibration"
+                                                    id="use_ntp" />
+                                                <label
+                                                    class="form-check-label mb-0"
+                                                    for="use_ntp">
+                                                    Use NTP
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div class="col-md-4 mb-3 d-flex align-items-center">
                                             <div class="form-check form-switch form-check-reverse mb-0">
                                                 <input
                                                     class="form-check-input"
@@ -330,7 +347,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                         </div>
 
                                         <div class="col-12 col-lg-4 d-flex align-items-center">
-                                            <label for="fsk_offset" class="form-label mb-0 me-2 flex-shrink-0">Shift Hz:</label>
+                                            <label for="fsk_offset" class="form-label mb-0 me-2 flex-shrink-0">Frequency Offset:</label>
                                             <div class="flex-grow-1">
                                                 <input
                                                     type="number"
@@ -340,7 +357,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                     max="1000"
                                                     step="0.01"
                                                     data-bs-toggle="tooltip"
-                                                    title="CW.Shift Hz: FSKCW mark and DFCW dash frequency are Base Frequency + Shift Hz. QRSS ignores this field."
+                                                    title="CW.Shift Hz: offset in Hz from the base frequency for FSKCW and DFCW. QRSS ignores this field."
                                                     value="0"
                                                     required />
                                             </div>
@@ -359,6 +376,19 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                 title="CW.Base Frequency in Hz. QRSS uses this directly; FSKCW/DFCW add Shift Hz for the second tone."
                                                 value="7040000.0"
                                                 required />
+                                        </div>
+
+                                        <div class="col-12 col-lg-4 d-flex align-items-center">
+                                            <label for="ppm_cw" class="form-label mb-0 me-2 flex-shrink-0">PPM Offset:</label>
+                                            <input
+                                                type="number"
+                                                class="form-control flex-grow-1"
+                                                id="ppm_cw"
+                                                min="-200"
+                                                max="200"
+                                                step="0.000001"
+                                                data-bs-toggle="tooltip"
+                                                title="Calibration.PPM: frequency calibration offset applied to the transmitter clock." />
                                         </div>
 
                                         <div class="col-12 col-lg-4 d-flex align-items-center">
@@ -475,22 +505,6 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                         </div>
                                     </div>
 
-                                    <div class="col-12 col-lg-4 d-flex align-items-center">
-                                        <div class="form-check form-switch form-check-reverse mb-0">
-                                            <input
-                                                class="form-check-input"
-                                                type="checkbox"
-                                                role="switch"
-                                                data-bs-toggle="tooltip"
-                                                title="Use NTP for GPIO frequency calibration"
-                                                id="use_ntp" />
-                                            <label
-                                                class="form-check-label mb-0"
-                                                for="use_ntp">
-                                                Use NTP
-                                            </label>
-                                        </div>
-                                    </div>
                                 </div>
                             </fieldset>
 

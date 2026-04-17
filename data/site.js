@@ -973,6 +973,7 @@ function populateConfig(callback = null) {
                     // Frequency Calibration
                     $("#use_ntp").prop("checked", use_ntp).trigger("change");
                     $("#ppm").val(ppm).trigger("change");
+                    $("#ppm_cw").val(ppm).trigger("change");
 
                     $("#gpio-power-range").val(power_level).trigger("input");
                     $("#si5351_i2c_bus").val(si5351I2cBus).trigger("change");

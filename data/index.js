@@ -17,6 +17,8 @@ function bindIndexActions() {
     // Bind the Use NTP Switch
     $("#use_ntp").on("change", clickUseNTP);
     $("#transmit_backend").on("change", clickTransmitBackend);
+    $("#ppm").on("input change", () => syncPpmFields("wspr"));
+    $("#ppm_cw").on("input change", () => syncPpmFields("cw"));
 
     // Wire up the LED switch
     $("#use_led").on("change", clickUseLED);
@@ -408,13 +410,32 @@ function syncCalibrationControls() {
     const backend = selectedTransmitBackend();
     const useNtp = backend === "gpio" && $("#use_ntp").is(":checked");
     const $ppm = $("#ppm");
+    const $ppmCw = $("#ppm_cw");
 
     $ppm.prop("disabled", useNtp);
+    $ppmCw.prop("disabled", useNtp);
 
     if (useNtp) {
         $ppm.removeClass("is-valid is-invalid").prop("required", false);
+        $ppmCw.removeClass("is-valid is-invalid").prop("required", false);
     } else {
         $ppm.prop("required", true);
+        $ppmCw.prop("required", true);
+    }
+}
+
+function syncPpmFields(source = "wspr") {
+    const $ppm = $("#ppm");
+    const $ppmCw = $("#ppm_cw");
+
+    if (!$ppm.length || !$ppmCw.length) {
+        return;
+    }
+
+    if (source === "cw") {
+        $ppm.val($ppmCw.val());
+    } else {
+        $ppmCw.val($ppm.val());
     }
 }
 
@@ -675,7 +696,7 @@ function setIdentityValidity(ctrl) {
             ctrl.setCustomValidity("Grid square is required.");
         } else if (!isLightweightGridSquare(gridSquare)) {
             ctrl.setCustomValidity(
-                "Enter a 4-character or 6-character Maidenhead locator such as FN20 or FN20AB."
+                "Enter a 4-character or 6-character Maidenhead locator such as EM18 or EM18IG."
             );
         } else if (isPlaceholderGridSquare(gridSquare)) {
             ctrl.setCustomValidity("Placeholder grid square ZZ99 is not allowed.");
@@ -1126,7 +1147,10 @@ function savePage(e) {
 
     // GPIO timing calibration
     let use_ntp = parseBool($("#use_ntp").is(":checked"));
-    let ppm_val = parseFloat($("#ppm").val()) || 0.0;
+    let ppmSource = $('input[name="mode_toggle"]:checked').val() === "QRSS"
+        ? $("#ppm_cw").val()
+        : $("#ppm").val();
+    let ppm_val = parseFloat(ppmSource) || 0.0;
 
     let gpio_tx_pin = parseInt(getTxPin(), 10);
     if (gpio_tx_pin !== 4 && gpio_tx_pin !== 20) {

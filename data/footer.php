@@ -3,15 +3,18 @@
 
     <!-- Fixed Footer -->
     <footer class="fixed-bottom bg-primary text-white">
-        <div class="container text-center small footer-content">
-            <div class="footer-line">Copyright © 2023 - 2026 Lee Bussy [AA0NT].</div>
-
+        <div class="container small footer-content">
             <div class="footer-line footer-version-line">
-                <span class="footer-version-label">WsprryPi version:</span>
+                <span class="footer-version-label">Build</span>
                 <span id="versionText" class="footer-version-value">---</span>
             </div>
-
-            <div class="footer-line">Licensed under the MIT License</div>
+            <details class="footer-meta">
+                <summary>About</summary>
+                <div class="footer-meta__panel">
+                    <div>Copyright © 2023 - 2026 Lee Bussy [AA0NT].</div>
+                    <div>Licensed under the MIT License.</div>
+                </div>
+            </details>
         </div>
     </footer>
 
