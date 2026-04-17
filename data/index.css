@@ -35,12 +35,14 @@
 
 /* target the menu immediately following any .pin-dropdown-btn */
 .pin-dropdown-btn + .dropdown-menu {
-    width: auto;
-    min-width: max-content;
+    width: 100%;
+    min-width: 100%;
+    max-width: 100%;
 }
 
 .pin-dropdown-btn + .dropdown-menu .dropdown-item {
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 #backendStatus {
