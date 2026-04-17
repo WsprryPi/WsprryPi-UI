@@ -2,14 +2,13 @@
 .spots-card {
     display: flex;
     flex-direction: column;
-    /* 56px navbar + 56px footer + 6rem (3rem top + 3rem bottom margins) */
-    height: calc(100vh - 56px - 56px - 6rem);
-    margin-top: 3rem;
+    min-height: min(42rem, calc(100vh - 12rem));
 }
 
 /* Only the card body scrolls */
 .spots-card .card-body.tab-content {
     flex: 1;
+    min-height: 18rem;
     overflow-y: auto;
 }
 
@@ -35,4 +34,14 @@
     /* a bit smaller if you like */
     color: var(--bs-gray-600);
     /* or any muted color you prefer */
+}
+
+@media (max-width: 767.98px) {
+    .spots-card {
+        min-height: 0;
+    }
+
+    .spots-card .card-body.tab-content {
+        min-height: 14rem;
+    }
 }

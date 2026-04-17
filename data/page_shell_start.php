@@ -14,5 +14,6 @@ if (!isset($cardClass)) {
     <?php require_once 'navbar.php'; ?>
 
     <!-- Main Content -->
-    <div class="container my-5">
-        <div class="card shadow-sm <?= htmlspecialchars($cardClass) ?> mt-5">
+    <main class="page-shell">
+        <div class="container page-shell__inner">
+            <div class="card shadow-sm page-card <?= htmlspecialchars($cardClass) ?>">
