@@ -1,22 +1,55 @@
 /* ------------------------------------------------------------
        Websocket indicators
 ------------------------------------------------------------ */
+:root {
+    --wspr-accent-rgb: 64, 94, 122;
+    --wspr-accent-soft-rgb: 107, 128, 150;
+    --wspr-accent-text-rgb: 236, 241, 246;
+    --wspr-state-danger: #b66a76;
+    --wspr-state-warning: #b79256;
+    --wspr-state-success: #5f8f74;
+    --wspr-state-active: #c8a85d;
+}
+
+[data-bs-theme="dark"] {
+    --wspr-accent-rgb: 52, 74, 96;
+    --wspr-accent-soft-rgb: 129, 148, 168;
+    --wspr-accent-text-rgb: 229, 236, 242;
+    --wspr-state-danger: #c1828d;
+    --wspr-state-warning: #c2a16a;
+    --wspr-state-success: #75a088;
+    --wspr-state-active: #d0b171;
+}
+
 /* Connection indicator */
 /* target by ID + state-class */
 #connIcon.state-disconnected {
-    color: #d74562;
+    color: var(--wspr-state-danger);
 }
 
 #connIcon.state-connecting {
-    color: #ff9500;
+    color: var(--wspr-state-warning);
 }
 
 #connIcon.state-transmitting {
-    color: #32CD32;
+    color: var(--wspr-state-success);
 }
 
 #connIcon.state-connected {
-    color: #FFD700;
+    color: var(--wspr-state-active);
+}
+
+.bg-primary {
+    background-color: rgb(var(--wspr-accent-rgb)) !important;
+}
+
+.navbar-dark {
+    --bs-navbar-color: rgba(var(--wspr-accent-text-rgb), 0.8);
+    --bs-navbar-hover-color: rgba(var(--wspr-accent-text-rgb), 0.96);
+    --bs-navbar-active-color: rgb(var(--wspr-accent-text-rgb));
+    --bs-navbar-brand-color: rgb(var(--wspr-accent-text-rgb));
+    --bs-navbar-brand-hover-color: rgb(var(--wspr-accent-text-rgb));
+    --bs-navbar-toggler-border-color: rgba(var(--wspr-accent-text-rgb), 0.22);
 }
 
 #txRuntimeSummary {
@@ -45,11 +78,11 @@
     min-width: min(36rem, calc(100vw - 2rem));
     max-width: calc(100vw - 2rem);
     padding: 0.75rem 1rem;
-    color: #fff;
+    color: rgb(var(--wspr-accent-text-rgb));
     text-align: center;
-    background-color: #dc3545;
+    background-color: color-mix(in srgb, rgb(var(--wspr-accent-rgb)) 84%, #9b4f5f 16%);
     border-radius: 0.5rem;
-    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.2);
+    box-shadow: 0 0.35rem 0.8rem rgba(0, 0, 0, 0.16);
     opacity: 0;
     visibility: hidden;
     transform: translate(-50%, calc(-100% - 0.75rem));
@@ -283,7 +316,7 @@ body {
 
 .card-header .btn-link:hover {
     color: var(--bs-nav-link-hover-color);
-    background-color: rgba(var(--bs-nav-link-hover-color-rgb), .1);
+    background-color: rgba(var(--bs-nav-link-hover-color-rgb), .07);
     text-decoration: none;
     cursor: pointer;
 }

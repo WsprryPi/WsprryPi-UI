@@ -5,23 +5,23 @@
 :root {
     --logs-surface: var(--bs-body-bg);
     --logs-border: rgba(var(--bs-emphasis-color-rgb), 0.14);
-    --logs-overlay-surface: rgba(var(--bs-body-color-rgb), 0.04);
-    --logs-overlay-border: rgba(var(--bs-emphasis-color-rgb), 0.12);
+    --logs-overlay-surface: rgba(var(--bs-body-color-rgb), 0.025);
+    --logs-overlay-border: rgba(var(--bs-emphasis-color-rgb), 0.09);
     --logs-text: var(--bs-body-color);
     --logs-muted: var(--bs-secondary-color);
     --logs-timestamp: var(--bs-emphasis-color);
-    --logs-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    --logs-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 
 [data-bs-theme="dark"] {
     --logs-surface: #0f141b;
     --logs-border: rgba(255, 255, 255, 0.12);
-    --logs-overlay-surface: rgba(255, 255, 255, 0.05);
-    --logs-overlay-border: rgba(255, 255, 255, 0.14);
+    --logs-overlay-surface: rgba(255, 255, 255, 0.035);
+    --logs-overlay-border: rgba(255, 255, 255, 0.1);
     --logs-text: #e6eef8;
     --logs-muted: #9fb0c5;
     --logs-timestamp: #ffffff;
-    --logs-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+    --logs-shadow: 0 1px 3px rgba(0, 0, 0, 0.24);
 }
 
 .logs-card .card-body {
@@ -62,7 +62,7 @@
     solid, decrease it to blend into the log background.
 */
 .logs-overlay {
-    opacity: 0.94;
+    opacity: 0.98;
     background: var(--logs-overlay-surface);
 }
 
@@ -85,9 +85,10 @@
     prominence here.
 */
 .btn-soft {
-    opacity: 0.9;
-    filter: brightness(0.9);
-    transition: opacity 120ms ease-in-out, filter 120ms ease-in-out;
+    opacity: 0.94;
+    filter: brightness(0.96);
+    transition: opacity 120ms ease-in-out, filter 120ms ease-in-out,
+        background-color 120ms ease-in-out;
 }
 
 .btn-soft:hover,
@@ -127,15 +128,15 @@
 }
 
 #sse-status-badge.sse-connected {
-    border-color: rgba(46, 204, 113, 0.40);
+    border-color: rgba(95, 143, 116, 0.42);
 }
 
 #sse-status-badge.sse-reconnecting {
-    border-color: rgba(241, 196, 15, 0.40);
+    border-color: rgba(183, 146, 86, 0.42);
 }
 
 #sse-status-badge.sse-disconnected {
-    border-color: rgba(231, 76, 60, 0.40);
+    border-color: rgba(182, 106, 118, 0.42);
 }
 
 /*
@@ -176,32 +177,32 @@
 }
 
 .log-emerg {
-    color: #ff3b3b;
+    color: #cc6b73;
     font-weight: bold;
 }
 
 .log-alert {
-    color: #9b59d0;
+    color: #8a6bb4;
 }
 
 .log-crit {
-    color: #ff3b3b;
+    color: #c46a72;
 }
 
 .log-error {
-    color: #ff9500;
+    color: #bf8758;
 }
 
 .log-warn {
-    color: #ffd60a;
+    color: #c1a261;
 }
 
 .log-notic {
-    color: #3273dc;
+    color: #5d84b5;
 }
 
 .log-info {
-    color: #30d158;
+    color: #6c9b80;
 }
 
 .log-debug {
@@ -220,16 +221,16 @@
 }
 
 :root {
-    --btn-connect-rgb: 56, 161, 105;
-    --btn-reconnect-rgb: 49, 130, 206;
-    --btn-clear-rgb: 221, 107, 32;
-    --btn-glass-alpha: 0.08;
-    --btn-glass-hover-alpha: 0.12;
-    --btn-glass-active-alpha: 0.16;
+    --btn-connect-rgb: 95, 143, 116;
+    --btn-reconnect-rgb: 93, 132, 181;
+    --btn-clear-rgb: 191, 135, 88;
+    --btn-glass-alpha: 0.06;
+    --btn-glass-hover-alpha: 0.09;
+    --btn-glass-active-alpha: 0.12;
 }
 
 .glass-btn {
-    background-color: rgba(var(--bs-body-color-rgb), 0.04);
+    background-color: rgba(var(--bs-body-color-rgb), 0.03);
     transition: background-color 120ms ease-in-out;
 }
 
@@ -253,13 +254,13 @@
 
 
 .glass-btn:hover {
-    background-color: rgba(255, 255, 255, 0.10);
-    filter: brightness(1.05);
+    background-color: rgba(var(--bs-body-color-rgb), 0.06);
+    filter: brightness(1.01);
 }
 
 
 .glass-btn:active {
-    background-color: rgba(255, 255, 255, 0.14);
+    background-color: rgba(var(--bs-body-color-rgb), 0.08);
 }
 
 .glass-connect:hover {
