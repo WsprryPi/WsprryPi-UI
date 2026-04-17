@@ -438,10 +438,6 @@ footer .container {
 .footer-version-value {
     display: inline-block;
     min-width: 0;
-    max-width: min(32rem, 100%);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
     vertical-align: bottom;
     opacity: 0.92;
 }
@@ -459,5 +455,8 @@ footer .container {
 
     .footer-version-value {
         max-width: min(18rem, calc(100vw - 2rem));
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 }
