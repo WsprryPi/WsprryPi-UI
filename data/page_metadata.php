@@ -8,6 +8,8 @@ foreach ($viewMetadata as $viewKey => $metadata) {
     $pageMetadata[$metadata['legacyScript']] = [
         'title' => $metadata['title'],
         'view' => $viewKey,
+        'navLabel' => $metadata['navLabel'],
+        'navIcon' => $metadata['navIcon'],
     ];
 }
 

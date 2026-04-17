@@ -1,15 +1,21 @@
 <?php require_once 'page_metadata.php'; ?>
+<?php $primaryNavViews = ['config', 'logs', 'spots', 'maintenance']; ?>
 
 <!-- Fixed Navbar -->
 <nav id="mainNavbar" class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top">
     <div class="container">
         <span class="navbar-brand navbar-brand-app">
-            <i
-                id="connIcon"
-                data-bs-toggle="tooltip"
-                data-bs-original-title="Disconnected."
-                class="fa-solid fa-tower-broadcast"></i>
-            <span class="navbar-title"><?= htmlspecialchars($currentPageMetadata['title']) ?></span>
+            <span class="navbar-brand-copy">
+                <span class="navbar-kicker">Wsprry Pi Console</span>
+                <span class="navbar-title"><?= htmlspecialchars($currentPageMetadata['navLabel']) ?></span>
+            </span>
+            <span class="navbar-signal-status d-none d-lg-inline-flex" data-bs-toggle="tooltip" title="Transmitter connection state">
+                <i
+                    id="connIcon"
+                    data-bs-original-title="Disconnected."
+                    class="fa-solid fa-tower-broadcast"></i>
+                <span class="navbar-signal-status__label">Link</span>
+            </span>
         </span>
         <button
             class="navbar-toggler ms-auto"
@@ -23,110 +29,80 @@
         </button>
 
         <div class="collapse navbar-collapse align-items-center" id="mainNav">
-            <!-- Navbar List Items -->
-            <ul class="navbar-nav flex-wrap align-items-center align-items-lg ms-lg-auto">
-                <!-- Wsprry Pi UI Choice -->
-                <li class="nav-item dropdown">
-                    <a
-                        class="nav-link dropdown-toggle"
-                        href="#"
-                        id="wsprpiDropdown"
-                        role="button"
-                        data-bs-toggle="dropdown"
-                        aria-expanded="false">
-                        <i class="fa-solid fa-tower-broadcast me-2"></i>
-                        Wsprry Pi Application
-                    </a>
-                    <ul class="dropdown-menu dropdown-menu-start" aria-labelledby="wsprpiDropdown">
-                        <li>
-                            <a
-                                class="dropdown-item <?= $activeView === 'config' ? 'disabled' : '' ?>"
-                                href="index.php"
-                                <?= $activeView === 'config' ? 'tabindex=\"-1\" aria-disabled=\"true\"' : '' ?>>
-                                Configuration
-                            </a>
-                        </li>
-                        <li>
-                            <a
-                                class="dropdown-item <?= $activeView === 'logs' ? 'disabled' : '' ?>"
-                                href="index.php?page=logs"
-                                <?= $activeView === 'logs' ? 'tabindex=\"-1\" aria-disabled=\"true\"' : '' ?>>
-                                Logs
-                            </a>
-                        </li>
-                        <li>
-                            <a
-                                class="dropdown-item <?= $activeView === 'spots' ? 'disabled' : '' ?>"
-                                href="index.php?page=spots"
-                                <?= $activeView === 'spots' ? 'tabindex=\"-1\" aria-disabled=\"true\"' : '' ?>>
-                                Spots
-                            </a>
-                        </li>
-                        <li>
-                            <a
-                                class="dropdown-item <?= $activeView === 'maintenance' ? 'disabled' : '' ?>"
-                                href="index.php?page=maintenance"
-                                <?= $activeView === 'maintenance' ? 'tabindex=\"-1\" aria-disabled=\"true\"' : '' ?>>
-                                Maintenance
-                            </a>
-                        </li>
-                    </ul>
-                </li>
+            <ul class="navbar-nav navbar-nav-primary flex-wrap align-items-center">
+                <?php foreach ($primaryNavViews as $viewKey): ?>
+                    <?php
+                    $navMetadata = $viewMetadata[$viewKey];
+                    $isActive = $activeView === $viewKey;
+                    $href = $viewKey === 'config' ? 'index.php' : 'index.php?page=' . rawurlencode($viewKey);
+                    ?>
+                    <li class="nav-item">
+                        <a
+                            class="nav-link nav-link-primary<?= $isActive ? ' active' : '' ?>"
+                            href="<?= htmlspecialchars($href) ?>"
+                            <?= $isActive ? 'aria-current="page"' : '' ?>>
+                            <i class="fa-solid <?= htmlspecialchars($navMetadata['navIcon']) ?>"></i>
+                            <span class="ms-2"><?= htmlspecialchars($navMetadata['navLabel']) ?></span>
+                        </a>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
 
-                <!-- Wsprry Pi Links Dropdown -->
-                <li class="nav-item dropdown align-items-center">
-                    <a
-                        class="nav-link dropdown-toggle"
-                        href="#"
-                        id="wsprlinksDropdown"
-                        role="button"
-                        data-bs-toggle="dropdown"
-                        aria-expanded="false">
-                        <i class="fa-solid fa-link me-2"></i>
-                        Wsprry Pi Links
-                    </a>
-                    <ul class="dropdown-menu dropdown-menu-start" aria-labelledby="wsprlinksDropdown">
-                        <li>
-                            <a
-                                class="dropdown-item"
-                                href="https://wsprry-pi.readthedocs.io/en/stable/"
-                                target="_blank"
-                                rel="noopener">
-                                Documentation
-                            </a>
-                        </li>
-                        <li>
-                            <a
-                                class="dropdown-item"
-                                href="https://github.com/WsprryPi/"
-                                target="_blank"
-                                rel="noopener">
-                                GitHub
-                            </a>
-                        </li>
-                        <li>
-                            <a
-                                class="dropdown-item"
-                                href="https://tapr.org/"
-                                target="_blank"
-                                rel="noopener">
-                                TAPR
-                            </a>
-                        </li>
-                        <li>
-                            <a
-                                class="dropdown-item"
-                                href="https://www.wsprnet.org/olddb?mode=html&band=all&limit=50&findreporter=&sort=date&findcall="
-                                target="_blank"
-                                rel="noopener">
-                                WSPRNet Database
-                            </a>
-                        </li>
-                    </ul>
-                </li>
+            <div class="navbar-utility-group ms-lg-auto">
+                <ul class="navbar-nav navbar-nav-secondary">
+                    <li class="nav-item dropdown align-items-center">
+                        <a
+                            class="nav-link dropdown-toggle"
+                            href="#"
+                            id="wsprlinksDropdown"
+                            role="button"
+                            data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                            <i class="fa-solid fa-link me-2"></i>
+                            Wsprry Pi Links
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-start" aria-labelledby="wsprlinksDropdown">
+                            <li>
+                                <a
+                                    class="dropdown-item"
+                                    href="https://wsprry-pi.readthedocs.io/en/stable/"
+                                    target="_blank"
+                                    rel="noopener">
+                                    Documentation
+                                </a>
+                            </li>
+                            <li>
+                                <a
+                                    class="dropdown-item"
+                                    href="https://github.com/WsprryPi/"
+                                    target="_blank"
+                                    rel="noopener">
+                                    GitHub
+                                </a>
+                            </li>
+                            <li>
+                                <a
+                                    class="dropdown-item"
+                                    href="https://tapr.org/"
+                                    target="_blank"
+                                    rel="noopener">
+                                    TAPR
+                                </a>
+                            </li>
+                            <li>
+                                <a
+                                    class="dropdown-item"
+                                    href="https://www.wsprnet.org/olddb?mode=html&band=all&limit=50&findreporter=&sort=date&findcall="
+                                    target="_blank"
+                                    rel="noopener">
+                                    WSPRNet Database
+                                </a>
+                            </li>
+                        </ul>
+                    </li>
+                </ul>
 
-                <!-- Theme dark/light toggle -->
-                <li class="nav-item ms-lg-3 d-flex align-items-center">
+                <div class="nav-item d-flex align-items-center">
                     <div
                         class="form-check form-switch d-inline-flex align-items-center mb-0 text-white">
                         <label
@@ -142,8 +118,8 @@
                             data-bs-toggle="tooltip"
                             title="Change Theme">
                     </div>
-                </li>
-            </ul>
+                </div>
+            </div>
         </div>
 
     </div>

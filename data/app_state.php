@@ -3,6 +3,8 @@
 $viewMetadata = [
     'config' => [
         'title' => 'Wsprry Pi Configuration',
+        'navLabel' => 'Configuration',
+        'navIcon' => 'fa-sliders',
         'legacyScript' => 'index.php',
         'cardClass' => 'template-card',
         'bodyClass' => '',
@@ -13,6 +15,8 @@ $viewMetadata = [
     ],
     'logs' => [
         'title' => 'Wsprry Pi Log',
+        'navLabel' => 'Logs',
+        'navIcon' => 'fa-file-lines',
         'legacyScript' => 'view_logs.php',
         'cardClass' => 'logs-card',
         'bodyClass' => 'bg-body-tertiary',
@@ -23,6 +27,8 @@ $viewMetadata = [
     ],
     'spots' => [
         'title' => 'Wsprry Pi Spots',
+        'navLabel' => 'Spots',
+        'navIcon' => 'fa-satellite-dish',
         'legacyScript' => 'view_spots.php',
         'cardClass' => 'spots-card',
         'bodyClass' => '',
@@ -33,6 +39,8 @@ $viewMetadata = [
     ],
     'maintenance' => [
         'title' => 'Wsprry Pi Maintenance',
+        'navLabel' => 'Maintenance',
+        'navIcon' => 'fa-screwdriver-wrench',
         'legacyScript' => 'maintenance.php',
         'cardClass' => 'template-card',
         'bodyClass' => '',
