@@ -50,6 +50,7 @@
     --bs-navbar-brand-color: rgb(var(--wspr-accent-text-rgb));
     --bs-navbar-brand-hover-color: rgb(var(--wspr-accent-text-rgb));
     --bs-navbar-toggler-border-color: rgba(var(--wspr-accent-text-rgb), 0.22);
+    --bs-navbar-toggler-focus-width: 0.16rem;
 }
 
 #txRuntimeSummary {
@@ -156,6 +157,12 @@
     text-align: right;
 }
 
+.dropdown-item.disabled,
+.dropdown-item[aria-disabled="true"] {
+    pointer-events: none;
+    opacity: 0.5;
+}
+
 /* ------------------------------------------------------------
        Theme toggle (keep the track white, thumb follows theme)
 ------------------------------------------------------------ */
@@ -171,6 +178,8 @@ input#themeToggle.form-check-input {
     border-radius: 999px;
     margin-left: auto;
     cursor: pointer;
+    transition: background-color 120ms ease-in-out, border-color 120ms ease-in-out,
+        box-shadow 120ms ease-in-out;
 }
 
 input#themeToggle.form-check-input:checked::before {
@@ -191,10 +200,6 @@ input#themeToggle.form-check-input::before {
     background-color: rgb(var(--bs-primary-rgb));
     border-radius: 50%;
     transition: transform 0.15s ease-in-out;
-}
-
-input#themeToggle.form-check-input:focus {
-    box-shadow: 0 0 0 .25rem rgba(13, 110, 253, .25);
 }
 
 /* ------------------------------------------------------------
@@ -281,12 +286,20 @@ body {
         position: static;
         width: 100%;
         margin-top: 0.25rem;
+        padding: 0.25rem 0;
         border: 0;
         box-shadow: none;
+        background-color: rgba(var(--wspr-accent-text-rgb), 0.06);
     }
 
     #mainNav .dropdown-item {
         white-space: normal;
+        color: rgb(var(--wspr-accent-text-rgb));
+    }
+
+    #mainNav .dropdown-item:hover,
+    #mainNav .dropdown-item:focus {
+        background-color: rgba(var(--wspr-accent-text-rgb), 0.1);
     }
 
     #mainNav .nav-item.ms-lg-3 {
@@ -430,6 +443,7 @@ footer .container {
     text-overflow: ellipsis;
     white-space: nowrap;
     vertical-align: bottom;
+    opacity: 0.92;
 }
 
 @media (max-width: 575.98px) {
