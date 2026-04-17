@@ -78,7 +78,7 @@
                     <span class="visually-hidden">Loading…</span>
                 </div>
                 <div class="fw-semibold">Loading recent spots</div>
-                <p class="text-body-secondary mb-0">Querying the last hour of spot reports for the configured transmitter.</p>
+                <p class="text-body-secondary mb-0">Checking the last hour of WSPRNet spot reports for this transmitter.</p>
             </div>
         `);
     }
@@ -87,8 +87,8 @@
     function renderError(msg) {
         renderState(
             "Unable to load spots",
-            `${msg} Check the configured callsign and network path to WSPRNet, then try again.`,
-            "Try again"
+            `${msg} Check the configured callsign and WSPRNet connection, then load the spots list again.`,
+            "Load spots again"
         );
     }
 
@@ -104,8 +104,8 @@
         // use UTC string rather than local
         const ts = now.toUTCString();
         $("#spotsFor").html(
-            `Recent spots for: ${cs}
-         <small class="text-muted ms-2">(as of ${ts} UTC)</small>`
+            `Recent spots for ${cs}
+         <small class="text-muted ms-2">Updated ${ts} UTC</small>`
         );
     }
 
@@ -115,7 +115,7 @@
         if (!Array.isArray(spots) || spots.length === 0) {
             return renderState(
                 "No recent spots",
-                "No spot reports were found in the last hour for the configured transmitter. This can be normal if the station has not transmitted recently or propagation is poor."
+                "No spot reports were found in the last hour. This can be normal if the station has not transmitted recently or if propagation is poor."
             );
         }
 

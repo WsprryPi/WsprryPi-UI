@@ -30,9 +30,9 @@
         const btn = document.getElementById("btn-reconnect");
         if (!btn) return;
 
-        // Connected state shows "Reconnect"; otherwise show "Connect".
+        // Connected state shows a manual reconnect action; otherwise start the stream.
         const isConnected = (state === "connected");
-        btn.textContent = isConnected ? "Reconnect" : "Connect";
+        btn.textContent = isConnected ? "Reconnect stream" : "Start stream";
 
         // Green when disconnected, blue when connected.
         btn.classList.remove("btn-outline-success", "btn-outline-primary");

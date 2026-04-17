@@ -14,7 +14,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                             <input type="radio" class="btn-check" name="mode_toggle" id="qrss_mode" value="QRSS" autocomplete="off">
                             <label class="btn btn-outline-primary" for="qrss_mode">CW Modes</label>
                         </div>
-                        <span>Configuration for: <?php echo gethostname(); ?></span>
+                        <span>Editing settings for <?php echo gethostname(); ?></span>
                     </div>
 
                     <?php require_once __DIR__ . '/../clock_and_reboot.php'; ?>
@@ -80,7 +80,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                 <div class="row gx-3 gy-3 align-items-start">
                                     <div class="col-12 col-lg-4 d-flex align-items-center">
                                         <div class="d-flex align-items-center gap-2">
-                                            <label class="form-label mb-0" for="transmit">Enable Transmit:</label>
+                                            <label class="form-label mb-0" for="transmit">Transmit enabled:</label>
                                             <div class="form-check form-switch mb-0">
                                                 <input class="form-check-input" type="checkbox" role="switch" id="transmit">
                                             </div>
@@ -88,15 +88,15 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                     </div>
                                     <div class="col-12 col-lg-2">
                                         <button type="button" class="btn btn-danger btn-sm" id="stop_transmit" disabled>
-                                            Stop
+                                            Stop transmission
                                         </button>
                                     </div>
                                     <div class="col-12 col-lg-3">
-                                        <div class="small text-body-secondary">Runtime Status</div>
+                                        <div class="small text-body-secondary">Current transmit mode</div>
                                         <div class="small">Mode: <span id="runtime_mode_value">Unknown</span></div>
                                     </div>
                                     <div class="col-12 col-lg-3">
-                                        <div class="small text-body-secondary">WSPR Runtime</div>
+                                        <div class="small text-body-secondary">Current WSPR plan</div>
                                         <div class="small" id="runtime_wspr_plan_value">Not available</div>
                                     </div>
                                 </div>
@@ -175,7 +175,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                     <div class="row gx-2 align-items-center">
                                         <div class="col-12 mb-3">
                                             <label for="planner_preference" class="form-label">
-                                                Planner preference
+                                                WSPR planning mode
                                             </label>
                                             <select
                                                 id="planner_preference"
@@ -220,10 +220,10 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                     type="checkbox"
                                                     role="switch"
                                                     data-bs-toggle="tooltip"
-                                                    title="WSPR.Use Random Offset: randomize WSPR transmit frequency around the dial-derived RF frequency"
+                                                    title="Randomly shift each WSPR transmission around the dial-derived RF frequency."
                                                     id="useoffset" />
                                                 <label class="form-check-label mb-0" for="useoffset">
-                                                    Use Random Offset
+                                                    Randomize WSPR offset
                                                 </label>
                                             </div>
                                         </div>

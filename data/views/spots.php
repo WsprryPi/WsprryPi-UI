@@ -1,6 +1,6 @@
 <?php
 $cardTitleId = 'spotsFor';
-$cardTitleText = 'Recent spots for: ';
+$cardTitleText = 'Recent spots';
 require __DIR__ . '/../card_header.php';
 ?>
 

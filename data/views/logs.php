@@ -11,7 +11,7 @@ require __DIR__ . '/../card_header.php';
                     role="status"
                     aria-live="polite"
                     aria-atomic="true"
-                    title="Disconnected">Disconnected</div>
+                    title="Log stream disconnected">Disconnected</div>
 
                 <div id="logs-overlay-controls" aria-label="Log controls" class="logs-overlay">
                     <button id="btn-clear"
@@ -20,10 +20,10 @@ require __DIR__ . '/../card_header.php';
 
                     <button id="btn-reconnect"
                         class="btn btn-outline-primary btn-sm glass-btn glass-reconnect btn-soft"
-                        type="button">Connect</button>
+                        type="button">Start stream</button>
                 </div>
 
-                <button id="btn-jump-bottom" type="button" class="btn btn-sm btn-primary" style="display:none; position:absolute; right:12px; bottom:12px; z-index:10;">Jump to bottom</button>
+                <button id="btn-jump-bottom" type="button" class="btn btn-sm btn-primary" style="display:none; position:absolute; right:12px; bottom:12px; z-index:10;">Jump to newest</button>
                 <div id="log-scroll">
                     <div id="logsTabContent">
                         <div id="all"></div>

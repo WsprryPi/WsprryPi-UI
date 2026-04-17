@@ -1039,13 +1039,13 @@ function setConnectionState(state, timestamp = "") {
     let text;
     switch (state) {
         case "disconnected":
-            text = "Disconnected.";
+            text = "Controller disconnected.";
             break;
         case "connecting":
-            text = "Connecting…";
+            text = "Connecting to controller…";
             break;
         case "connected":
-            text = "Ready.";
+            text = "Controller connected.";
             break;
         case "transmitting":
             text = `Transmission in progress${timestamp ? ": " + timestamp : "."}`;
