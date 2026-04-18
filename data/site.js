@@ -909,7 +909,9 @@ function populateConfig(callback = null) {
                 if (window.currentPage == "index.php") {
                     // Load form elements
                     //
-                    if (mode === "WSPR") {
+                    if (typeof applyConfigModeSelection === "function") {
+                        applyConfigModeSelection(mode);
+                    } else if (mode === "WSPR") {
                         $('input[name="mode_toggle"][value="WSPR"]')
                             .prop("checked", true)
                             .trigger("change");

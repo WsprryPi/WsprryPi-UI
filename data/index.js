@@ -796,9 +796,8 @@ function clearValidationState(selector) {
     });
 }
 
-function clickModeToggle() {
+function syncConfigModeSections() {
     const selected = $('input[name="mode_toggle"]:checked').val();
-
     if (selected === "QRSS") {
         $('#wspr_config').hide();
         $('#qrss_config').show();
@@ -812,6 +811,25 @@ function clickModeToggle() {
     }
 
     updateRuntimeControlStatusFromForm(null);
+}
+
+function applyConfigModeSelection(mode) {
+    const normalizedMode = ["WSPR", "QRSS", "FSKCW", "DFCW"].includes(mode)
+        ? mode
+        : "WSPR";
+
+    if (normalizedMode === "WSPR") {
+        $('input[name="mode_toggle"][value="WSPR"]').prop("checked", true);
+    } else {
+        $('input[name="mode_toggle"][value="QRSS"]').prop("checked", true);
+        $(`input[name="qrss_type"][value="${normalizedMode}"]`).prop("checked", true);
+    }
+
+    syncConfigModeSections();
+}
+
+function clickModeToggle() {
+    syncConfigModeSections();
 }
 
 

@@ -7,7 +7,13 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
             <div class="card-header pb-0">
                 <div class="config-header-bar mb-2">
                     <div class="config-header-context">
-                        <span class="config-hostname">Editing settings for <?php echo gethostname(); ?></span>
+                        <div class="config-header-copy">
+                            <div class="config-header-label">Control Surface</div>
+                            <div class="config-header-title">Signal setup</div>
+                            <p class="config-header-summary mb-0">
+                                Set the active transmit workflow first, review live state, then work through one section at a time before saving.
+                            </p>
+                        </div>
                     </div>
 
                     <?php require_once __DIR__ . '/../clock_and_reboot.php'; ?>
@@ -61,7 +67,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                 <form id="wsprform" class="needs-validation" novalidate>
                     <fieldset class="config-operator-strip mb-4" id="global_runtime_control">
                         <legend class="visually-hidden">Operating controls</legend>
-                        <div class="config-operator-panel">
+                        <div class="config-operator-panel config-operator-panel--mode">
                             <div class="config-operator-label">Signal mode</div>
                             <p class="config-operator-copy mb-0">Choose the transmit workflow first. The matching settings stay below in this tab.</p>
                             <div class="btn-group config-mode-toggle" role="group" aria-label="Signal mode">
@@ -73,7 +79,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                             </div>
                         </div>
 
-                        <div class="config-operator-panel">
+                        <div class="config-operator-panel config-operator-panel--runtime">
                             <div class="config-operator-label">Runtime state</div>
                             <div class="config-runtime-grid">
                                 <div class="config-runtime-item config-runtime-item--switch">
@@ -102,7 +108,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                             </div>
                         </div>
 
-                        <div class="config-operator-panel">
+                        <div class="config-operator-panel config-operator-panel--actions">
                             <div class="config-operator-label">Next safe action</div>
                             <p class="config-operator-copy mb-0">Review the selected section, then save. Reset reloads the last saved configuration.</p>
                             <div class="config-actions config-actions--operator">
@@ -141,9 +147,14 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                             role="tabpanel"
                             aria-labelledby="radio-tab"
                             tabindex="0">
-                            <div id="wspr_config">
-                                <fieldset class="mb-4" id="op_info">
+                            <div class="config-pane-intro">
+                                <div class="config-pane-intro__label">Recommended order</div>
+                                <p class="mb-0">Set station identity first, then review the transmission plan and calibration block before committing changes.</p>
+                            </div>
+                            <div id="wspr_config" class="config-section-stack">
+                                <fieldset class="config-panel" id="op_info">
                                     <legend>WSPR Station Configuration</legend>
+                                    <p class="config-panel__summary">These values identify the station on air and anchor the planning rules used below.</p>
                                     <div class="row gx-2 align-items-center">
                                         <div class="col-md-6 mb-3 d-flex align-items-center">
                                             <label for="callsign" class="form-label mb-0 me-2 flex-shrink-0">
@@ -176,8 +187,9 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                     </div>
                                 </fieldset>
 
-                                <fieldset class="mb-4" id="tx_info">
+                                <fieldset class="config-panel" id="tx_info">
                                     <legend>Transmission Settings</legend>
+                                    <p class="config-panel__summary">Define the dial plan, output level, and calibration together so the transmit path can be checked in one pass.</p>
                                     <div class="row gx-2 align-items-center">
                                         <div class="col-12 col-lg-5 mb-3 d-flex align-items-center">
                                             <label for="frequencies" class="form-label mb-0 me-2 flex-shrink-0">
@@ -287,8 +299,9 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                             </div>
 
                             <div id="qrss_config" style="display: none;">
-                                <fieldset class="mb-4" id="qrss_control">
+                                <fieldset class="config-panel" id="qrss_control">
                                     <legend>CW Control</legend>
+                                    <p class="config-panel__summary">Choose the CW mode and timing first, then tune the base frequency and repeat interval.</p>
 
                                     <div class="row gx-2 gy-3 align-items-center">
 
@@ -421,8 +434,9 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                     </div>
                                 </fieldset>
 
-                                <fieldset class="mb-4" id="qrss_message_set">
+                                <fieldset class="config-panel" id="qrss_message_set">
                                     <legend>CW Message</legend>
+                                    <p class="config-panel__summary">Keep the message payload short and verify it here before keying the transmitter.</p>
                                     <div class="row gx-2 gy-3 align-items-center mt-1">
                                         <div class="col-12 col-lg-12 d-flex align-items-center">
                                             <input
@@ -447,7 +461,11 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                             role="tabpanel"
                             aria-labelledby="transmitter-hardware-tab"
                             tabindex="0">
-                            <fieldset class="mb-4">
+                            <div class="config-pane-intro">
+                                <div class="config-pane-intro__label">Hardware path</div>
+                                <p class="mb-0">Select the RF backend first, then complete only the hardware block that matches that transmit path.</p>
+                            </div>
+                            <fieldset class="config-panel">
                                 <legend>Transmit Backend</legend>
 
                                 <div class="row gx-3 gy-3 align-items-start">
@@ -467,7 +485,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                 <div id="backendStatus" class="alert d-none mt-3 mb-0" role="alert"></div>
                             </fieldset>
 
-                            <fieldset class="mb-4 backend-settings-panel" id="gpio-backend-panel">
+                            <fieldset class="config-panel backend-settings-panel" id="gpio-backend-panel">
                                 <legend>GPIO Hardware</legend>
 
                                 <div class="row gx-3 gy-3 align-items-start">
@@ -506,7 +524,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                 </div>
                             </fieldset>
 
-                            <fieldset class="mb-4 backend-settings-panel d-none" id="si5351-backend-panel">
+                            <fieldset class="config-panel backend-settings-panel d-none" id="si5351-backend-panel">
                                 <legend>Si5351 Hardware</legend>
 
                                 <div class="row gx-3 gy-3 align-items-start">
@@ -575,7 +593,11 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                             role="tabpanel"
                             aria-labelledby="pi-hardware-tab"
                             tabindex="0">
-                            <fieldset class="mb-4">
+                            <div class="config-pane-intro">
+                                <div class="config-pane-intro__label">Pi I/O</div>
+                                <p class="mb-0">Use these controls for auxiliary indicators and shutdown wiring after the transmit path is already working.</p>
+                            </div>
+                            <fieldset class="config-panel">
                                 <legend>Hardware Control</legend>
 
                                 <div class="row gx-2 gy-2 align-items-center mb-2">
@@ -637,7 +659,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                 </div>
                             </fieldset>
 
-                            <fieldset class="mb-4">
+                            <fieldset class="config-panel">
                                 <legend>Band GPIO</legend>
                                 <div class="table-responsive">
                                     <table class="table table-sm align-middle mb-0" id="bandGpioTable">
