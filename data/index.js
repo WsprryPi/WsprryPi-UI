@@ -171,6 +171,9 @@ function requestTransmitEnabledChange(enabled, previousEnabled, options = {}) {
     })
         .done(function () {
             lastSaveTimestamp = Date.now();
+            if (onSuccess) {
+                onSuccess();
+            }
             if (updateCheckboxOnSuccess) {
                 setTransmitFromBackend(enabled);
             }
@@ -181,9 +184,6 @@ function requestTransmitEnabledChange(enabled, previousEnabled, options = {}) {
             }
             if (typeof syncConfigAutosaveBaseline === "function") {
                 syncConfigAutosaveBaseline();
-            }
-            if (onSuccess) {
-                onSuccess();
             }
         })
         .fail(function (xhr) {
@@ -364,14 +364,18 @@ function showModeChangeGuardModal(options) {
     modal.show();
 }
 
-function finalizePendingModeChange() {
-    if (!pendingModeChange) {
+function finalizePendingModeChange(targetModeOverride = null) {
+    const targetMode =
+        typeof targetModeOverride === "string" && targetModeOverride
+            ? targetModeOverride
+            : (pendingModeChange ? pendingModeChange.targetMode : "");
+
+    if (!targetMode) {
         return;
     }
 
-    const targetMode = pendingModeChange.targetMode;
-    clearPendingModeChange();
     applyCommittedConfigMode(targetMode);
+    clearPendingModeChange();
 }
 
 function handleRuntimeStatusUpdate(status) {
@@ -452,6 +456,7 @@ function requestConfigModeChange(targetMode) {
             confirmLabel: "Disable & switch",
             confirmClass: "btn btn-danger",
             onConfirm() {
+                const requestedMode = normalizedTargetMode;
                 modeChangeGuardBusy = true;
                 const modal = modeChangeGuardModalInstance();
                 if (modal) {
@@ -460,7 +465,7 @@ function requestConfigModeChange(targetMode) {
                 requestTransmitEnabledChange(false, true, {
                     updateCheckboxOnSuccess: true,
                     onSuccess() {
-                        finalizePendingModeChange();
+                        finalizePendingModeChange(requestedMode);
                     },
                     onFailure() {
                         clearPendingModeChange();
