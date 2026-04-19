@@ -1415,6 +1415,9 @@ function renderRuntimeControlStatus() {
             currentRuntimeStatus && currentRuntimeStatus.nextTransmissionAt
                 ? currentRuntimeStatus.nextTransmissionAt
                 : "";
+        const transmitEnabled =
+            currentRuntimeConfigStatus &&
+            currentRuntimeConfigStatus.transmitEnabled === true;
         const isTransmitting =
             currentRuntimeStatus &&
             currentRuntimeStatus.txState === "transmitting";
@@ -1434,8 +1437,11 @@ function renderRuntimeControlStatus() {
             if (planLabelNode) {
                 planLabelNode.textContent = "Next message at:";
             }
-            planNode.textContent = nextTransmissionAt || "Not scheduled";
-            planNode.setAttribute("title", nextTransmissionAt || "Not scheduled");
+            const idleValue = transmitEnabled
+                ? (nextTransmissionAt || "Not scheduled")
+                : "Disabled";
+            planNode.textContent = idleValue;
+            planNode.setAttribute("title", idleValue);
         }
         return;
     }
