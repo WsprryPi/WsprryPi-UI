@@ -126,10 +126,7 @@ function syncStopButtonState() {
             : null;
 
     const transmitting = runtimeStatus && runtimeStatus.txState === "transmitting";
-    const transmitEnabled =
-        runtimeConfigStatus && runtimeConfigStatus.transmitEnabled === true;
-
-    $stop.prop("disabled", stopRequestInFlight || (!transmitEnabled && !transmitting));
+    $stop.prop("disabled", stopRequestInFlight || !transmitting);
 }
 
 function patchTransmitControl() {
@@ -166,6 +163,9 @@ function patchTransmitControl() {
             lastSaveTimestamp = Date.now();
             updateRuntimeControlStatusFromForm(null);
             clearBackendStatus("runtime");
+            if (typeof getTxState === "function") {
+                getTxState();
+            }
             if (typeof syncConfigAutosaveBaseline === "function") {
                 syncConfigAutosaveBaseline();
             }
