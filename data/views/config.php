@@ -19,7 +19,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                     <?php require_once __DIR__ . '/../clock_and_reboot.php'; ?>
                 </div>
 
-                <ul class="nav nav-tabs card-header-tabs" id="configTabs" role="tablist">
+                <ul class="nav nav-tabs card-header-tabs" id="configTabs" role="tablist" data-persist-tab-state="true">
                     <li class="nav-item" role="presentation">
                         <button
                             class="nav-link active"

@@ -39,6 +39,7 @@ const WEBSOCKET_URL = `${WS_ORIGIN}${WEBSOCKET_PATH}`;
 const LOG_STREAM_URL = `${HTTP_ORIGIN}${LOG_STREAM_PATH}`;
 const WSPRNET_URL =
     "https://www.wsprnet.org/olddb?mode=html&band=all&limit=50&findreporter=&sort=date&findcall=";
+const TAB_STATE_STORAGE_PREFIX = "wsprrypi.activeTab";
 
 // Allow reloading data after communication interruption
 let communicationInterrupted = false;
@@ -207,6 +208,111 @@ function loadPage() {
     populateConfig();
 }
 
+function getPersistedTabStorageKey(tabList) {
+    if (!(tabList instanceof Element)) {
+        return "";
+    }
+
+    const pageKey =
+        typeof window.currentPage === "string" && window.currentPage
+            ? window.currentPage
+            : "unknown";
+    const tabListKey = tabList.id || tabList.getAttribute("aria-label") || "tabs";
+    return `${TAB_STATE_STORAGE_PREFIX}:${pageKey}:${tabListKey}`;
+}
+
+function getPersistedTabSelector(trigger) {
+    if (!(trigger instanceof Element)) {
+        return "";
+    }
+
+    const target = trigger.getAttribute("data-bs-target");
+    if (typeof target === "string" && target.trim()) {
+        return target.trim();
+    }
+
+    const href = trigger.getAttribute("href");
+    if (typeof href === "string" && href.startsWith("#")) {
+        return href.trim();
+    }
+
+    return "";
+}
+
+function findTabTriggerBySelector(tabList, selector) {
+    if (!(tabList instanceof Element) || typeof selector !== "string" || !selector.trim()) {
+        return null;
+    }
+
+    const normalizedSelector = selector.trim();
+    return tabList.querySelector(
+        `[data-bs-toggle="tab"][data-bs-target="${normalizedSelector}"], ` +
+        `[data-bs-toggle="tab"][href="${normalizedSelector}"]`
+    );
+}
+
+function restorePersistedTabState(tabList) {
+    if (!(tabList instanceof Element)) {
+        return;
+    }
+
+    const storageKey = getPersistedTabStorageKey(tabList);
+    if (!storageKey) {
+        return;
+    }
+
+    let storedSelector = "";
+    try {
+        storedSelector = window.localStorage.getItem(storageKey) || "";
+    } catch {
+        storedSelector = "";
+    }
+
+    if (!storedSelector) {
+        return;
+    }
+
+    const trigger = findTabTriggerBySelector(tabList, storedSelector);
+    if (!trigger) {
+        try {
+            window.localStorage.removeItem(storageKey);
+        } catch {
+        }
+        return;
+    }
+
+    const tabInstance = bootstrap.Tab.getOrCreateInstance(trigger);
+    tabInstance.show();
+}
+
+function initPersistedTabState() {
+    document
+        .querySelectorAll('[data-persist-tab-state="true"]')
+        .forEach((tabList) => {
+            if (tabList.dataset.persistTabStateInitialized === "true") {
+                return;
+            }
+
+            tabList.dataset.persistTabStateInitialized = "true";
+            tabList.addEventListener("shown.bs.tab", (event) => {
+                const trigger = event.target;
+                const selector = getPersistedTabSelector(trigger);
+                const storageKey = getPersistedTabStorageKey(tabList);
+
+                if (!selector || !storageKey) {
+                    return;
+                }
+
+                try {
+                    window.localStorage.setItem(storageKey, selector);
+                } catch {
+                }
+            });
+
+            restorePersistedTabState(tabList);
+        });
+}
+
 // Called after populateConfig() runs
 function pageLoaded() {
     // Update items with callsign
@@ -247,6 +353,7 @@ function bindActions() {
         mainNav.addEventListener("hidden.bs.collapse", scheduleChromeOffsetSync);
     }
     window.addEventListener("resize", scheduleChromeOffsetSync, { passive: true });
+    initPersistedTabState();
 
     // Grab the modal element and its Bootstrap instance
     const systemModalEl = document.getElementById("systemModal");
