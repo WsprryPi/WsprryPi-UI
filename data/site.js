@@ -1391,10 +1391,6 @@ function renderRuntimeControlStatus() {
 
     const currentMode = currentRuntimeConfigStatus.mode || "";
     if (currentMode === "QRSS" || currentMode === "FSKCW" || currentMode === "DFCW") {
-        if (planLabelNode) {
-            planLabelNode.textContent = "Next message at:";
-        }
-
         const configuredMessage = document.getElementById("qrss_message");
         const fallbackMessage =
             configuredMessage && typeof configuredMessage.value === "string"
@@ -1408,18 +1404,28 @@ function renderRuntimeControlStatus() {
             currentRuntimeStatus && currentRuntimeStatus.nextTransmissionAt
                 ? currentRuntimeStatus.nextTransmissionAt
                 : "";
-        const activeCharIndex =
+        const isTransmitting =
             currentRuntimeStatus &&
-            currentRuntimeStatus.txState === "transmitting" &&
+            currentRuntimeStatus.txState === "transmitting";
+        const activeCharIndex =
+            isTransmitting &&
             Number.isInteger(currentRuntimeStatus.cwActiveCharIndex)
                 ? currentRuntimeStatus.cwActiveCharIndex
                 : -1;
 
-        renderCwRuntimeMessage(planNode, nextTransmissionAt, message, activeCharIndex);
-        planNode.setAttribute(
-            "title",
-            `${nextTransmissionAt || "Not scheduled"}${message ? ` | ${message}` : ""}`
-        );
+        if (isTransmitting) {
+            if (planLabelNode) {
+                planLabelNode.textContent = "Message progression";
+            }
+            renderCwRuntimeMessage(planNode, message, activeCharIndex);
+            planNode.setAttribute("title", message || "No CW message configured.");
+        } else {
+            if (planLabelNode) {
+                planLabelNode.textContent = "Next message at:";
+            }
+            planNode.textContent = nextTransmissionAt || "Not scheduled";
+            planNode.setAttribute("title", nextTransmissionAt || "Not scheduled");
+        }
         return;
     }
 
@@ -1478,16 +1484,11 @@ function renderRuntimeControlStatus() {
     planNode.setAttribute("title", titleParts.join(" | "));
 }
 
-function renderCwRuntimeMessage(node, nextTransmissionAt, message, activeCharIndex) {
+function renderCwRuntimeMessage(node, message, activeCharIndex) {
     node.replaceChildren();
 
     const container = document.createElement("div");
     container.className = "config-runtime-cw-message";
-
-    const scheduleNode = document.createElement("div");
-    scheduleNode.className = "config-runtime-cw-message__schedule";
-    scheduleNode.textContent = nextTransmissionAt || "Not scheduled";
-    container.appendChild(scheduleNode);
 
     if (!message) {
         const emptyNode = document.createElement("div");
