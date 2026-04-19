@@ -113,8 +113,7 @@ const configSchema = {
         keys: {
             "Transmit Pin": { required: false, type: "number" },
             "Power Level": { required: false, type: "number" },
-            "Use NTP": { required: false, type: "boolean" },
-            "Frequency Control GPIO Polarity": { required: false, type: "boolean" }
+            "Use NTP": { required: false, type: "boolean" }
         }
     },
     Platform: {
@@ -901,9 +900,11 @@ function populateConfig(callback = null) {
                 let tx_repeat_every = getConfigIntValue(cw, "CW", "Repeat Minutes", 10);
                 let cw_message = getConfigValue(cw, "CW", "Message", "");
 
-                // GPIO.Frequency Control GPIO Polarity, Operation.Web Port,
-                // and Operation.Socket Port remain backend-managed settings
-                // without visible controls on this page.
+                // Operation.Web Port and Operation.Socket Port remain
+                // backend-managed settings without visible controls on this
+                // page. Selector polarity is modeled per band under
+                // Band GPIO.<band>.Active High and per-frequency via
+                // @GPIO[H|L] metadata, not as a single GPIO-wide setting.
 
                 // If we are on the config page
                 if (window.currentPage == "index.php") {
