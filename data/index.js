@@ -10,6 +10,7 @@ let lastSavedConfigPayload = "";
 let lastFailedConfigPayload = "";
 let configSaveStatusClearTimer = null;
 let configAutosaveNeedsRuntimeRefresh = false;
+let pendingPersistedMode = "";
 let currentConfigModeSelection = "WSPR";
 let pendingModeChange = null;
 let modeChangeGuardBusy = false;
@@ -226,6 +227,19 @@ function patchTransmitControl() {
     const enabled = $("#transmit").is(":checked");
     const previous = !enabled;
 
+    if (enabled && pendingPersistedMode) {
+        setTransmitFromBackend(previous);
+        if (!configAutosaveInFlight && typeof flushAutosave === "function") {
+            flushAutosave();
+        }
+        showBackendStatus(
+            "Wait for the mode change to save before enabling transmissions.",
+            "warning",
+            "runtime"
+        );
+        return;
+    }
+
     requestTransmitEnabledChange(enabled, previous);
 }
 
@@ -329,11 +343,13 @@ function applyCommittedConfigMode(mode) {
     }
     currentConfigModeSelection = selectedConfigMode();
     configAutosaveNeedsRuntimeRefresh = true;
+    pendingPersistedMode = currentConfigModeSelection;
     validatePage();
     if (typeof suspendConfigAutosave === "function") {
         suspendConfigAutosave(false);
     }
     scheduleAutosave();
+    flushAutosave();
 }
 
 function revertConfigModeSelection() {
@@ -1606,6 +1622,7 @@ function syncConfigAutosaveBaseline() {
     lastFailedConfigPayload = "";
     configAutosaveDirty = false;
     configAutosavePendingAfterFlight = false;
+    pendingPersistedMode = "";
     setConfigSaveStatus("saved", "Saved");
 }
 
@@ -1671,6 +1688,7 @@ function flushAutosave() {
             lastSaveTimestamp = Date.now();
             lastSavedConfigPayload = payloadJson;
             lastFailedConfigPayload = "";
+            pendingPersistedMode = "";
             setConfigSaveStatus("saved", "Saved");
             if (configAutosaveNeedsRuntimeRefresh && typeof getTxState === "function") {
                 configAutosaveNeedsRuntimeRefresh = false;
