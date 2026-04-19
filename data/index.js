@@ -7,6 +7,7 @@ let configAutosaveInFlight = false;
 let configAutosavePendingAfterFlight = false;
 let configAutosaveDirty = false;
 let lastSavedConfigPayload = "";
+let lastFailedConfigPayload = "";
 let configSaveStatusClearTimer = null;
 
 function bindIndexActions() {
@@ -69,6 +70,8 @@ function bindIndexActions() {
 
     // Run validation live as the user types:
     $("#qrss_frequency").on("input blur", validateCwBaseFrequency);
+    $("#qrss_message").on("input blur", validateCwMessage);
+    $("#fsk_offset").on("input blur", validateCwShiftHz);
     $("#si5351_i2c_address").on("input blur", validateSi5351I2cAddress);
     $("#si5351_i2c_bus, #si5351_reference_frequency").on(
         "input blur",
@@ -852,6 +855,12 @@ function validatePage() {
         if (!validateCwBaseFrequency()) {
             invalidCount++;
         }
+        if (!validateCwMessage()) {
+            invalidCount++;
+        }
+        if (!validateCwShiftHz()) {
+            invalidCount++;
+        }
         clearValidationState("#wspr_config");
     }
 
@@ -923,6 +932,7 @@ function applyConfigModeSelection(mode) {
 
 function clickModeToggle() {
     syncConfigModeSections();
+    validatePage();
     scheduleAutosave();
 }
 
@@ -938,6 +948,7 @@ function clickQRSSModeToggle() {
     }
 
     updateRuntimeControlStatusFromForm(null);
+    validatePage();
     scheduleAutosave();
 }
 
@@ -1192,7 +1203,7 @@ function buildConfigPayload() {
     let cw_base_frequency = parseFloat($('#qrss_frequency').val());
     let tx_start_minute = parseInt($('#tx_start_minute').val(), 10);
     let tx_repeat_every = parseInt($('#tx_repeat_every').val(), 10);
-    let cw_message = $('#qrss_message').val();
+    let cw_message = String($('#qrss_message').val() || "").trim();
     if (!Number.isFinite(dot_length)) dot_length = 3.0;
     if (!Number.isFinite(fsk_offset)) fsk_offset = 0.0;
     if (!Number.isFinite(cw_base_frequency)) cw_base_frequency = 0.0;
@@ -1331,6 +1342,7 @@ function suspendConfigAutosave(suspended) {
 function syncConfigAutosaveBaseline() {
     if (typeof validatePage !== "function" || !validatePage()) {
         lastSavedConfigPayload = "";
+        lastFailedConfigPayload = "";
         configAutosaveDirty = false;
         setConfigSaveStatus("", "");
         return;
@@ -1338,6 +1350,7 @@ function syncConfigAutosaveBaseline() {
 
     const payloadJson = JSON.stringify(buildConfigPayload());
     lastSavedConfigPayload = payloadJson;
+    lastFailedConfigPayload = "";
     configAutosaveDirty = false;
     configAutosavePendingAfterFlight = false;
     setConfigSaveStatus("saved", "Saved");
@@ -1373,7 +1386,15 @@ function flushAutosave() {
 
     if (payloadJson === lastSavedConfigPayload) {
         configAutosaveDirty = false;
+        lastFailedConfigPayload = "";
         setConfigSaveStatus("saved", "Saved");
+        return;
+    }
+
+    if (payloadJson === lastFailedConfigPayload) {
+        configAutosaveDirty = false;
+        debugConsole("warn", "Suppressing autosave retry for unchanged rejected payload.");
+        setConfigSaveStatus("error", "Save failed");
         return;
     }
 
@@ -1396,6 +1417,7 @@ function flushAutosave() {
         .done(function () {
             lastSaveTimestamp = Date.now();
             lastSavedConfigPayload = payloadJson;
+            lastFailedConfigPayload = "";
             setConfigSaveStatus("saved", "Saved");
         })
         .fail(function (xhr) {
@@ -1417,7 +1439,8 @@ function flushAutosave() {
             }
 
             debugConsole("error", "Autosave failed:", message);
-            configAutosaveDirty = true;
+            lastFailedConfigPayload = payloadJson;
+            configAutosaveDirty = false;
             setConfigSaveStatus("error", "Save failed");
         })
         .always(function () {
@@ -1495,18 +1518,65 @@ function validateCwBaseFrequency() {
 
     let valid = true;
 
-    // False if blank or 0
-    if (!raw) valid = false;
+    if (!raw) {
+        valid = false;
+    }
 
     // Only accept one frequency
     const tokens = raw.split(/\s+/);
-    if (tokens.length !== 1) valid = false;
+    if (tokens.length !== 1) {
+        valid = false;
+    }
 
     // Allow a frequency unit
     const numericRx = /^\d+(\.\d+)?(hz|khz|mhz|ghz)?$/i;
-    if (!numericRx.test(raw)) valid = false;
+    if (!numericRx.test(raw)) {
+        valid = false;
+    }
+
+    if (valid) {
+        const value = Number.parseFloat(raw);
+        if (!Number.isFinite(value) || value <= 0) {
+            valid = false;
+        }
+    }
+
+    fld.setCustomValidity(valid ? "" : "Enter a positive CW base frequency.");
 
     // Apply visual styling
+    fld.classList.toggle("is-invalid", !valid);
+    fld.classList.toggle("is-valid", valid);
+
+    return valid;
+}
+
+function validateCwMessage() {
+    const fld = document.getElementById("qrss_message");
+    const message = String(fld.value || "").trim();
+    const valid = message.length > 0;
+
+    fld.setCustomValidity(valid ? "" : "CW message is required.");
+    fld.classList.toggle("is-invalid", !valid);
+    fld.classList.toggle("is-valid", valid);
+
+    return valid;
+}
+
+function validateCwShiftHz() {
+    const fld = document.getElementById("fsk_offset");
+    const mode = selectedConfigMode();
+
+    if (mode === "QRSS" || fld.disabled) {
+        fld.setCustomValidity("");
+        fld.classList.remove("is-invalid");
+        fld.classList.remove("is-valid");
+        return true;
+    }
+
+    const value = Number.parseFloat(fld.value);
+    const valid = Number.isFinite(value) && value > 0;
+
+    fld.setCustomValidity(valid ? "" : "Enter a positive CW frequency offset.");
     fld.classList.toggle("is-invalid", !valid);
     fld.classList.toggle("is-valid", valid);
 
