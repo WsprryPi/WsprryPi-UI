@@ -9,6 +9,10 @@ let configAutosaveDirty = false;
 let lastSavedConfigPayload = "";
 let lastFailedConfigPayload = "";
 let configSaveStatusClearTimer = null;
+let currentConfigModeSelection = "WSPR";
+let pendingModeChange = null;
+let modeChangeGuardBusy = false;
+let suppressModeChangeGuard = false;
 
 function bindIndexActions() {
     // Bind the Mode Switch
@@ -95,11 +99,13 @@ function bindIndexActions() {
 
     $("#wsprform").on(
         "change input",
-        'input:not(#transmit), select, textarea',
+        'input:not(#transmit, [name="mode_toggle"], [name="qrss_type"]), select, textarea',
         scheduleAutosave
     );
 
     bindTestToneControls();
+    bindModeChangeGuardModal();
+    currentConfigModeSelection = selectedConfigMode();
 }
 
 function setTransmitFromBackend(enabled) {
@@ -129,27 +135,31 @@ function syncStopButtonState() {
     $stop.prop("disabled", stopRequestInFlight || !transmitting);
 }
 
-function patchTransmitControl() {
-    if (isUpdatingTransmitFromBackend) return;
-
+function requestTransmitEnabledChange(enabled, previousEnabled, options = {}) {
     const $transmit = $("#transmit");
-    const enabled = $transmit.is(":checked");
-    const previous = !enabled;
+    const updateCheckboxOnSuccess = options.updateCheckboxOnSuccess === true;
+    const onSuccess =
+        typeof options.onSuccess === "function" ? options.onSuccess : null;
+    const onFailure =
+        typeof options.onFailure === "function" ? options.onFailure : null;
 
     if (enabled) {
         const unavailableMessage = selectedBackendUnavailableMessage();
         if (unavailableMessage) {
             const formattedMessage = formatTransmitFailureMessage(unavailableMessage);
-            setTransmitFromBackend(previous);
+            setTransmitFromBackend(previousEnabled);
             showBackendStatus(formattedMessage, "danger", "runtime");
             alert(formattedMessage);
-            return;
+            if (onFailure) {
+                onFailure(formattedMessage);
+            }
+            return null;
         }
     }
 
     $transmit.prop("disabled", true);
 
-    $.ajax({
+    return $.ajax({
         url: SETTINGS_URL,
         type: "PATCH",
         contentType: "application/merge-patch+json",
@@ -161,6 +171,9 @@ function patchTransmitControl() {
     })
         .done(function () {
             lastSaveTimestamp = Date.now();
+            if (updateCheckboxOnSuccess) {
+                setTransmitFromBackend(enabled);
+            }
             updateRuntimeControlStatusFromForm(null);
             clearBackendStatus("runtime");
             if (typeof getTxState === "function") {
@@ -168,6 +181,9 @@ function patchTransmitControl() {
             }
             if (typeof syncConfigAutosaveBaseline === "function") {
                 syncConfigAutosaveBaseline();
+            }
+            if (onSuccess) {
+                onSuccess();
             }
         })
         .fail(function (xhr) {
@@ -188,36 +204,57 @@ function patchTransmitControl() {
             }
 
             message = formatTransmitFailureMessage(message);
-            setTransmitFromBackend(previous);
+            setTransmitFromBackend(previousEnabled);
             showBackendStatus(message, "danger", "runtime");
             alert(message);
+            if (onFailure) {
+                onFailure(message);
+            }
         })
         .always(function () {
             $transmit.prop("disabled", false);
         });
 }
 
+function patchTransmitControl() {
+    if (isUpdatingTransmitFromBackend) return;
+
+    const enabled = $("#transmit").is(":checked");
+    const previous = !enabled;
+
+    requestTransmitEnabledChange(enabled, previous);
+}
+
 function stopTransmission() {
     const $stop = $("#stop_transmit");
     if ($stop.prop("disabled")) {
-        return;
+        return false;
     }
 
     if (!ws || ws.readyState !== WebSocket.OPEN) {
         console.error("Failed to stop transmission: WebSocket is not connected.");
-        return;
+        return false;
     }
 
     stopRequestInFlight = true;
     syncStopButtonState();
 
     ws.send(JSON.stringify({ command: "stop" }));
+    return true;
 }
 
 function handleStopCommandResponse(message) {
     const response = message && typeof message === "object" ? message : {};
     const stopSucceeded =
         response.transmit_disabled === true || response.stop_performed === true;
+
+    if (pendingModeChange && pendingModeChange.prerequisite === "stop") {
+        if (stopSucceeded) {
+            pendingModeChange.awaitingRuntimeIdle = true;
+        } else {
+            clearPendingModeChange();
+        }
+    }
 
     if (response.transmit_disabled === true) {
         setTransmitFromBackend(false);
@@ -241,6 +278,203 @@ function selectedConfigMode() {
     }
 
     return $('input[name="qrss_type"]:checked').val() || "QRSS";
+}
+
+function bindModeChangeGuardModal() {
+    const modalEl = document.getElementById("modeChangeGuardModal");
+    if (!modalEl) {
+        return;
+    }
+
+    $(modalEl)
+        .off("hidden.bs.modal.modeGuard")
+        .on("hidden.bs.modal.modeGuard", function () {
+            if (pendingModeChange && !modeChangeGuardBusy) {
+                clearPendingModeChange();
+            }
+        });
+}
+
+function modeChangeGuardModalInstance() {
+    const modalEl = document.getElementById("modeChangeGuardModal");
+    if (!modalEl) {
+        return null;
+    }
+
+    return bootstrap.Modal.getOrCreateInstance(modalEl, {
+        backdrop: "static",
+        keyboard: false,
+    });
+}
+
+function clearPendingModeChange() {
+    pendingModeChange = null;
+    modeChangeGuardBusy = false;
+    if (typeof suspendConfigAutosave === "function") {
+        suspendConfigAutosave(false);
+    }
+}
+
+function applyCommittedConfigMode(mode) {
+    suppressModeChangeGuard = true;
+    applyConfigModeSelection(mode);
+    suppressModeChangeGuard = false;
+    currentConfigModeSelection = selectedConfigMode();
+    validatePage();
+    if (typeof suspendConfigAutosave === "function") {
+        suspendConfigAutosave(false);
+    }
+    scheduleAutosave();
+}
+
+function revertConfigModeSelection() {
+    suppressModeChangeGuard = true;
+    applyConfigModeSelection(currentConfigModeSelection);
+    suppressModeChangeGuard = false;
+}
+
+function showModeChangeGuardModal(options) {
+    const modalEl = document.getElementById("modeChangeGuardModal");
+    const modal = modeChangeGuardModalInstance();
+    if (!modalEl || !modal) {
+        return;
+    }
+
+    document.getElementById("modeChangeGuardModalLabel").textContent = options.title;
+    document.getElementById("modeChangeGuardModalBody").textContent = options.message;
+    const confirmBtn = document.getElementById("modeChangeGuardConfirmBtn");
+    const cancelBtn = document.getElementById("modeChangeGuardCancelBtn");
+    confirmBtn.textContent = options.confirmLabel;
+    confirmBtn.className = options.confirmClass || "btn btn-danger";
+    cancelBtn.textContent = options.cancelLabel || "Cancel";
+
+    $(confirmBtn)
+        .off("click.modeGuard")
+        .on("click.modeGuard", function () {
+            options.onConfirm();
+        });
+    $(cancelBtn)
+        .off("click.modeGuard")
+        .on("click.modeGuard", function () {
+            if (typeof options.onCancel === "function") {
+                options.onCancel();
+            }
+        });
+
+    modal.show();
+}
+
+function finalizePendingModeChange() {
+    if (!pendingModeChange) {
+        return;
+    }
+
+    const targetMode = pendingModeChange.targetMode;
+    clearPendingModeChange();
+    applyCommittedConfigMode(targetMode);
+}
+
+function handleRuntimeStatusUpdate(status) {
+    if (
+        pendingModeChange &&
+        pendingModeChange.prerequisite === "stop" &&
+        pendingModeChange.awaitingRuntimeIdle === true &&
+        (!status || status.txState !== "transmitting")
+    ) {
+        finalizePendingModeChange();
+    }
+}
+
+function requestConfigModeChange(targetMode) {
+    if (suppressModeChangeGuard) {
+        return;
+    }
+
+    const normalizedTargetMode = ["WSPR", "QRSS", "FSKCW", "DFCW"].includes(targetMode)
+        ? targetMode
+        : "WSPR";
+    const previousMode = currentConfigModeSelection;
+
+    if (normalizedTargetMode === previousMode) {
+        applyCommittedConfigMode(previousMode);
+        return;
+    }
+
+    const runtimeStatus =
+        typeof currentRuntimeStatus === "object" && currentRuntimeStatus !== null
+            ? currentRuntimeStatus
+            : null;
+    const transmitting = runtimeStatus && runtimeStatus.txState === "transmitting";
+    const transmitEnabled = $("#transmit").is(":checked");
+
+    if (typeof suspendConfigAutosave === "function") {
+        suspendConfigAutosave(true);
+    }
+
+    if (transmitting) {
+        revertConfigModeSelection();
+        pendingModeChange = {
+            targetMode: normalizedTargetMode,
+            prerequisite: "stop",
+            awaitingRuntimeIdle: false,
+        };
+        showModeChangeGuardModal({
+            title: "Stop transmission to change mode",
+            message: "A transmission is in progress. Stop it before switching modes.",
+            confirmLabel: "Stop transmission",
+            confirmClass: "btn btn-danger",
+            onConfirm() {
+                modeChangeGuardBusy = true;
+                const modal = modeChangeGuardModalInstance();
+                if (modal) {
+                    modal.hide();
+                }
+                if (!stopTransmission()) {
+                    clearPendingModeChange();
+                }
+            },
+            onCancel() {
+                clearPendingModeChange();
+            },
+        });
+        return;
+    }
+
+    if (transmitEnabled) {
+        revertConfigModeSelection();
+        pendingModeChange = {
+            targetMode: normalizedTargetMode,
+            prerequisite: "disable",
+        };
+        showModeChangeGuardModal({
+            title: "Disable transmissions to change mode",
+            message: "Disable transmissions before switching modes.",
+            confirmLabel: "Disable & switch",
+            confirmClass: "btn btn-danger",
+            onConfirm() {
+                modeChangeGuardBusy = true;
+                const modal = modeChangeGuardModalInstance();
+                if (modal) {
+                    modal.hide();
+                }
+                requestTransmitEnabledChange(false, true, {
+                    updateCheckboxOnSuccess: true,
+                    onSuccess() {
+                        finalizePendingModeChange();
+                    },
+                    onFailure() {
+                        clearPendingModeChange();
+                    },
+                });
+            },
+            onCancel() {
+                clearPendingModeChange();
+            },
+        });
+        return;
+    }
+
+    applyCommittedConfigMode(normalizedTargetMode);
 }
 
 function updateRuntimeControlStatusFromForm(mode) {
@@ -911,7 +1145,7 @@ function syncConfigModeSections() {
         if (!$('input[name="qrss_type"]:checked').length) {
             $('input[name="qrss_type"][value="QRSS"]').prop("checked", true);
         }
-        clickQRSSModeToggle();
+        syncSelectedCwModeControls();
     } else {
         $('#qrss_config').hide();
         $('#wspr_config').show();
@@ -933,16 +1167,19 @@ function applyConfigModeSelection(mode) {
     }
 
     syncConfigModeSections();
+    currentConfigModeSelection = selectedConfigMode();
 }
 
 function clickModeToggle() {
-    syncConfigModeSections();
-    validatePage();
-    scheduleAutosave();
+    requestConfigModeChange(selectedConfigMode());
 }
 
 
 function clickQRSSModeToggle() {
+    requestConfigModeChange(selectedConfigMode());
+}
+
+function syncSelectedCwModeControls() {
     const selectedMode = $('input[name="qrss_type"]:checked').val();
 
     // CW.Shift Hz is only used by FSKCW and DFCW.
@@ -951,10 +1188,6 @@ function clickQRSSModeToggle() {
     } else {
         $('#fsk_offset').prop('disabled', false);
     }
-
-    updateRuntimeControlStatusFromForm(null);
-    validatePage();
-    scheduleAutosave();
 }
 
 // Function to enable/disable & reset PPM field when Use NTP toggles

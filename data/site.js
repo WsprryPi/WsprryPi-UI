@@ -1358,6 +1358,9 @@ function applyRuntimeStatus(msg) {
         currentRuntimeConfigStatus.mode = status.runtimeMode;
     }
     renderRuntimeStatus(currentRuntimeStatus);
+    if (typeof handleRuntimeStatusUpdate === "function") {
+        handleRuntimeStatusUpdate(currentRuntimeStatus);
+    }
 }
 
 function updateRuntimeControlConfigStatus(mode, transmitEnabled) {

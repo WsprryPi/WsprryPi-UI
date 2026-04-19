@@ -702,4 +702,42 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                     </div>
 
                 </form>
+
+                <div
+                    class="modal fade"
+                    id="modeChangeGuardModal"
+                    tabindex="-1"
+                    aria-labelledby="modeChangeGuardModalLabel"
+                    aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="modeChangeGuardModalLabel">Change mode</h5>
+                                <button
+                                    type="button"
+                                    class="btn-close"
+                                    data-bs-dismiss="modal"
+                                    aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <p id="modeChangeGuardModalBody" class="mb-0"></p>
+                            </div>
+                            <div class="modal-footer">
+                                <button
+                                    type="button"
+                                    class="btn btn-outline-secondary"
+                                    data-bs-dismiss="modal"
+                                    id="modeChangeGuardCancelBtn">
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    class="btn btn-danger"
+                                    id="modeChangeGuardConfirmBtn">
+                                    Confirm
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
