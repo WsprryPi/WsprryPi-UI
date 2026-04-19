@@ -96,17 +96,19 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                         </div>
 
                         <div class="config-operator-panel config-operator-panel--runtime">
-                            <div class="config-operator-label">Runtime state</div>
-                            <div class="config-runtime-grid">
-                                <div class="config-runtime-item config-runtime-item--switch">
-                                    <div class="config-runtime-item__label">Transmit enabled</div>
-                                    <div class="d-flex align-items-center gap-2 flex-wrap">
-                                        <div class="form-check form-switch mb-0">
-                                            <input class="form-check-input" type="checkbox" role="switch" id="transmit">
-                                        </div>
-                                        <span class="config-runtime-item__hint">Allow the scheduled transmitter to key up.</span>
+                            <div class="config-runtime-header">
+                                <div class="config-runtime-header__copy">
+                                    <div class="config-operator-label">Runtime state</div>
+                                    <div class="config-runtime-header__hint">Allow the scheduled transmitter to key up.</div>
+                                </div>
+                                <div class="config-runtime-header__control">
+                                    <div class="form-check form-switch mb-0">
+                                        <input class="form-check-input" type="checkbox" role="switch" id="transmit">
+                                        <label class="form-check-label" for="transmit">Transmit enabled</label>
                                     </div>
                                 </div>
+                            </div>
+                            <div class="config-runtime-grid">
                                 <div class="config-runtime-item">
                                     <div class="config-runtime-item__label">Current mode</div>
                                     <div class="config-runtime-item__value">Mode: <span id="runtime_mode_value">Unknown</span></div>

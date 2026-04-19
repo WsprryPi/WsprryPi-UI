@@ -303,6 +303,50 @@
     box-shadow: var(--focus-ring);
 }
 
+.config-runtime-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: start;
+    justify-content: space-between;
+    gap: 0.75rem 1rem;
+}
+
+.config-runtime-header__copy {
+    display: grid;
+    gap: 0.35rem;
+    min-width: 0;
+}
+
+.config-runtime-header__hint {
+    color: var(--bs-secondary-color);
+    font-size: var(--text-caption);
+    line-height: var(--leading-copy);
+}
+
+.config-runtime-header__control {
+    display: flex;
+    align-items: center;
+    min-height: 2rem;
+}
+
+.config-runtime-header__control .form-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    min-height: 0;
+}
+
+.config-runtime-header__control .form-check-input {
+    margin-top: 0;
+}
+
+.config-runtime-header__control .form-check-label {
+    margin-bottom: 0;
+    font-size: var(--text-caption);
+    line-height: var(--leading-snug);
+    white-space: nowrap;
+}
+
 .config-runtime-grid {
     display: grid;
     gap: 0.75rem;
@@ -538,6 +582,14 @@ legend {
 
     .config-runtime-grid {
         grid-template-columns: 1fr;
+    }
+
+    .config-runtime-header {
+        align-items: stretch;
+    }
+
+    .config-runtime-header__control {
+        width: 100%;
     }
 
     .config-actions {
