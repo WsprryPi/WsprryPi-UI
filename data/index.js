@@ -139,6 +139,8 @@ function syncStopButtonState() {
 function requestTransmitEnabledChange(enabled, previousEnabled, options = {}) {
     const $transmit = $("#transmit");
     const updateCheckboxOnSuccess = options.updateCheckboxOnSuccess === true;
+    const syncAutosaveBaselineOnSuccess =
+        options.syncAutosaveBaselineOnSuccess !== false;
     const onSuccess =
         typeof options.onSuccess === "function" ? options.onSuccess : null;
     const onFailure =
@@ -183,7 +185,8 @@ function requestTransmitEnabledChange(enabled, previousEnabled, options = {}) {
             if (typeof getTxState === "function") {
                 getTxState();
             }
-            if (typeof syncConfigAutosaveBaseline === "function") {
+            if (syncAutosaveBaselineOnSuccess &&
+                typeof syncConfigAutosaveBaseline === "function") {
                 syncConfigAutosaveBaseline();
             }
         })
@@ -470,6 +473,7 @@ function requestConfigModeChange(targetMode) {
                 }
                 requestTransmitEnabledChange(false, true, {
                     updateCheckboxOnSuccess: true,
+                    syncAutosaveBaselineOnSuccess: false,
                     onSuccess() {
                         finalizePendingModeChange(requestedMode);
                     },
