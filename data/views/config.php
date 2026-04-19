@@ -17,9 +17,6 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                     aria-live="polite"
                                     aria-atomic="true"></span>
                             </div>
-                            <p class="config-header-summary mb-0">
-                                Set the active transmit workflow first, review live state, then work through one section at a time.
-                            </p>
                         </div>
                     </div>
 
@@ -85,7 +82,6 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                         <legend class="visually-hidden">Operating controls</legend>
                         <div class="config-operator-panel config-operator-panel--mode">
                             <div class="config-operator-label">Signal mode</div>
-                            <p class="config-operator-copy mb-0">Choose the transmit workflow first. The matching settings stay below in this tab.</p>
                             <div class="btn-group config-mode-toggle" role="group" aria-label="Signal mode">
                                 <input type="radio" class="btn-check" name="mode_toggle" id="wspr_mode" value="WSPR" autocomplete="off" checked>
                                 <label class="btn config-mode-toggle__segment" for="wspr_mode">WSPR</label>
@@ -99,7 +95,6 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                             <div class="config-runtime-header">
                                 <div class="config-runtime-header__copy">
                                     <div class="config-operator-label">Runtime state</div>
-                                    <div class="config-runtime-header__hint">Allow the scheduled transmitter to key up.</div>
                                 </div>
                                 <div class="config-runtime-header__control">
                                     <div class="form-check form-switch mb-0">
@@ -131,7 +126,6 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                             <div id="wspr_config" class="config-section-stack">
                                 <fieldset class="config-panel" id="op_info">
                                     <legend>WSPR Station Configuration</legend>
-                                    <p class="config-panel__summary">These values identify the station on air and anchor the planning rules used below.</p>
                                     <div class="row gx-2 align-items-center">
                                         <div class="col-md-6 mb-3 d-flex align-items-center">
                                             <label for="callsign" class="form-label mb-0 me-2 flex-shrink-0">
@@ -166,7 +160,6 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
 
                                 <fieldset class="config-panel" id="tx_info">
                                     <legend>WSPR Transmission Settings</legend>
-                                    <p class="config-panel__summary">Define the dial plan, output level, and calibration together so the transmit path can be checked in one pass.</p>
                                     <div class="config-wspr-top-row">
                                         <div class="config-wspr-top-row__item config-wspr-top-row__field config-wspr-top-row__field--wide">
                                             <label for="frequencies" class="form-label">
@@ -271,16 +264,6 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                 <option value="prefer_paired">Prefer paired when available</option>
                                                 <option value="require_paired">Require paired</option>
                                             </select>
-                                        </div>
-                                    </div>
-
-                                    <div class="row gx-3 align-items-start">
-                                        <div class="col-12 mb-3 config-planner-field">
-                                            <div class="form-text">
-                                                Automatic uses a single-frame plan when possible and upgrades to paired when required.<br>
-                                                Prefer paired when available chooses paired planning when supported.<br>
-                                                Require paired rejects identities that cannot be sent as a paired plan.
-                                            </div>
                                         </div>
                                     </div>
                                 </fieldset>
