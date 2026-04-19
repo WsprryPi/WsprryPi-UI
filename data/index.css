@@ -422,6 +422,18 @@ legend {
     max-width: 44rem;
 }
 
+.config-wspr-top-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.75rem 1rem;
+    width: 100%;
+}
+
+.config-wspr-top-row__item {
+    min-width: 0;
+}
+
 .config-wspr-top-row .form-label {
     white-space: nowrap;
 }
@@ -454,8 +466,65 @@ legend {
     flex: 0 0 auto;
 }
 
+.config-wspr-top-row__item--toggle {
+    flex: 0 0 auto;
+    align-self: end;
+}
+
+.config-wspr-top-row__field--wide {
+    flex: 1.6 1 20rem;
+    min-width: 18rem;
+}
+
+.config-wspr-top-row__planner {
+    flex: 1.25 1 16rem;
+    min-width: 15rem;
+}
+
+.config-wspr-top-row__field--dbm {
+    flex: 0 0 9rem;
+    min-width: 9rem;
+}
+
+.config-wspr-top-row__field--ppm {
+    flex: 0 0 10rem;
+    min-width: 10rem;
+}
+
 .config-wspr-top-row__planner .form-select {
     width: 100%;
+}
+
+@media (max-width: 1199.98px) {
+    .config-wspr-top-row__field--wide,
+    .config-wspr-top-row__planner {
+        flex: 1 1 22rem;
+        min-width: 16rem;
+    }
+
+    .config-wspr-top-row__field--dbm,
+    .config-wspr-top-row__field--ppm {
+        flex: 1 1 10rem;
+        min-width: 9rem;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .config-wspr-top-row {
+        gap: 0.65rem 0.85rem;
+    }
+
+    .config-wspr-top-row__field--wide,
+    .config-wspr-top-row__planner,
+    .config-wspr-top-row__field--dbm,
+    .config-wspr-top-row__field--ppm {
+        flex: 1 1 100%;
+        min-width: 0;
+    }
+
+    .config-wspr-top-row__item--toggle {
+        flex: 0 0 auto;
+    }
 }
 
 .config-calibration-field {

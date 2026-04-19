@@ -128,10 +128,6 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                             role="tabpanel"
                             aria-labelledby="radio-tab"
                             tabindex="0">
-                            <div class="config-pane-intro">
-                                <div class="config-pane-intro__label">Recommended order</div>
-                                <p class="mb-0">Set station identity first, then review the transmission plan and calibration block before committing changes.</p>
-                            </div>
                             <div id="wspr_config" class="config-section-stack">
                                 <fieldset class="config-panel" id="op_info">
                                     <legend>WSPR Station Configuration</legend>
@@ -171,8 +167,8 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                 <fieldset class="config-panel" id="tx_info">
                                     <legend>WSPR Transmission Settings</legend>
                                     <p class="config-panel__summary">Define the dial plan, output level, and calibration together so the transmit path can be checked in one pass.</p>
-                                    <div class="row gx-3 gy-2 align-items-end config-wspr-top-row">
-                                        <div class="col-12 col-xl-3 mb-2 config-wspr-top-row__field">
+                                    <div class="config-wspr-top-row">
+                                        <div class="config-wspr-top-row__item config-wspr-top-row__field config-wspr-top-row__field--wide">
                                             <label for="frequencies" class="form-label">
                                                 Frequencies:
                                             </label>
@@ -185,7 +181,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                 required />
                                         </div>
 
-                                        <div class="col-12 col-sm-6 col-md-auto col-xl-auto mb-2">
+                                        <div class="config-wspr-top-row__item config-wspr-top-row__item--toggle">
                                             <div class="config-wspr-top-row__toggle">
                                                 <label class="form-check-label mb-0" for="useoffset">
                                                     Randomize
@@ -200,7 +196,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                             </div>
                                         </div>
 
-                                        <div class="col-6 col-sm-4 col-xl-1 mb-2 config-wspr-top-row__field">
+                                        <div class="config-wspr-top-row__item config-wspr-top-row__field config-wspr-top-row__field--dbm">
                                             <label for="dbm" class="form-label">
                                                 TX dBm:
                                             </label>
@@ -232,7 +228,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                             </select>
                                         </div>
 
-                                        <div class="col-6 col-sm-4 col-xl-2 mb-2 config-wspr-top-row__field">
+                                        <div class="config-wspr-top-row__item config-wspr-top-row__field config-wspr-top-row__field--ppm">
                                             <label for="ppm" class="form-label">PPM Offset</label>
                                             <input
                                                 type="number"
@@ -245,7 +241,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                 title="Enter a decimal value between -200.000000 to 200.000000">
                                         </div>
 
-                                        <div class="col-12 col-sm-6 col-md-auto col-xl-auto mb-2">
+                                        <div class="config-wspr-top-row__item config-wspr-top-row__item--toggle">
                                             <div class="config-wspr-top-row__toggle">
                                                 <label
                                                     class="form-check-label mb-0"
@@ -262,7 +258,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                             </div>
                                         </div>
 
-                                        <div class="col-12 col-sm-6 col-xl-2 mb-2 config-wspr-top-row__field config-wspr-top-row__planner">
+                                        <div class="config-wspr-top-row__item config-wspr-top-row__field config-wspr-top-row__planner">
                                             <label for="planner_preference" class="form-label">
                                                 WSPR planning mode
                                             </label>
@@ -454,10 +450,6 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                             role="tabpanel"
                             aria-labelledby="transmitter-hardware-tab"
                             tabindex="0">
-                            <div class="config-pane-intro">
-                                <div class="config-pane-intro__label">Hardware path</div>
-                                <p class="mb-0">Select the RF backend first, then complete only the hardware block that matches that transmit path.</p>
-                            </div>
                             <fieldset class="config-panel">
                                 <legend>Transmit Backend</legend>
 
@@ -586,10 +578,6 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                             role="tabpanel"
                             aria-labelledby="pi-hardware-tab"
                             tabindex="0">
-                            <div class="config-pane-intro">
-                                <div class="config-pane-intro__label">Pi I/O</div>
-                                <p class="mb-0">Use these controls for auxiliary indicators and shutdown wiring after the transmit path is already working.</p>
-                            </div>
                             <fieldset class="config-panel">
                                 <legend>Hardware Control</legend>
 
