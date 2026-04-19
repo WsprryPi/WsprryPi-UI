@@ -400,7 +400,8 @@
     white-space: pre-wrap;
     word-break: break-word;
     color: color-mix(in srgb, var(--bs-body-color) 72%, transparent);
-    font-family: var(--bs-font-monospace);
+    font-family: var(--bs-font-monospace), ui-monospace, SFMono-Regular,
+        Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
 .config-runtime-cw-message__char {
