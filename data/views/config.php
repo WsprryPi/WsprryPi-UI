@@ -666,9 +666,31 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                         <thead>
                                             <tr>
                                                 <th scope="col">Band</th>
-                                                <th scope="col">Enabled</th>
+                                                <th scope="col">
+                                                    <div class="d-inline-flex align-items-center gap-2">
+                                                        <div class="form-check mb-0">
+                                                            <input
+                                                                class="form-check-input"
+                                                                type="checkbox"
+                                                                id="band-gpio-enabled-all"
+                                                                aria-label="Toggle all Band GPIO enabled checkboxes">
+                                                        </div>
+                                                        <span>Enabled</span>
+                                                    </div>
+                                                </th>
                                                 <th scope="col">GPIO</th>
-                                                <th scope="col">Active High</th>
+                                                <th scope="col">
+                                                    <div class="d-inline-flex align-items-center gap-2">
+                                                        <div class="form-check mb-0">
+                                                            <input
+                                                                class="form-check-input"
+                                                                type="checkbox"
+                                                                id="band-gpio-active-high-all"
+                                                                aria-label="Toggle all Band GPIO active high checkboxes">
+                                                        </div>
+                                                        <span>Active High</span>
+                                                    </div>
+                                                </th>
                                             </tr>
                                         </thead>
                                         <tbody>

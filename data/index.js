@@ -28,6 +28,13 @@ function bindIndexActions() {
 
     // Wire up Band GPIO switches
     $("#wsprform").on("change", ".band-gpio-enabled", clickBandGpioEnabled);
+    $("#wsprform").on("change", "#band-gpio-enabled-all", () => {
+        applyBandGpioColumnToggle("enabled", $("#band-gpio-enabled-all").is(":checked"));
+    });
+    $("#wsprform").on("change", "#band-gpio-active-high-all", () => {
+        applyBandGpioColumnToggle("activeHigh", $("#band-gpio-active-high-all").is(":checked"));
+    });
+    $("#wsprform").on("change", ".band-gpio-active-high", syncBandGpioColumnHeaderStates);
     $("#wsprform").on("input change", ".band-gpio-input, .band-gpio-active-high", validateBandGpioFields);
 
     // Wire up the pin dropdown menus (only in the form)
@@ -506,6 +513,75 @@ function getBandGpioRows() {
     return $("#bandGpioTable tbody tr[data-band]");
 }
 
+function getBandGpioHeaderCheckboxes() {
+    return {
+        enabled: $("#band-gpio-enabled-all"),
+        activeHigh: $("#band-gpio-active-high-all")
+    };
+}
+
+function getBandGpioColumnCheckboxes(column) {
+    if (column === "enabled") {
+        return getBandGpioRows().find(".band-gpio-enabled");
+    }
+
+    if (column === "activeHigh") {
+        return getBandGpioRows().find(".band-gpio-active-high");
+    }
+
+    return $();
+}
+
+function syncBandGpioColumnHeaderState(column) {
+    const headerCheckboxes = getBandGpioHeaderCheckboxes();
+    const $header = headerCheckboxes[column];
+    if (!$header || !$header.length) {
+        return;
+    }
+
+    const $columnCheckboxes = getBandGpioColumnCheckboxes(column);
+    const total = $columnCheckboxes.length;
+
+    if (total === 0) {
+        $header.prop({
+            checked: false,
+            indeterminate: false,
+            disabled: true
+        });
+        return;
+    }
+
+    const checkedCount = $columnCheckboxes.filter(":checked").length;
+    $header.prop("disabled", false);
+    $header.prop("checked", checkedCount === total);
+    $header.prop("indeterminate", checkedCount > 0 && checkedCount < total);
+}
+
+function syncBandGpioColumnHeaderStates() {
+    syncBandGpioColumnHeaderState("enabled");
+    syncBandGpioColumnHeaderState("activeHigh");
+}
+
+function applyBandGpioColumnToggle(column, checked) {
+    const $columnCheckboxes = getBandGpioColumnCheckboxes(column);
+    if (!$columnCheckboxes.length) {
+        syncBandGpioColumnHeaderStates();
+        return;
+    }
+
+    if (column === "enabled") {
+        getBandGpioRows().each(function () {
+            const $row = $(this);
+            setBandGpioRowState($row, checked);
+        });
+    } else {
+        $columnCheckboxes.prop("checked", checked);
+    }
+
+    syncBandGpioColumnHeaderStates();
+    validateBandGpioFields();
+}
+
 function setBandGpioRowState($row, enabled) {
     $row.find(".band-gpio-enabled").prop("checked", enabled);
     $row.find(".band-gpio-input").prop("disabled", !enabled);
@@ -515,6 +591,7 @@ function setBandGpioRowState($row, enabled) {
 function clickBandGpioEnabled() {
     const $row = $(this).closest("tr[data-band]");
     setBandGpioRowState($row, $(this).is(":checked"));
+    syncBandGpioColumnHeaderStates();
     validateBandGpioFields();
 }
 
@@ -589,6 +666,7 @@ function populateBandGpioForm(bandGpioConfig = {}) {
     });
 
     refreshBandGpioOptions();
+    syncBandGpioColumnHeaderStates();
     validateBandGpioFields();
 }
 
@@ -1436,6 +1514,14 @@ function setHardwareControlsDisabled(disabled) {
         $row.find(".band-gpio-input").prop("disabled", disabled || !$row.find(".band-gpio-enabled").is(":checked"));
         $row.find(".band-gpio-active-high").prop("disabled", disabled || !$row.find(".band-gpio-enabled").is(":checked"));
     });
+
+    const headerCheckboxes = getBandGpioHeaderCheckboxes();
+    Object.values(headerCheckboxes).forEach(($header) => {
+        if ($header && $header.length) {
+            $header.prop("disabled", disabled || !getBandGpioRows().length);
+        }
+    });
+    syncBandGpioColumnHeaderStates();
 }
 
 function setOfflineDefaults() {
