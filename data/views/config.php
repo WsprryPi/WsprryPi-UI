@@ -109,7 +109,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                     <div class="config-runtime-item__value">Mode: <span id="runtime_mode_value">Unknown</span></div>
                                 </div>
                                 <div class="config-runtime-item">
-                                    <div class="config-runtime-item__label">Current WSPR plan</div>
+                                    <div class="config-runtime-item__label" id="runtime_plan_label">Current WSPR plan</div>
                                     <div class="config-runtime-item__value" id="runtime_wspr_plan_value">Not available</div>
                                 </div>
                             </div>
@@ -408,7 +408,6 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
 
                                 <fieldset class="config-panel" id="qrss_message_set">
                                     <legend>CW Message</legend>
-                                    <p class="config-panel__summary">Keep the message payload short and verify it here before keying the transmitter.</p>
                                     <div class="row gx-2 gy-3 align-items-center mt-1">
                                         <div class="col-12 col-lg-12 d-flex align-items-center">
                                             <input

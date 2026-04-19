@@ -1311,12 +1311,17 @@ function normalizeRuntimeStatus(msg) {
     const currentFrame = Number.isFinite(Number(msg.current_frame))
         ? Number(msg.current_frame)
         : 0;
+    const cwActiveCharIndex = Number.isInteger(Number(msg.cw_active_char_index))
+        ? Number(msg.cw_active_char_index)
+        : -1;
 
     return {
         txState:
             typeof msg.tx_state === "string"
                 ? msg.tx_state
                 : (typeof msg.state === "string" ? msg.state : ""),
+        runtimeMode:
+            typeof msg.runtime_mode === "string" ? msg.runtime_mode : "",
         planType,
         frameCount,
         currentFrame,
@@ -1328,6 +1333,8 @@ function normalizeRuntimeStatus(msg) {
             typeof msg.locator_normalized === "string" ? msg.locator_normalized : "",
         frameCallsign: typeof msg.frame_callsign === "string" ? msg.frame_callsign : "",
         frameLocator: typeof msg.frame_locator === "string" ? msg.frame_locator : "",
+        cwMessage: typeof msg.cw_message === "string" ? msg.cw_message : "",
+        cwActiveCharIndex,
         timestamp: typeof msg.timestamp === "string" ? msg.timestamp : ""
     };
 }
@@ -1343,6 +1350,9 @@ function applyRuntimeStatus(msg) {
     }
 
     currentRuntimeStatus = status;
+    if (status.runtimeMode) {
+        currentRuntimeConfigStatus.mode = status.runtimeMode;
+    }
     renderRuntimeStatus(currentRuntimeStatus);
 }
 
@@ -1360,6 +1370,7 @@ function updateRuntimeControlConfigStatus(mode, transmitEnabled) {
 
 function renderRuntimeControlStatus() {
     const modeNode = document.getElementById("runtime_mode_value");
+    const planLabelNode = document.getElementById("runtime_plan_label");
     const planNode = document.getElementById("runtime_wspr_plan_value");
 
     if (typeof syncStopButtonState === "function") {
@@ -1374,8 +1385,39 @@ function renderRuntimeControlStatus() {
         return;
     }
 
+    const currentMode = currentRuntimeConfigStatus.mode || "";
+    if (currentMode === "QRSS" || currentMode === "FSKCW" || currentMode === "DFCW") {
+        if (planLabelNode) {
+            planLabelNode.textContent = "Message";
+        }
+
+        const configuredMessage = document.getElementById("qrss_message");
+        const fallbackMessage =
+            configuredMessage && typeof configuredMessage.value === "string"
+                ? configuredMessage.value.trim()
+                : "";
+        const message =
+            currentRuntimeStatus && currentRuntimeStatus.cwMessage
+                ? currentRuntimeStatus.cwMessage
+                : fallbackMessage;
+        const activeCharIndex =
+            currentRuntimeStatus &&
+            currentRuntimeStatus.txState === "transmitting" &&
+            Number.isInteger(currentRuntimeStatus.cwActiveCharIndex)
+                ? currentRuntimeStatus.cwActiveCharIndex
+                : -1;
+
+        renderCwRuntimeMessage(planNode, message, activeCharIndex);
+        planNode.setAttribute("title", message || "No CW message configured.");
+        return;
+    }
+
+    if (planLabelNode) {
+        planLabelNode.textContent = "Current WSPR plan";
+    }
+
     if (
-        currentRuntimeConfigStatus.mode !== "WSPR" ||
+        currentMode !== "WSPR" ||
         !currentRuntimeStatus ||
         !currentRuntimeStatus.planType
     ) {
@@ -1423,6 +1465,35 @@ function renderRuntimeControlStatus() {
 
     planNode.textContent = summary;
     planNode.setAttribute("title", titleParts.join(" | "));
+}
+
+function renderCwRuntimeMessage(node, message, activeCharIndex) {
+    node.replaceChildren();
+
+    const container = document.createElement("div");
+    container.className = "config-runtime-cw-message";
+
+    if (!message) {
+        container.textContent = "Not available";
+        node.appendChild(container);
+        return;
+    }
+
+    const messageNode = document.createElement("div");
+    messageNode.className = "config-runtime-cw-message__text";
+
+    Array.from(message).forEach((character, index) => {
+        const charNode = document.createElement("span");
+        charNode.className = "config-runtime-cw-message__char";
+        if (index === activeCharIndex) {
+            charNode.classList.add("is-active");
+        }
+        charNode.textContent = character;
+        messageNode.appendChild(charNode);
+    });
+
+    container.appendChild(messageNode);
+    node.appendChild(container);
 }
 
 function getCallerLocation() {

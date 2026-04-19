@@ -70,7 +70,12 @@ function bindIndexActions() {
 
     // Run validation live as the user types:
     $("#qrss_frequency").on("input blur", validateCwBaseFrequency);
-    $("#qrss_message").on("input blur", validateCwMessage);
+    $("#qrss_message").on("input change blur", function () {
+        validateCwMessage();
+        if (typeof renderRuntimeStatus === "function") {
+            renderRuntimeStatus(currentRuntimeStatus);
+        }
+    });
     $("#fsk_offset").on("input blur", validateCwShiftHz);
     $("#si5351_i2c_address").on("input blur", validateSi5351I2cAddress);
     $("#si5351_i2c_bus, #si5351_reference_frequency").on(

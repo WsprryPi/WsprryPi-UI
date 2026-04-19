@@ -381,6 +381,29 @@
     font-variant-numeric: tabular-nums;
 }
 
+.config-runtime-cw-message {
+    display: grid;
+    gap: 0.25rem;
+    min-width: 0;
+}
+
+.config-runtime-cw-message__text {
+    display: block;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: color-mix(in srgb, var(--bs-body-color) 72%, transparent);
+}
+
+.config-runtime-cw-message__char {
+    transition: color 120ms ease, font-size 120ms ease, font-weight 120ms ease;
+}
+
+.config-runtime-cw-message__char.is-active {
+    color: var(--bs-body-color);
+    font-size: 1.08em;
+    font-weight: 700;
+}
+
 .config-runtime-item__hint {
     color: var(--bs-secondary-color);
     font-size: var(--text-caption);
