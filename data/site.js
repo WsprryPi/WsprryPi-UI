@@ -1241,6 +1241,81 @@ function renderRuntimeControlStatus() {
     planNode.setAttribute("title", titleParts.join(" | "));
 }
 
+function getCallerLocation() {
+    try {
+        const err = new Error();
+        const stack = err.stack?.split('\n');
+
+        if (!stack || stack.length < 3) return '';
+
+        // stack[0] = "Error"
+        // stack[1] = this function (getCallerLocation)
+        // stack[2] = debugConsole
+        // stack[3] = actual caller
+        const callerLine = stack[3] || stack[2];
+
+        // Chrome format: "    at func (file:line:col)"
+        // Firefox: "func@file:line:col"
+        const match = callerLine.match(/(?:at\s+)?(.*?)(?:\s+\(|@)(.*):(\d+):\d+\)?/);
+
+        if (!match) return '';
+
+        const func = match[1];
+        const file = match[2].split('/').pop();
+        const line = match[3];
+
+        return `${func} ${file}:${line}`;
+    } catch {
+        return '';
+    }
+}
+
+const CALLER_LOCATION_WIDTH = 36;
+
+const LOG_LEVEL_STYLES = {
+    debug: "color: #1f6feb; font-weight: 600;",
+    log: "color: #57606a; font-weight: 600;",
+    warn: "color: #9a6700; font-weight: 600;",
+    error: "color: #cf222e; font-weight: 700;"
+};
+
+function normalizeCallerLocation(location) {
+    const normalized = typeof location === "string" ? location.trim() : "";
+
+    if (!normalized) {
+        return "";
+    }
+
+    const lowered = normalized.toLowerCase();
+    if (
+        lowered === "<anonymous>" ||
+        lowered.includes("debugger eval code:") ||
+        lowered.includes("eval code:") ||
+        lowered.includes("eval at ")
+    ) {
+        return "";
+    }
+
+    return normalized;
+}
+
+function formatCallerLocation(location, width = CALLER_LOCATION_WIDTH) {
+    const normalized = normalizeCallerLocation(location);
+
+    if (!normalized) {
+        return "";
+    }
+
+    if (normalized.length > width) {
+        if (width <= 3) {
+            return normalized.slice(-width);
+        }
+
+        return "..." + normalized.slice(-(width - 3));
+    }
+    return normalized.padEnd(width, " ");
+}
+
 /**
  * Logs at the specified level, if it meets or exceeds the
  * configured CONSOLE_LOG_LEVEL.
@@ -1251,40 +1326,59 @@ function renderRuntimeControlStatus() {
  *   The message (or messages) to log.
  */
 function debugConsole(method, ...args) {
-    // Define level order
-    const levels = ['debug', 'log', 'warn', 'error'];
-
-    // Determine the current threshold (default to 'debug')
-    const threshold = String(CONSOLE_LOG_LEVEL || 'debug').toLowerCase();
+    const levels = ["debug", "log", "warn", "error"];
+    const threshold = String(CONSOLE_LOG_LEVEL || "debug").toLowerCase();
     const thresholdIndex = levels.indexOf(threshold);
-    // If the user supplied an invalid level, default to allowing everything
     const currentLevelIndex = thresholdIndex >= 0 ? thresholdIndex : 0;
-
-    // Normalize requested method
     const m = String(method).toLowerCase();
     const methodIndex = levels.indexOf(m);
-    // If unknown method, treat as 'log'
-    const validMethod = methodIndex >= 0 ? m : 'log';
+    const validMethod = methodIndex >= 0 ? m : "log";
 
-    // Suppress messages below threshold
     if (methodIndex < currentLevelIndex) {
         return;
     }
 
-    // Fixed-width tags for each level
     const tags = {
-        debug: '[DEBUG]',
-        log: '[LOG  ]',
-        warn: '[WARN ]',
-        error: '[ERROR]'
+        debug: "[DEBUG]",
+        log: "[LOG  ]",
+        warn: "[WARN ]",
+        error: "[ERROR]"
     };
-    const tag = tags[validMethod];
 
-    // Invoke the console method if it exists, else fall back to console.log
-    if (typeof console[validMethod] === 'function') {
-        console[validMethod](tag, ...args);
-    } else {
-        console.log(tag, ...args);
+    const tag = tags[validMethod];
+    const consoleMethod =
+        typeof console.log === 'function'
+            ? console.log.bind(console)
+            : null;
+
+    if (!consoleMethod) {
+        return;
+    }
+
+    const includeLocation =
+        validMethod === "debug" ||
+        validMethod === "warn" ||
+        validMethod === "error";
+    let location = "";
+
+    if (includeLocation) {
+        try {
+            location = normalizeCallerLocation(getCallerLocation());
+        } catch {
+            location = "";
+        }
+    }
+
+    const callerField = formatCallerLocation(location);
+    const prefix = callerField ? `${callerField} ` : "";
+    const style = LOG_LEVEL_STYLES[validMethod] || "";
+
+    try {
+        consoleMethod(`%c${tag}%c ${prefix}`, style, "", ...args);
+    } catch {
+        const fallbackArgs =
+            prefix ? [tag, callerField, ...args] : [tag, ...args];
+        consoleMethod(...fallbackArgs);
     }
 }
 
