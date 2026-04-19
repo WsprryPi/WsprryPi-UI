@@ -422,6 +422,27 @@ legend {
     max-width: 44rem;
 }
 
+.config-wspr-top-row .form-label {
+    white-space: nowrap;
+}
+
+.config-wspr-top-row__toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.65rem;
+    min-height: 2.25rem;
+}
+
+.config-wspr-top-row__toggle .form-check-label {
+    margin-bottom: 0;
+    white-space: nowrap;
+}
+
+.config-wspr-top-row__toggle .form-check-input {
+    margin: 0;
+    flex: 0 0 auto;
+}
+
 .config-calibration-field {
     display: grid;
     gap: 0.55rem;
@@ -598,6 +619,10 @@ legend {
 
     .config-actions > .btn {
         flex: 1 1 100%;
+    }
+
+    .config-wspr-top-row__toggle {
+        min-height: 0;
     }
 
     #bandGpioTable {
