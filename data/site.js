@@ -1076,6 +1076,10 @@ function populateConfig(callback = null) {
 
                 // If we are on the config page
                 if (window.currentPage == "index.php") {
+                    if (typeof suspendConfigAutosave === "function") {
+                        suspendConfigAutosave(true);
+                    }
+
                     // Load form elements
                     //
                     if (typeof applyConfigModeSelection === "function") {
@@ -1159,12 +1163,16 @@ function populateConfig(callback = null) {
                     $("#si5351-power-range").val(si5351PowerLevel).trigger("input");
 
                     // Enable the form
-                    $("#submit").prop("disabled", false);
-                    $("#reset").prop("disabled", false);
                     $("#test_tone").prop("disabled", false);
                     $("#wsprform").prop("disabled", false);
 
                     validatePage();
+                    if (typeof syncConfigAutosaveBaseline === "function") {
+                        syncConfigAutosaveBaseline();
+                    }
+                    if (typeof suspendConfigAutosave === "function") {
+                        suspendConfigAutosave(false);
+                    }
                 } else if (window.currentPage == "view_logs.php") {
                     $("#callsign").val(callsign);
                 } else if (window.currentPage == "view_spots.php") {
@@ -1179,6 +1187,10 @@ function populateConfig(callback = null) {
                     callback();
                 }
             } catch (error) {
+                if (window.currentPage == "index.php" &&
+                    typeof suspendConfigAutosave === "function") {
+                    suspendConfigAutosave(false);
+                }
                 debugConsole("error", "Error parsing config JSON:", error);
                 backendCurrentlyConnected = false;
                 syncConnectionAlert();
@@ -1197,6 +1209,10 @@ function populateConfig(callback = null) {
             }
         })
         .fail(function (jqXHR, textStatus, errorThrown) {
+            if (window.currentPage == "index.php" &&
+                typeof suspendConfigAutosave === "function") {
+                suspendConfigAutosave(false);
+            }
             debugConsole(
                 "error",
                 "Error fetching config JSON:",

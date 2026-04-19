@@ -1,5 +1,13 @@
 let isUpdatingTransmitFromBackend = false;
 let stopRequestInFlight = false;
+const CONFIG_AUTOSAVE_DELAY_MS = 800;
+let configAutosaveTimer = null;
+let configAutosaveSuspended = false;
+let configAutosaveInFlight = false;
+let configAutosavePendingAfterFlight = false;
+let configAutosaveDirty = false;
+let lastSavedConfigPayload = "";
+let configSaveStatusClearTimer = null;
 
 function bindIndexActions() {
     // Bind the Mode Switch
@@ -71,14 +79,19 @@ function bindIndexActions() {
     $(document).on(
         "input change",
         '.form-control:not([type="range"], .form-check-input)',
-        validatePage
+        function () {
+            validatePage();
+            scheduleAutosave();
+        }
+    );
+
+    $("#wsprform").on(
+        "change input",
+        'input:not(#transmit), select, textarea',
+        scheduleAutosave
     );
 
     bindTestToneControls();
-
-    // Bind Submit and Reset Buttons
-    $("#submit").click(savePage);
-    $("#reset").click(resetPage);
 }
 
 function setTransmitFromBackend(enabled) {
@@ -145,6 +158,9 @@ function patchTransmitControl() {
             lastSaveTimestamp = Date.now();
             updateRuntimeControlStatusFromForm(null);
             clearBackendStatus("runtime");
+            if (typeof syncConfigAutosaveBaseline === "function") {
+                syncConfigAutosaveBaseline();
+            }
         })
         .fail(function (xhr) {
             let message = "Failed to update transmit state.";
@@ -460,6 +476,7 @@ function clickTransmitBackend() {
     updateBackendPlatformSupportUi();
     validateTransmitterHardwareFields();
     validatePage();
+    scheduleAutosave();
 }
 
 // GPIO transmit power slider update
@@ -495,12 +512,14 @@ function clickUseLED() {
     const on = $("#use_led").prop("checked");
     $("#ledDropdownButton").prop("disabled", !on);
     refreshBandGpioOptions();
+    scheduleAutosave();
 }
 
 function clickUseShutdown() {
     const on = $('#use_shutdown').prop('checked');
     $('#shutdownDropdownButton').prop('disabled', !on);
     refreshBandGpioOptions();
+    scheduleAutosave();
 }
 
 function getBandGpioRows() {
@@ -574,6 +593,7 @@ function applyBandGpioColumnToggle(column, checked) {
 
     syncBandGpioColumnHeaderStates();
     validateBandGpioFields();
+    scheduleAutosave();
 }
 
 function setBandGpioRowState($row, enabled) {
@@ -587,6 +607,7 @@ function clickBandGpioEnabled() {
     setBandGpioRowState($row, $(this).is(":checked"));
     syncBandGpioColumnHeaderStates();
     validateBandGpioFields();
+    scheduleAutosave();
 }
 
 function getReservedBandGpioPins() {
@@ -902,6 +923,7 @@ function applyConfigModeSelection(mode) {
 
 function clickModeToggle() {
     syncConfigModeSections();
+    scheduleAutosave();
 }
 
 
@@ -916,12 +938,14 @@ function clickQRSSModeToggle() {
     }
 
     updateRuntimeControlStatusFromForm(null);
+    scheduleAutosave();
 }
 
 // Function to enable/disable & reset PPM field when Use NTP toggles
 function clickUseNTP() {
     syncCalibrationControls();
     validatePage();
+    scheduleAutosave();
 }
 
 function setTxPin(gpioNumber) {
@@ -1111,6 +1135,7 @@ function selectPin(e) {
     $item.trigger('blur');
     setTimeout(() => $btn.trigger('blur').removeClass('active show'), 0);
     refreshBandGpioOptions();
+    scheduleAutosave();
 }
 
 /**
@@ -1140,19 +1165,7 @@ function getShutdownPin() {
     return m ? parseInt(m[0], 10) : null;
 }
 
-// Save all fields
-function savePage(e) {
-    if (!validatePage()) {
-        alert("Please correct the errors on the page.");
-        return false;
-    }
-    e.preventDefault();
-    const btn = this;
-    // Disable Buttons
-    $("#submit").prop("disabled", true);
-    $("#reset").prop("disabled", true);
-    toggleButtonLoading(btn, true);
-
+function buildConfigPayload() {
     // Mode: WSPR uses WSPR fields; QRSS/FSKCW/DFCW use the shared CW section.
     let mode = selectedConfigMode();
 
@@ -1271,7 +1284,7 @@ function savePage(e) {
         "Repeat Minutes": tx_repeat_every,
     };
 
-    var configJson = {
+    return {
         Operation,
         GPIO,
         Si5351,
@@ -1280,19 +1293,113 @@ function savePage(e) {
         CW,
         "Band GPIO": band_gpio,
     };
-    var json = JSON.stringify(configJson);
+}
+
+function setConfigSaveStatus(state, message = "") {
+    const node = document.getElementById("configSaveStatus");
+    if (!node) {
+        return;
+    }
+
+    if (configSaveStatusClearTimer) {
+        clearTimeout(configSaveStatusClearTimer);
+        configSaveStatusClearTimer = null;
+    }
+
+    node.dataset.state = state || "";
+    node.textContent = message;
+    node.classList.toggle("is-visible", !!message);
+
+    if (state === "saved" && message) {
+        configSaveStatusClearTimer = window.setTimeout(() => {
+            node.textContent = "";
+            node.dataset.state = "";
+            node.classList.remove("is-visible");
+            configSaveStatusClearTimer = null;
+        }, 1800);
+    }
+}
+
+function suspendConfigAutosave(suspended) {
+    configAutosaveSuspended = !!suspended;
+    if (configAutosaveSuspended && configAutosaveTimer) {
+        clearTimeout(configAutosaveTimer);
+        configAutosaveTimer = null;
+    }
+}
+
+function syncConfigAutosaveBaseline() {
+    if (typeof validatePage !== "function" || !validatePage()) {
+        lastSavedConfigPayload = "";
+        configAutosaveDirty = false;
+        setConfigSaveStatus("", "");
+        return;
+    }
+
+    const payloadJson = JSON.stringify(buildConfigPayload());
+    lastSavedConfigPayload = payloadJson;
+    configAutosaveDirty = false;
+    configAutosavePendingAfterFlight = false;
+    setConfigSaveStatus("saved", "Saved");
+}
+
+function scheduleAutosave() {
+    if (configAutosaveSuspended) {
+        return;
+    }
+
+    configAutosaveDirty = true;
+    if (configAutosaveTimer) {
+        clearTimeout(configAutosaveTimer);
+    }
+
+    configAutosaveTimer = window.setTimeout(() => {
+        configAutosaveTimer = null;
+        flushAutosave();
+    }, CONFIG_AUTOSAVE_DELAY_MS);
+}
+
+function flushAutosave() {
+    if (configAutosaveSuspended) {
+        return;
+    }
+
+    if (!validatePage()) {
+        setConfigSaveStatus("invalid", "Invalid - not saved");
+        return;
+    }
+
+    const payloadJson = JSON.stringify(buildConfigPayload());
+
+    if (payloadJson === lastSavedConfigPayload) {
+        configAutosaveDirty = false;
+        setConfigSaveStatus("saved", "Saved");
+        return;
+    }
+
+    if (configAutosaveInFlight) {
+        configAutosavePendingAfterFlight = true;
+        return;
+    }
+
+    configAutosaveInFlight = true;
+    configAutosaveDirty = false;
+    configAutosavePendingAfterFlight = false;
+    setConfigSaveStatus("saving", "Saving...");
 
     $.ajax({
         url: SETTINGS_URL,
         type: "PATCH",
         contentType: "application/merge-patch+json",
-        data: json,
+        data: payloadJson,
     })
-        .done(function (data) {
-            lastSaveTimestamp = Date.now(); // Save to prevent forced reload
+        .done(function () {
+            lastSaveTimestamp = Date.now();
+            lastSavedConfigPayload = payloadJson;
+            setConfigSaveStatus("saved", "Saved");
         })
         .fail(function (xhr) {
-            let message = "Settings update failed with status: " + xhr.status;
+            let message = "Save failed";
             let parsedError = null;
 
             if (xhr.responseJSON && typeof xhr.responseJSON === "object") {
@@ -1309,32 +1416,18 @@ function savePage(e) {
                 }
             }
 
-            alert(message);
+            debugConsole("error", "Autosave failed:", message);
+            configAutosaveDirty = true;
+            setConfigSaveStatus("error", "Save failed");
         })
         .always(function () {
-            setTimeout(() => {
-                $("#submit").prop("disabled", false);
-                $("#reset").prop("disabled", false);
-                $("#wsprform").prop("disabled", false);
-                toggleButtonLoading(btn, false);
-            }, 500);
-        });
-}
+            configAutosaveInFlight = false;
 
-// Reload page config
-function resetPage(e) {
-    // Disable Form
-    e.preventDefault();
-    const btn = this;
-    toggleButtonLoading(btn, true);
-    $("#submit").prop("disabled", true);
-    $("#reset").prop("disabled", true);
-    $("#test_tone").prop("disabled", true);
-    $("#wsprform").prop("disabled", true);
-    populateConfig();
-    setTimeout(() => {
-        toggleButtonLoading(btn, false);
-    }, 500);
+            if (configAutosavePendingAfterFlight || configAutosaveDirty) {
+                configAutosavePendingAfterFlight = false;
+                scheduleAutosave();
+            }
+        });
 }
 
 /**
@@ -1438,8 +1531,6 @@ function setHardwareControlsDisabled(disabled) {
         "#ledDropdownButton",
         "#use_shutdown",
         "#shutdownDropdownButton",
-        "#submit",
-        "#reset",
         "#test_tone"
     ];
 

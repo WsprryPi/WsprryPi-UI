@@ -9,9 +9,16 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                     <div class="config-header-context">
                         <div class="config-header-copy">
                             <div class="config-header-label">Control Surface</div>
-                            <div class="config-header-title">Signal setup</div>
+                            <div class="config-header-title-row">
+                                <div class="config-header-title">Signal setup</div>
+                                <span
+                                    id="configSaveStatus"
+                                    class="config-save-status"
+                                    aria-live="polite"
+                                    aria-atomic="true"></span>
+                            </div>
                             <p class="config-header-summary mb-0">
-                                Set the active transmit workflow first, review live state, then work through one section at a time before saving.
+                                Set the active transmit workflow first, review live state, then work through one section at a time.
                             </p>
                         </div>
                     </div>
@@ -108,29 +115,6 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                     <div class="config-runtime-item__label">Current WSPR plan</div>
                                     <div class="config-runtime-item__value" id="runtime_wspr_plan_value">Not available</div>
                                 </div>
-                            </div>
-                        </div>
-
-                        <div class="config-operator-panel config-operator-panel--actions">
-                            <div class="config-operator-label">Next safe action</div>
-                            <p class="config-operator-copy mb-0">Review the selected section, then save. Reset reloads the last saved configuration.</p>
-                            <div class="config-actions config-actions--operator">
-                                <button
-                                    id="submit"
-                                    type="submit"
-                                    class="btn btn-danger"
-                                    data-bs-toggle="tooltip"
-                                    title="Save settings">
-                                    Save changes
-                                </button>
-                                <button
-                                    id="reset"
-                                    type="reset"
-                                    class="btn btn-secondary"
-                                    data-bs-toggle="tooltip"
-                                    title="Reset to saved settings">
-                                    Reload saved
-                                </button>
                             </div>
                         </div>
                     </fieldset>

@@ -143,6 +143,13 @@
     max-width: 42rem;
 }
 
+.config-header-title-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem 0.75rem;
+}
+
 .config-header-label {
     color: var(--bs-secondary-color);
     font-family: var(--font-display);
@@ -165,6 +172,31 @@
     color: var(--bs-secondary-color);
     font-size: var(--text-caption);
     line-height: var(--leading-copy);
+}
+
+.config-save-status {
+    min-height: 1rem;
+    color: var(--bs-secondary-color);
+    font-size: var(--text-caption);
+    line-height: var(--leading-snug);
+    opacity: 0;
+    transition: opacity 180ms ease;
+}
+
+.config-save-status.is-visible {
+    opacity: 1;
+}
+
+.config-save-status[data-state="saved"] {
+    color: color-mix(in srgb, var(--bs-success) 78%, var(--bs-body-color) 22%);
+}
+
+.config-save-status[data-state="invalid"] {
+    color: color-mix(in srgb, var(--bs-warning) 72%, var(--bs-body-color) 28%);
+}
+
+.config-save-status[data-state="error"] {
+    color: color-mix(in srgb, var(--bs-danger) 78%, var(--bs-body-color) 22%);
 }
 
 .config-header-actions {
@@ -472,7 +504,7 @@ legend {
 
 @media (min-width: 992px) {
     .config-operator-strip {
-        grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.3fr) minmax(0, 1fr);
+        grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.3fr);
     }
 }
 
