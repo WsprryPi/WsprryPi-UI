@@ -9,6 +9,7 @@ let configAutosaveDirty = false;
 let lastSavedConfigPayload = "";
 let lastFailedConfigPayload = "";
 let configSaveStatusClearTimer = null;
+let configAutosaveNeedsRuntimeRefresh = false;
 let currentConfigModeSelection = "WSPR";
 let pendingModeChange = null;
 let modeChangeGuardBusy = false;
@@ -319,7 +320,12 @@ function applyCommittedConfigMode(mode) {
     suppressModeChangeGuard = true;
     applyConfigModeSelection(mode);
     suppressModeChangeGuard = false;
+    updateRuntimeControlStatusFromForm(mode);
+    if (typeof renderRuntimeStatus === "function") {
+        renderRuntimeStatus(currentRuntimeStatus);
+    }
     currentConfigModeSelection = selectedConfigMode();
+    configAutosaveNeedsRuntimeRefresh = true;
     validatePage();
     if (typeof suspendConfigAutosave === "function") {
         suspendConfigAutosave(false);
@@ -1662,6 +1668,10 @@ function flushAutosave() {
             lastSavedConfigPayload = payloadJson;
             lastFailedConfigPayload = "";
             setConfigSaveStatus("saved", "Saved");
+            if (configAutosaveNeedsRuntimeRefresh && typeof getTxState === "function") {
+                configAutosaveNeedsRuntimeRefresh = false;
+                getTxState();
+            }
         })
         .fail(function (xhr) {
             let message = "Save failed";

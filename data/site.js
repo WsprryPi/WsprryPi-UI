@@ -1354,7 +1354,9 @@ function applyRuntimeStatus(msg) {
     }
 
     currentRuntimeStatus = status;
-    if (status.runtimeMode) {
+    const selectedMode =
+        typeof selectedConfigMode === "function" ? selectedConfigMode() : "";
+    if (status.runtimeMode && !selectedMode) {
         currentRuntimeConfigStatus.mode = status.runtimeMode;
     }
     renderRuntimeStatus(currentRuntimeStatus);
@@ -1392,7 +1394,13 @@ function renderRuntimeControlStatus() {
         return;
     }
 
-    const currentMode = currentRuntimeConfigStatus.mode || "";
+    const selectedMode =
+        typeof selectedConfigMode === "function" ? selectedConfigMode() : "";
+    const currentMode =
+        selectedMode ||
+        currentRuntimeConfigStatus.mode ||
+        (currentRuntimeStatus && currentRuntimeStatus.runtimeMode) ||
+        "";
     if (currentMode === "QRSS" || currentMode === "FSKCW" || currentMode === "DFCW") {
         const configuredMessage = document.getElementById("qrss_message");
         const fallbackMessage =
