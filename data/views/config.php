@@ -16,7 +16,16 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                         </div>
                     </div>
 
-                    <?php require_once __DIR__ . '/../clock_and_reboot.php'; ?>
+                    <div class="config-header-actions">
+                        <button
+                            type="button"
+                            class="btn btn-danger btn-sm config-header-stop"
+                            id="stop_transmit"
+                            disabled>
+                            Stop transmission
+                        </button>
+                        <?php require_once __DIR__ . '/../clock_and_reboot.php'; ?>
+                    </div>
                 </div>
 
                 <ul class="nav nav-tabs card-header-tabs" id="configTabs" role="tablist" data-persist-tab-state="true" data-persist-tab-state-scope="reload">
@@ -98,12 +107,6 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                 <div class="config-runtime-item">
                                     <div class="config-runtime-item__label">Current WSPR plan</div>
                                     <div class="config-runtime-item__value" id="runtime_wspr_plan_value">Not available</div>
-                                </div>
-                                <div class="config-runtime-item config-runtime-item--action">
-                                    <button type="button" class="btn btn-danger btn-sm" id="stop_transmit" disabled>
-                                        Stop transmission
-                                    </button>
-                                    <div class="config-runtime-item__hint">Use this only to halt an active transmission immediately.</div>
                                 </div>
                             </div>
                         </div>
