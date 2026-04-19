@@ -9,6 +9,8 @@ function unlockUI() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+    bindTestToneControls();
+
     const repairButton = document.getElementById("repairConfigButton");
     const restoreButton = document.getElementById("restoreConfigButton");
     const globalToastContainer =

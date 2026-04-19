@@ -221,6 +221,62 @@ function getPersistedTabStorageKey(tabList) {
     return `${TAB_STATE_STORAGE_PREFIX}:${pageKey}:${tabListKey}`;
 }
 
+function getPersistedTabRestoreScope(tabList) {
+    if (!(tabList instanceof Element)) {
+        return "always";
+    }
+
+    const scope = tabList.dataset.persistTabStateScope;
+    return typeof scope === "string" && scope.trim() ? scope.trim() : "always";
+}
+
+function getNavigationType() {
+    try {
+        const entries = window.performance?.getEntriesByType?.("navigation");
+        if (Array.isArray(entries) && entries.length > 0) {
+            return typeof entries[0].type === "string" ? entries[0].type : "";
+        }
+    } catch {
+    }
+
+    try {
+        if (window.performance?.navigation) {
+            switch (window.performance.navigation.type) {
+                case window.performance.navigation.TYPE_RELOAD:
+                    return "reload";
+                case window.performance.navigation.TYPE_BACK_FORWARD:
+                    return "back_forward";
+                default:
+                    return "navigate";
+            }
+        }
+    } catch {
+    }
+
+    return "";
+}
+
+function shouldRestorePersistedTabState(tabList) {
+    const scope = getPersistedTabRestoreScope(tabList);
+    if (scope !== "reload") {
+        return true;
+    }
+
+    return getNavigationType() === "reload";
+}
+
+function clearPersistedTabState(tabList) {
+    const storageKey = getPersistedTabStorageKey(tabList);
+    if (!storageKey) {
+        return;
+    }
+
+    try {
+        window.localStorage.removeItem(storageKey);
+    } catch {
+    }
+}
+
 function getPersistedTabSelector(trigger) {
     if (!(trigger instanceof Element)) {
         return "";
@@ -253,6 +309,11 @@ function findTabTriggerBySelector(tabList, selector) {
 
 function restorePersistedTabState(tabList) {
     if (!(tabList instanceof Element)) {
+        return;
+    }
+
+    if (!shouldRestorePersistedTabState(tabList)) {
+        clearPersistedTabState(tabList);
         return;
     }
 
@@ -1821,6 +1882,63 @@ function toggleButtonLoading(btn, isLoading) {
         delete btn.dataset.origHtml;
         delete btn.dataset.origWidth;
     }
+}
+
+function bindTestToneControls() {
+    const $modalEl = $("#testToneModal");
+    if (!$modalEl.length) {
+        return;
+    }
+
+    $("#test_tone").off(".testTone").on("click.testTone", clickTestTone);
+    $("#testToneStart").off(".testTone").on("click.testTone", onTestToneStart);
+    $("#testToneEnd").off(".testTone").on("click.testTone", onTestToneEnd);
+    $modalEl.off("hidden.bs.modal.testTone").on("hidden.bs.modal.testTone", onTestToneEnd);
+}
+
+function clickTestTone(e) {
+    e.preventDefault();
+    const btn = this;
+    toggleButtonLoading(btn, true);
+    setTimeout(() => {
+        toggleButtonLoading(btn, false);
+    }, 500);
+    $("#testToneStart").prop("disabled", false);
+    $("#testToneEnd").prop("disabled", true);
+    $("#testToneClose").prop("disabled", false);
+    const modalEl = document.getElementById("testToneModal");
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+}
+
+function onTestToneStart(e) {
+    e.preventDefault();
+    const btn = this;
+    toggleButtonLoading(btn, true);
+    $("#testToneStart").prop("disabled", true);
+    $("#testToneEnd").prop("disabled", true);
+    debugConsole("debug", "Test tone start.");
+    sendCommand("tone_start");
+    setTimeout(() => {
+        toggleButtonLoading(btn, false);
+        $("#testToneStart").prop("disabled", true);
+        $("#testToneEnd").prop("disabled", false);
+    }, 500);
+}
+
+function onTestToneEnd(e) {
+    e.preventDefault();
+    const btn = this;
+    toggleButtonLoading(btn, true);
+    $("#testToneStart").prop("disabled", true);
+    $("#testToneEnd").prop("disabled", true);
+    debugConsole("debug", "Test tone end.");
+    sendCommand("tone_end");
+    setTimeout(() => {
+        toggleButtonLoading(btn, false);
+        $("#testToneStart").prop("disabled", false);
+        $("#testToneEnd").prop("disabled", true);
+    }, 500);
 }
 
 

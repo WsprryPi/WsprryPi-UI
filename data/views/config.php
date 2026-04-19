@@ -19,7 +19,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                     <?php require_once __DIR__ . '/../clock_and_reboot.php'; ?>
                 </div>
 
-                <ul class="nav nav-tabs card-header-tabs" id="configTabs" role="tablist" data-persist-tab-state="true">
+                <ul class="nav nav-tabs card-header-tabs" id="configTabs" role="tablist" data-persist-tab-state="true" data-persist-tab-state-scope="reload">
                     <li class="nav-item" role="presentation">
                         <button
                             class="nav-link active"
@@ -127,14 +127,6 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                     data-bs-toggle="tooltip"
                                     title="Reset to saved settings">
                                     Reload saved
-                                </button>
-                                <button
-                                    id="test_tone"
-                                    type="button"
-                                    class="btn btn-outline-warning"
-                                    data-bs-toggle="tooltip"
-                                    title="Click to generate a test tone">
-                                    Test tone
                                 </button>
                             </div>
                         </div>
@@ -735,50 +727,6 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                     </table>
                                 </div>
                             </fieldset>
-                        </div>
-                    </div>
-
-                    <div
-                        class="modal fade"
-                        id="testToneModal"
-                        tabindex="-1"
-                        aria-labelledby="testToneModalLabel"
-                        aria-hidden="true">
-                        <div class="modal-dialog modal-dialog-centered">
-                            <div class="modal-content">
-                                <div class="modal-header">
-                                    <h5 class="modal-title" id="testToneModalLabel">Test Tone</h5>
-                                    <button
-                                        type="button"
-                                        class="btn-close"
-                                        data-bs-dismiss="modal"
-                                        aria-label="Close"></button>
-                                </div>
-                                <div class="modal-body">
-                                    Use the controls below to start or stop the test tone.
-                                </div>
-                                <div class="modal-footer">
-                                    <button
-                                        type="button"
-                                        id="testToneStart"
-                                        class="btn btn-primary">
-                                        Start
-                                    </button>
-                                    <button
-                                        type="button"
-                                        id="testToneEnd"
-                                        class="btn btn-danger">
-                                        End
-                                    </button>
-                                    <button
-                                        type="button"
-                                        id="testToneClose"
-                                        class="btn btn-secondary"
-                                        data-bs-dismiss="modal">
-                                        Close
-                                    </button>
-                                </div>
-                            </div>
                         </div>
                     </div>
 

@@ -87,7 +87,79 @@ require __DIR__ . '/../card_header.php';
                             </button>
                         </div>
                     </section>
+
+                    <section class="maintenance-pane">
+                        <div class="maintenance-pane__eyebrow">Operational check</div>
+                        <h5 class="mb-3">Test tone</h5>
+                        <p class="mb-3">
+                            Start a manual test tone without changing the saved configuration.
+                            Use this as a quick transmit-path check before returning to normal scheduling.
+                        </p>
+                        <ul class="maintenance-consequence-list">
+                            <li>Uses the existing test-tone backend command path.</li>
+                            <li>Does not save or rewrite configuration values.</li>
+                            <li>Stop the tone explicitly before leaving this page.</li>
+                        </ul>
+                        <div class="maintenance-action-copy">
+                            What happens next:
+                            The Test Tone dialog opens so you can start or stop the manual tone immediately.
+                        </div>
+                        <div class="d-flex justify-content-center mt-3">
+                            <button
+                                id="test_tone"
+                                type="button"
+                                class="btn btn-outline-warning"
+                                data-bs-toggle="tooltip"
+                                title="Click to generate a test tone">
+                                Test tone
+                            </button>
+                        </div>
+                    </section>
                 </div>
             </div>
 
             <div id="maintenanceOverlay" class="maintenance-overlay d-none"></div>
+
+            <div
+                class="modal fade"
+                id="testToneModal"
+                tabindex="-1"
+                aria-labelledby="testToneModalLabel"
+                aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="testToneModalLabel">Test Tone</h5>
+                            <button
+                                type="button"
+                                class="btn-close"
+                                data-bs-dismiss="modal"
+                                aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            Use the controls below to start or stop the test tone.
+                        </div>
+                        <div class="modal-footer">
+                            <button
+                                type="button"
+                                id="testToneStart"
+                                class="btn btn-primary">
+                                Start
+                            </button>
+                            <button
+                                type="button"
+                                id="testToneEnd"
+                                class="btn btn-danger">
+                                End
+                            </button>
+                            <button
+                                type="button"
+                                id="testToneClose"
+                                class="btn btn-secondary"
+                                data-bs-dismiss="modal">
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>

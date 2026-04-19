@@ -74,13 +74,7 @@ function bindIndexActions() {
         validatePage
     );
 
-    // Modal Action Handlers
-    const $modalEl = $("#testToneModal");
-    //const tone_modal = new bootstrap.Modal($modalEl[0]);
-    $("#test_tone").on("click", clickTestTone);
-    $("#testToneStart").on("click", onTestToneStart);
-    $("#testToneEnd").on("click", onTestToneEnd);
-    $modalEl.on("hidden.bs.modal", onTestToneEnd);
+    bindTestToneControls();
 
     // Bind Submit and Reset Buttons
     $("#submit").click(savePage);
@@ -1144,55 +1138,6 @@ function getShutdownPin() {
     const txt = $("#shutdownDropdownButton").text().trim();
     const m = txt.match(/\d+/);
     return m ? parseInt(m[0], 10) : null;
-}
-
-// Open Test Tone Modal
-function clickTestTone(e) {
-    // Disable Buttons
-    e.preventDefault();
-    const btn = this;
-    toggleButtonLoading(btn, true);
-    setTimeout(() => {
-        toggleButtonLoading(btn, false);
-    }, 500);
-    $("#testToneStart").prop("disabled", false);
-    $("#testToneEnd").prop("disabled", true);
-    $("#testToneClose").prop("disabled", false);
-    const modalEl = document.getElementById("testToneModal");
-    const modal = new bootstrap.Modal(modalEl);
-    modal.show();
-}
-
-// Start Test Tone
-function onTestToneStart(e) {
-    e.preventDefault();
-    const btn = this;
-    toggleButtonLoading(btn, true);
-    $("#testToneStart").prop("disabled", true);
-    $("#testToneEnd").prop("disabled", true);
-    debugConsole("debug", "Test tone start.");
-    sendCommand("tone_start");
-    setTimeout(() => {
-        toggleButtonLoading(btn, false);
-        $("#testToneStart").prop("disabled", true);
-        $("#testToneEnd").prop("disabled", false);
-    }, 500);
-}
-
-// End Test Tone
-function onTestToneEnd(e) {
-    e.preventDefault();
-    const btn = this;
-    toggleButtonLoading(btn, true);
-    $("#testToneStart").prop("disabled", true);
-    $("#testToneEnd").prop("disabled", true);
-    debugConsole("debug", "Test tone end.");
-    sendCommand("tone_end");
-    setTimeout(() => {
-        toggleButtonLoading(btn, false);
-        $("#testToneStart").prop("disabled", false);
-        $("#testToneEnd").prop("disabled", true);
-    }, 500);
 }
 
 // Save all fields
