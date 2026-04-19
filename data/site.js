@@ -1355,21 +1355,21 @@ function connectWebSocket(url, reconnectDelay = 5000) {
             return;
         }
 
-        // If the server is replying to our get_tx_state command:
-        if (msg.tx_state !== undefined) {
-            applyRuntimeStatus(msg);
-            setConnectionState(msg.tx_state === "transmitting" ? "transmitting" : "connected");
-            debugConsole("debug", "Received tx_state:", msg.tx_state);
-            return;
-        }
-
         // If the server pushes a “transmit” event:
         if (msg.type === "transmit") {
             applyRuntimeStatus(msg);
-            if (msg.state === "starting") {
+            if (msg.state === "starting" || msg.tx_state === "transmitting") {
                 const ts = new Date(msg.timestamp);
                 setConnectionState("transmitting", ts);
-                debugConsole("debug", "Transmit started at:", ts.toString());
+                debugConsole(
+                    "debug",
+                    "Received transmit event:",
+                    msg.state,
+                    "tx_state=",
+                    msg.tx_state,
+                    "at",
+                    ts.toString()
+                );
             } else if (msg.state === "finished") {
                 setConnectionState("connected");
                 debugConsole(
@@ -1383,7 +1383,23 @@ function connectWebSocket(url, reconnectDelay = 5000) {
                 msg.state === "stopped"
             ) {
                 setConnectionState("connected");
+                debugConsole(
+                    "debug",
+                    "Received transmit event:",
+                    msg.state,
+                    "tx_state=",
+                    msg.tx_state
+                );
             }
+            return;
+        }
+
+        // If the server is replying to our get_tx_state command:
+        if (msg.tx_state !== undefined) {
+            applyRuntimeStatus(msg);
+            setConnectionState(msg.tx_state === "transmitting" ? "transmitting" : "connected");
+            debugConsole("debug", "Received tx_state reply:", msg.tx_state);
+            return;
         }
         // {"state":"reload","timestamp":"2025-04-27T22:25:43Z","type":"configuration"}
         if (msg.type === "configuration" && msg.state === "reload") {

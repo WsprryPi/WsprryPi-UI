@@ -188,7 +188,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                 </fieldset>
 
                                 <fieldset class="config-panel" id="tx_info">
-                                    <legend>Transmission Settings</legend>
+                                    <legend>WSPR Transmission Settings</legend>
                                     <p class="config-panel__summary">Define the dial plan, output level, and calibration together so the transmit path can be checked in one pass.</p>
                                     <div class="row gx-2 align-items-center">
                                         <div class="col-12 col-lg-5 mb-3 d-flex align-items-center">
