@@ -383,8 +383,16 @@
 
 .config-runtime-cw-message {
     display: grid;
-    gap: 0.25rem;
+    gap: 0.45rem;
     min-width: 0;
+}
+
+.config-runtime-cw-message__schedule,
+.config-runtime-cw-message__empty {
+    color: var(--bs-body-color);
+    font-size: var(--text-body);
+    line-height: 1.45;
+    font-variant-numeric: tabular-nums;
 }
 
 .config-runtime-cw-message__text {
@@ -392,16 +400,22 @@
     white-space: pre-wrap;
     word-break: break-word;
     color: color-mix(in srgb, var(--bs-body-color) 72%, transparent);
+    font-family: var(--bs-font-monospace);
 }
 
 .config-runtime-cw-message__char {
-    transition: color 120ms ease, font-size 120ms ease, font-weight 120ms ease;
+    display: inline-block;
+    min-width: 0.65ch;
+    padding: 0.02rem 0.08rem;
+    border-radius: 0.2rem;
+    transition: color 120ms ease, background-color 120ms ease,
+        box-shadow 120ms ease;
 }
 
 .config-runtime-cw-message__char.is-active {
-    color: var(--bs-body-color);
-    font-size: 1.08em;
-    font-weight: 700;
+    color: #111;
+    background-color: #f8f9fa;
+    box-shadow: inset 0 0 0 1px rgba(17, 17, 17, 0.12);
 }
 
 .config-runtime-item__hint {

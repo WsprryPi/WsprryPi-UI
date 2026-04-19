@@ -1322,6 +1322,10 @@ function normalizeRuntimeStatus(msg) {
                 : (typeof msg.state === "string" ? msg.state : ""),
         runtimeMode:
             typeof msg.runtime_mode === "string" ? msg.runtime_mode : "",
+        nextTransmissionAt:
+            typeof msg.next_transmission_at === "string"
+                ? msg.next_transmission_at
+                : "",
         planType,
         frameCount,
         currentFrame,
@@ -1388,7 +1392,7 @@ function renderRuntimeControlStatus() {
     const currentMode = currentRuntimeConfigStatus.mode || "";
     if (currentMode === "QRSS" || currentMode === "FSKCW" || currentMode === "DFCW") {
         if (planLabelNode) {
-            planLabelNode.textContent = "Message";
+            planLabelNode.textContent = "Next message at:";
         }
 
         const configuredMessage = document.getElementById("qrss_message");
@@ -1400,6 +1404,10 @@ function renderRuntimeControlStatus() {
             currentRuntimeStatus && currentRuntimeStatus.cwMessage
                 ? currentRuntimeStatus.cwMessage
                 : fallbackMessage;
+        const nextTransmissionAt =
+            currentRuntimeStatus && currentRuntimeStatus.nextTransmissionAt
+                ? currentRuntimeStatus.nextTransmissionAt
+                : "";
         const activeCharIndex =
             currentRuntimeStatus &&
             currentRuntimeStatus.txState === "transmitting" &&
@@ -1407,8 +1415,11 @@ function renderRuntimeControlStatus() {
                 ? currentRuntimeStatus.cwActiveCharIndex
                 : -1;
 
-        renderCwRuntimeMessage(planNode, message, activeCharIndex);
-        planNode.setAttribute("title", message || "No CW message configured.");
+        renderCwRuntimeMessage(planNode, nextTransmissionAt, message, activeCharIndex);
+        planNode.setAttribute(
+            "title",
+            `${nextTransmissionAt || "Not scheduled"}${message ? ` | ${message}` : ""}`
+        );
         return;
     }
 
@@ -1467,14 +1478,22 @@ function renderRuntimeControlStatus() {
     planNode.setAttribute("title", titleParts.join(" | "));
 }
 
-function renderCwRuntimeMessage(node, message, activeCharIndex) {
+function renderCwRuntimeMessage(node, nextTransmissionAt, message, activeCharIndex) {
     node.replaceChildren();
 
     const container = document.createElement("div");
     container.className = "config-runtime-cw-message";
 
+    const scheduleNode = document.createElement("div");
+    scheduleNode.className = "config-runtime-cw-message__schedule";
+    scheduleNode.textContent = nextTransmissionAt || "Not scheduled";
+    container.appendChild(scheduleNode);
+
     if (!message) {
-        container.textContent = "Not available";
+        const emptyNode = document.createElement("div");
+        emptyNode.className = "config-runtime-cw-message__empty";
+        emptyNode.textContent = "No CW message configured.";
+        container.appendChild(emptyNode);
         node.appendChild(container);
         return;
     }
@@ -1489,7 +1508,7 @@ function renderCwRuntimeMessage(node, message, activeCharIndex) {
         if (isActive) {
             charNode.classList.add("is-active");
         }
-        charNode.textContent = isActive && character === " " ? "_" : character;
+        charNode.textContent = character;
         messageNode.appendChild(charNode);
     });
 
