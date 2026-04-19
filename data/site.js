@@ -1485,10 +1485,11 @@ function renderCwRuntimeMessage(node, message, activeCharIndex) {
     Array.from(message).forEach((character, index) => {
         const charNode = document.createElement("span");
         charNode.className = "config-runtime-cw-message__char";
-        if (index === activeCharIndex) {
+        const isActive = index === activeCharIndex;
+        if (isActive) {
             charNode.classList.add("is-active");
         }
-        charNode.textContent = character;
+        charNode.textContent = isActive && character === " " ? "_" : character;
         messageNode.appendChild(charNode);
     });
 
