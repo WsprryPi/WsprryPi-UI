@@ -426,6 +426,17 @@ legend {
     white-space: nowrap;
 }
 
+.config-wspr-top-row__field {
+    display: grid;
+    gap: 0.4rem;
+    align-content: start;
+    min-width: 0;
+}
+
+.config-wspr-top-row__field .form-label {
+    margin-bottom: 0;
+}
+
 .config-wspr-top-row__toggle {
     display: inline-flex;
     align-items: center;
@@ -441,6 +452,10 @@ legend {
 .config-wspr-top-row__toggle .form-check-input {
     margin: 0;
     flex: 0 0 auto;
+}
+
+.config-wspr-top-row__planner .form-select {
+    width: 100%;
 }
 
 .config-calibration-field {

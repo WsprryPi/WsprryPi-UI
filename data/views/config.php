@@ -171,20 +171,18 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                 <fieldset class="config-panel" id="tx_info">
                                     <legend>WSPR Transmission Settings</legend>
                                     <p class="config-panel__summary">Define the dial plan, output level, and calibration together so the transmit path can be checked in one pass.</p>
-                                    <div class="row gx-3 gy-2 align-items-center config-wspr-top-row">
-                                        <div class="col-12 col-xl-3 mb-2 d-flex align-items-center">
-                                            <label for="frequencies" class="form-label mb-0 me-2 flex-shrink-0">
+                                    <div class="row gx-3 gy-2 align-items-end config-wspr-top-row">
+                                        <div class="col-12 col-xl-3 mb-2 config-wspr-top-row__field">
+                                            <label for="frequencies" class="form-label">
                                                 Frequencies:
                                             </label>
-                                            <div class="flex-grow-1">
-                                                <input
-                                                    type="text"
-                                                    id="frequencies"
-                                                    class="form-control"
-                                                    data-bs-toggle="tooltip"
-                                                    title="You may enter one or more frequencies in plain numeric form (Hz), with a magnitude indicator (Hz, KHz, MHz), or in band notation such as 20m. A 0 is a skipped transmission window."
-                                                    required />
-                                            </div>
+                                            <input
+                                                type="text"
+                                                id="frequencies"
+                                                class="form-control"
+                                                data-bs-toggle="tooltip"
+                                                title="You may enter one or more frequencies in plain numeric form (Hz), with a magnitude indicator (Hz, KHz, MHz), or in band notation such as 20m. A 0 is a skipped transmission window."
+                                                required />
                                         </div>
 
                                         <div class="col-12 col-sm-6 col-md-auto col-xl-auto mb-2">
@@ -202,35 +200,49 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                             </div>
                                         </div>
 
-                                        <div class="col-6 col-sm-4 col-xl-2 mb-2 d-flex align-items-center">
-                                            <label for="dbm" class="form-label mb-0 me-2 flex-shrink-0">
+                                        <div class="col-6 col-sm-4 col-xl-1 mb-2 config-wspr-top-row__field">
+                                            <label for="dbm" class="form-label">
                                                 TX dBm:
                                             </label>
-                                            <div class="flex-grow-1">
-                                                <input
-                                                    type="text"
-                                                    id="dbm"
-                                                    class="form-control"
-                                                    pattern="^(?:0|3|7|10|13|17|20|23|27|30|33|37|40|43|47|50|53|57|60)$"
-                                                    data-bs-toggle="tooltip"
-                                                    title="Valid dBm are one of: 0, 3, 7, 10, 13, 17, 20, 23, 27, 30, 33, 37, 40, 43, 47, 50, 53, 57, or 60"
-                                                    required />
-                                            </div>
+                                            <select
+                                                id="dbm"
+                                                class="form-select"
+                                                data-bs-toggle="tooltip"
+                                                title="Valid dBm are one of: 0, 3, 7, 10, 13, 17, 20, 23, 27, 30, 33, 37, 40, 43, 47, 50, 53, 57, or 60"
+                                                required>
+                                                <option value="0">0</option>
+                                                <option value="3">3</option>
+                                                <option value="7">7</option>
+                                                <option value="10">10</option>
+                                                <option value="13">13</option>
+                                                <option value="17">17</option>
+                                                <option value="20">20</option>
+                                                <option value="23">23</option>
+                                                <option value="27">27</option>
+                                                <option value="30">30</option>
+                                                <option value="33">33</option>
+                                                <option value="37">37</option>
+                                                <option value="40">40</option>
+                                                <option value="43">43</option>
+                                                <option value="47">47</option>
+                                                <option value="50">50</option>
+                                                <option value="53">53</option>
+                                                <option value="57">57</option>
+                                                <option value="60">60</option>
+                                            </select>
                                         </div>
 
-                                        <div class="col-6 col-sm-4 col-xl-2 mb-2 d-flex align-items-center">
-                                            <label for="ppm" class="form-label mb-0 me-2 flex-shrink-0">PPM Offset</label>
-                                            <div class="flex-grow-1">
-                                                <input
-                                                    type="number"
-                                                    class="form-control"
-                                                    id="ppm"
-                                                    min="-200"
-                                                    max="200"
-                                                    step="0.000001"
-                                                    data-bs-toggle="tooltip"
-                                                    title="Enter a decimal value between -200.000000 to 200.000000">
-                                            </div>
+                                        <div class="col-6 col-sm-4 col-xl-2 mb-2 config-wspr-top-row__field">
+                                            <label for="ppm" class="form-label">PPM Offset</label>
+                                            <input
+                                                type="number"
+                                                class="form-control"
+                                                id="ppm"
+                                                min="-200"
+                                                max="200"
+                                                step="0.000001"
+                                                data-bs-toggle="tooltip"
+                                                title="Enter a decimal value between -200.000000 to 200.000000">
                                         </div>
 
                                         <div class="col-12 col-sm-6 col-md-auto col-xl-auto mb-2">
@@ -249,22 +261,25 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                     id="use_ntp" />
                                             </div>
                                         </div>
-                                    </div>
 
-                                    <div class="row gx-3 align-items-start">
-                                        <div class="col-12 mb-3 config-planner-field">
+                                        <div class="col-12 col-sm-6 col-xl-2 mb-2 config-wspr-top-row__field config-wspr-top-row__planner">
                                             <label for="planner_preference" class="form-label">
                                                 WSPR planning mode
                                             </label>
                                             <select
                                                 id="planner_preference"
-                                                class="form-select config-planner-field__select"
+                                                class="form-select"
                                                 data-bs-toggle="tooltip"
                                                 title="Choose how WsprryPi selects single-frame or paired WSPR planning for extended identities.">
                                                 <option value="auto">Automatic</option>
                                                 <option value="prefer_paired">Prefer paired when available</option>
                                                 <option value="require_paired">Require paired</option>
                                             </select>
+                                        </div>
+                                    </div>
+
+                                    <div class="row gx-3 align-items-start">
+                                        <div class="col-12 mb-3 config-planner-field">
                                             <div class="form-text">
                                                 Automatic uses a single-frame plan when possible and upgrades to paired when required.<br>
                                                 Prefer paired when available chooses paired planning when supported.<br>
