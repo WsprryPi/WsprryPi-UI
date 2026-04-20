@@ -1823,7 +1823,13 @@ function connectWebSocket(url, reconnectDelay = 5000) {
             if (typeof showBackendStatus === "function") {
                 showBackendStatus(formattedMessage, "danger", "runtime");
             }
-            alert(formattedMessage);
+            if (typeof showMessageDialog === "function") {
+                showMessageDialog({
+                    title: "Configuration Reload Failed",
+                    message: formattedMessage,
+                    confirmClass: "btn-danger"
+                });
+            }
         }
 
         // …any other message types…
