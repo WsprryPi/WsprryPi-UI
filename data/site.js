@@ -1995,9 +1995,9 @@ function updateClocks() {
  */
 function toggleButtonLoading(btn, isLoading) {
     if (isLoading) {
-        // first time only: save original HTML and width
-        if (!btn.dataset.origHtml) {
-            btn.dataset.origHtml = btn.innerHTML;
+        // first time only: save original content and width
+        if (!btn._origNodes) {
+            btn._origNodes = Array.from(btn.childNodes).map((node) => node.cloneNode(true));
             btn.dataset.origWidth = btn.offsetWidth;
         }
 
@@ -2006,17 +2006,21 @@ function toggleButtonLoading(btn, isLoading) {
         btn.disabled = true;
 
         // show only the spinner
-        btn.innerHTML =
-            `<span class="spinner-border spinner-border-sm" role="status" ` +
-            `aria-hidden="true"></span>`;
+        const spinner = document.createElement("span");
+        spinner.className = "spinner-border spinner-border-sm";
+        spinner.setAttribute("role", "status");
+        spinner.setAttribute("aria-hidden", "true");
+        btn.replaceChildren(spinner);
     } else {
         // restore text, unfreeze width, re-enable
-        btn.innerHTML = btn.dataset.origHtml;
+        if (btn._origNodes) {
+            btn.replaceChildren(...btn._origNodes.map((node) => node.cloneNode(true)));
+        }
         btn.style.width = ""; // clear the inline width
         btn.disabled = false;
 
         // clean up our temporary data
-        delete btn.dataset.origHtml;
+        delete btn._origNodes;
         delete btn.dataset.origWidth;
     }
 }
