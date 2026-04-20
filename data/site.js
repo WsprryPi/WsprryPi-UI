@@ -1010,7 +1010,7 @@ function populateConfig(callback = null) {
                     gpio,
                     "GPIO",
                     "Use NTP",
-                    false
+                    true
                 );
                 let ppm = getConfigFloatValue(calibration, "Calibration", "PPM", 0.0);
                 let use_offset = getConfigBoolValue(
