@@ -54,6 +54,7 @@
     };
 
     let _cacheData = null,
+        _cacheKey = "",
         _cacheTS = 0,
         _refreshTimer = null;
 
@@ -93,6 +94,42 @@
         );
     }
 
+    function resolveSpotsErrorMessage(xhr, status) {
+        if (navigator.onLine === false) {
+            return "This browser is offline, so the WSPRNet proxy could not be reached.";
+        }
+
+        if (status === "timeout") {
+            return "The request timed out before the spot list was returned.";
+        }
+
+        if (status === "parsererror") {
+            return "The spot proxy returned an unreadable response.";
+        }
+
+        if (!xhr || typeof xhr.status !== "number") {
+            return "The spots request did not complete.";
+        }
+
+        if (xhr.status === 404) {
+            return "The local spots proxy is not available on this installation.";
+        }
+
+        if (xhr.status === 429) {
+            return "The upstream service rate-limited the request. Wait a moment, then try again.";
+        }
+
+        if (xhr.status >= 500) {
+            return "The local spots proxy reported a server error while fetching WSPRNet data.";
+        }
+
+        if (xhr.status >= 400) {
+            return "The spots request was rejected before any data could be returned.";
+        }
+
+        return "The spots request did not complete.";
+    }
+
     // Helper: format UTC date → "YYYY-MM-DD HH:MM:SS"
     function utcString(d) {
         return d.toISOString().slice(0, 19).replace("T", " ");
@@ -102,12 +139,27 @@
     function refreshSpotsHeader() {
         const cs = $("#callsign").val() || "";
         const now = new Date();
-        // use UTC string rather than local
-        const ts = now.toUTCString();
-        $("#spotsFor").html(
-            `Recent spots for ${cs}
-         <small class="text-muted ms-2">Updated ${ts} UTC</small>`
-        );
+        const header = document.getElementById("spotsFor");
+        if (!header) return;
+
+        const formatter = new Intl.DateTimeFormat("en-US", {
+            dateStyle: "medium",
+            timeStyle: "medium",
+            timeZone: "UTC"
+        });
+
+        header.textContent = "";
+
+        const title = document.createElement("span");
+        title.className = "spots-header-text";
+        title.textContent = cs ? `Recent spots for ${cs}` : "Recent spots";
+
+        const stamp = document.createElement("small");
+        stamp.className = "text-body-secondary ms-2";
+        stamp.textContent = `Updated ${formatter.format(now)} UTC`;
+
+        header.appendChild(title);
+        header.appendChild(stamp);
     }
 
     // Render the table of spots and scroll to bottom
@@ -168,8 +220,17 @@
         const callSign = $("#callsign").val().toUpperCase().trim();
 
         if (!callSign) {
-            renderError("Please enter a callsign.");
+            renderState(
+                "Callsign required",
+                "Save a station callsign on the configuration page first. The spots view uses that callsign to query the last hour of WSPRNet reports."
+            );
             return scheduleNext();
+        }
+
+        if (_cacheKey !== callSign) {
+            _cacheData = null;
+            _cacheKey = callSign;
+            _cacheTS = 0;
         }
 
         // client cache
@@ -207,6 +268,7 @@
                 });
 
                 _cacheData = spots;
+                _cacheKey = callSign;
                 _cacheTS = now;
 
                 renderTable(spots);
@@ -214,7 +276,7 @@
             })
             .fail((xhr, status) => {
                 console.error("Fetch error:", status);
-                renderError("Error loading spots.");
+                renderError(resolveSpotsErrorMessage(xhr, status));
             })
             .always(() => {
                 scheduleNext();

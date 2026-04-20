@@ -224,6 +224,11 @@
         const pane = document.getElementById(paneId);
         if (!pane) return;
 
+        const emptyState = pane.querySelector(".logs-empty-state");
+        if (emptyState) {
+            emptyState.remove();
+        }
+
         const div = document.createElement("div");
         div.className = "logs-line" + (lineParts.prefix.playback ? " logs-playback" : "");
 
@@ -322,6 +327,38 @@
         const internalPane = document.getElementById("internal");
         if (allPane) allPane.textContent = "";
         if (internalPane) internalPane.textContent = "";
+        renderEmptyState(
+            "all",
+            "Log output cleared",
+            "Live journal entries from wsprrypi.service will appear here when the next line arrives."
+        );
+        renderEmptyState(
+            "internal",
+            "Internal messages hidden",
+            "Adapter and connection messages will appear here when you switch to the internal view."
+        );
+    }
+
+    function renderEmptyState(paneId, title, body) {
+        const pane = document.getElementById(paneId);
+        if (!pane) return;
+
+        pane.textContent = "";
+
+        const state = document.createElement("div");
+        state.className = "logs-empty-state";
+
+        const heading = document.createElement("div");
+        heading.className = "logs-empty-state__title";
+        heading.textContent = title;
+
+        const copy = document.createElement("p");
+        copy.className = "logs-empty-state__body mb-0";
+        copy.textContent = body;
+
+        state.appendChild(heading);
+        state.appendChild(copy);
+        pane.appendChild(state);
     }
 
     
@@ -998,6 +1035,16 @@
         setSseStatus("disconnected", "Disconnected", "Disconnected");
         registerConsoleApi();
         applyView(loadInitialView(), false);
+        renderEmptyState(
+            "all",
+            "Waiting for log stream",
+            "The viewer will connect automatically. If nothing appears, use Start stream to reconnect to the local log feed."
+        );
+        renderEmptyState(
+            "internal",
+            "Internal messages hidden",
+            "Switch to the internal view from the browser console if you need adapter and connection diagnostics."
+        );
 
 // This mirrors the old inline behavior where site.js calls initLogStream()
         // from loadPage(). We intentionally do not auto-start here to avoid

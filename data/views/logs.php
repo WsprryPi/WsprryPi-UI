@@ -15,11 +15,11 @@ require __DIR__ . '/../card_header.php';
 
                 <div id="logs-overlay-controls" role="toolbar" aria-label="Log controls" class="logs-overlay">
                     <button id="btn-clear"
-                        class="btn btn-outline-warning btn-sm glass-btn glass-clear btn-soft"
+                        class="btn btn-outline-warning btn-sm logs-toolbar-btn"
                         type="button">Clear</button>
 
                     <button id="btn-reconnect"
-                        class="btn btn-outline-primary btn-sm glass-btn glass-reconnect btn-soft"
+                        class="btn btn-outline-primary btn-sm logs-toolbar-btn"
                         type="button">Start stream</button>
                 </div>
 

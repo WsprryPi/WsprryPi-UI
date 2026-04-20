@@ -40,11 +40,7 @@ $pathConfig = [
 <title><?= htmlspecialchars($currentPageMetadata['title']) ?></title>
 
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link
-    rel="stylesheet"
-    href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="vendor/fonts/google/fonts.css">
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
@@ -54,24 +50,18 @@ $pathConfig = [
 <!-- Bootswatch Zephyr CSS -->
 <link
     rel="stylesheet"
-    href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/5.3.8/zephyr/bootstrap.min.css"
-    integrity="sha384-0qFVRx98HJem0F2omOB5o37vVaRuuesFrDqe5Q292oSriOauZU47Cz7anAMHnYnf"
-    crossorigin="anonymous"
+    href="vendor/css/bootswatch-zephyr-5.3.8.min.css"
 >
 
 <!-- Bootstrap Icons -->
 <link
     rel="stylesheet"
-    href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css"
-    integrity="sha384-tViUnnbYAV00FLIhhi3v/dWt3Jxw4gZQcNoSCxCIFNJVCx7/D55/wXsrNIRANwdD"
-    crossorigin="anonymous">
+    href="vendor/fonts/bootstrap-icons/bootstrap-icons.css">
 
 <!-- FontAwesome Icons -->
 <link
     rel="stylesheet"
-    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
-    integrity="sha384-/o6I2CkkWC//PSjvWC/eYN7l3xM3tJm8ZzVkCOfp//W05QcE3mlGskpoHB6XqI+B"
-    crossorigin="anonymous">
+    href="vendor/fonts/fontawesome/all.min.css">
 
 <!-- Local Stylesheet -->
 <link rel="stylesheet" href="site.css" />
