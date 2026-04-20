@@ -401,6 +401,50 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                 required />
                                         </div>
                                     </div>
+
+                                    <div class="row gx-2 gy-3 align-items-center mt-1">
+                                        <div class="col-12 col-lg-4 d-flex align-items-center">
+                                            <label for="cw_intra_element_gap" class="form-label mb-0 me-2 flex-shrink-0">Intra-Element Gap:</label>
+                                            <input
+                                                type="number"
+                                                class="form-control flex-grow-1"
+                                                id="cw_intra_element_gap"
+                                                min="0.000000001"
+                                                step="any"
+                                                data-bs-toggle="tooltip"
+                                                title="CW.Intra Element Gap: positive timing multiplier between Morse elements within a character."
+                                                value="1"
+                                                required />
+                                        </div>
+
+                                        <div class="col-12 col-lg-4 d-flex align-items-center">
+                                            <label for="cw_inter_character_gap" class="form-label mb-0 me-2 flex-shrink-0">Inter-Character Gap:</label>
+                                            <input
+                                                type="number"
+                                                class="form-control flex-grow-1"
+                                                id="cw_inter_character_gap"
+                                                min="0.000000001"
+                                                step="any"
+                                                data-bs-toggle="tooltip"
+                                                title="CW.Inter Character Gap: positive timing multiplier between Morse characters."
+                                                value="3"
+                                                required />
+                                        </div>
+
+                                        <div class="col-12 col-lg-4 d-flex align-items-center">
+                                            <label for="cw_inter_word_gap" class="form-label mb-0 me-2 flex-shrink-0">Inter-Word Gap:</label>
+                                            <input
+                                                type="number"
+                                                class="form-control flex-grow-1"
+                                                id="cw_inter_word_gap"
+                                                min="0.000000001"
+                                                step="any"
+                                                data-bs-toggle="tooltip"
+                                                title="CW.Inter Word Gap: positive timing multiplier between Morse words."
+                                                value="7"
+                                                required />
+                                        </div>
+                                    </div>
                                 </fieldset>
 
                                 <fieldset class="config-panel" id="qrss_message_set">

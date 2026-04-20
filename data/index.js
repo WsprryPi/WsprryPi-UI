@@ -85,6 +85,24 @@ function bindIndexActions() {
     $("#dot_length").on("input blur", validateCwDotSeconds);
     $("#fsk_offset").on("input blur", validateCwShiftHz);
     $("#tx_repeat_every").on("input blur", validateCwRepeatMinutes);
+    $("#cw_intra_element_gap").on("input blur", function () {
+        validatePositiveCwField(
+            "cw_intra_element_gap",
+            "Enter a positive CW intra-element gap."
+        );
+    });
+    $("#cw_inter_character_gap").on("input blur", function () {
+        validatePositiveCwField(
+            "cw_inter_character_gap",
+            "Enter a positive CW inter-character gap."
+        );
+    });
+    $("#cw_inter_word_gap").on("input blur", function () {
+        validatePositiveCwField(
+            "cw_inter_word_gap",
+            "Enter a positive CW inter-word gap."
+        );
+    });
     $("#si5351_i2c_address").on("input blur", validateSi5351I2cAddress);
     $("#si5351_i2c_bus, #si5351_reference_frequency").on(
         "input blur",
@@ -1139,6 +1157,15 @@ function validatePage() {
         if (!validateCwRepeatMinutes()) {
             invalidCount++;
         }
+        if (!validatePositiveCwField("cw_intra_element_gap", "Enter a positive CW intra-element gap.")) {
+            invalidCount++;
+        }
+        if (!validatePositiveCwField("cw_inter_character_gap", "Enter a positive CW inter-character gap.")) {
+            invalidCount++;
+        }
+        if (!validatePositiveCwField("cw_inter_word_gap", "Enter a positive CW inter-word gap.")) {
+            invalidCount++;
+        }
         clearValidationState("#wspr_config");
     }
 
@@ -1480,12 +1507,18 @@ function buildConfigPayload() {
     let cw_base_frequency = parseFrequencyWithOptionalUnits($('#qrss_frequency').val());
     let tx_start_minute = parseInt($('#tx_start_minute').val(), 10);
     let tx_repeat_every = parseInt($('#tx_repeat_every').val(), 10);
+    let cw_intra_element_gap = parseFloat($('#cw_intra_element_gap').val());
+    let cw_inter_character_gap = parseFloat($('#cw_inter_character_gap').val());
+    let cw_inter_word_gap = parseFloat($('#cw_inter_word_gap').val());
     let cw_message = String($('#qrss_message').val() || "").trim();
     if (!Number.isFinite(dot_length)) dot_length = 3.0;
     if (!Number.isFinite(fsk_offset)) fsk_offset = 0.0;
     if (!Number.isFinite(cw_base_frequency)) cw_base_frequency = 0.0;
     if (!Number.isInteger(tx_start_minute)) tx_start_minute = 0;
     if (!Number.isInteger(tx_repeat_every)) tx_repeat_every = 10;
+    if (!Number.isFinite(cw_intra_element_gap)) cw_intra_element_gap = 1.0;
+    if (!Number.isFinite(cw_inter_character_gap)) cw_inter_character_gap = 3.0;
+    if (!Number.isFinite(cw_inter_word_gap)) cw_inter_word_gap = 7.0;
 
     // GPIO timing calibration
     let use_ntp = parseBool($("#use_ntp").is(":checked"));
@@ -1568,6 +1601,9 @@ function buildConfigPayload() {
         "Base Frequency": cw_base_frequency,
         "Shift Hz": fsk_offset,
         "Dot Seconds": dot_length,
+        "Intra Element Gap": cw_intra_element_gap,
+        "Inter Character Gap": cw_inter_character_gap,
+        "Inter Word Gap": cw_inter_word_gap,
         "Start Minute": tx_start_minute,
         "Repeat Minutes": tx_repeat_every,
     };
@@ -1993,6 +2029,29 @@ function validateCwRepeatMinutes() {
     const valid = Number.isInteger(value) && value > 0;
 
     fld.setCustomValidity(valid ? "" : "Enter a repeat interval of at least 1 minute.");
+    fld.classList.toggle("is-invalid", !valid);
+    fld.classList.toggle("is-valid", valid);
+
+    return valid;
+}
+
+function validatePositiveCwField(fieldId, errorMessage) {
+    const fld = document.getElementById(fieldId);
+    const mode = selectedConfigMode();
+
+    if (mode === "WSPR" || !fld || fld.disabled) {
+        if (fld) {
+            fld.setCustomValidity("");
+            fld.classList.remove("is-invalid");
+            fld.classList.remove("is-valid");
+        }
+        return true;
+    }
+
+    const value = Number.parseFloat(fld.value);
+    const valid = Number.isFinite(value) && value > 0;
+
+    fld.setCustomValidity(valid ? "" : errorMessage);
     fld.classList.toggle("is-invalid", !valid);
     fld.classList.toggle("is-valid", valid);
 

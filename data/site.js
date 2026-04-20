@@ -1064,6 +1064,9 @@ function populateConfig(callback = null) {
                 let dot_length = getConfigFloatValue(cw, "CW", "Dot Seconds", 3.0);
                 let fsk_offset = getConfigFloatValue(cw, "CW", "Shift Hz", 500.0);
                 let cw_base_frequency = getConfigFloatValue(cw, "CW", "Base Frequency", 14096900.0);
+                let cw_intra_element_gap = getConfigFloatValue(cw, "CW", "Intra Element Gap", 1.0);
+                let cw_inter_character_gap = getConfigFloatValue(cw, "CW", "Inter Character Gap", 3.0);
+                let cw_inter_word_gap = getConfigFloatValue(cw, "CW", "Inter Word Gap", 7.0);
                 let tx_start_minute = getConfigIntValue(cw, "CW", "Start Minute", 0);
                 let tx_repeat_every = getConfigIntValue(cw, "CW", "Repeat Minutes", 10);
                 let cw_message = getConfigValue(cw, "CW", "Message", "");
@@ -1141,6 +1144,9 @@ function populateConfig(callback = null) {
                     $("#dot_length").val(dot_length).trigger("change");
                     $("#fsk_offset").val(fsk_offset).trigger("change");
                     $("#qrss_frequency").val(cw_base_frequency).trigger("change");
+                    $("#cw_intra_element_gap").val(cw_intra_element_gap).trigger("change");
+                    $("#cw_inter_character_gap").val(cw_inter_character_gap).trigger("change");
+                    $("#cw_inter_word_gap").val(cw_inter_word_gap).trigger("change");
                     $("#tx_start_minute").val(tx_start_minute).trigger("change");
                     $("#tx_repeat_every").val(tx_repeat_every).trigger("change");
                     $('#qrss_message').val(cw_message).trigger("change");
