@@ -170,7 +170,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                 id="frequencies"
                                                 class="form-control"
                                                 data-bs-toggle="tooltip"
-                                                title="You may enter one or more frequencies in plain numeric form (Hz), with a magnitude indicator (Hz, KHz, MHz), or in band notation such as 20m. A 0 is a skipped transmission window."
+                                                title="Enter one or more WSPR dial frequencies as numeric values with optional Hz/kHz/MHz/GHz units, or as band aliases such as 20m, 22m, 2200m, or 630m. Separate entries with spaces or commas. A 0 skips a transmission window. Append @GPIO, @GPIOH, or @GPIOL to override the selector for one entry."
                                                 required />
                                         </div>
 

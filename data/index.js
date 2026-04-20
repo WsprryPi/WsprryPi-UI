@@ -1732,6 +1732,93 @@ function flushAutosave() {
  * Validate the WSPR “Frequencies” field.
  * @returns {boolean} true if valid, false otherwise.
  */
+function splitWsprFrequencyTokens(raw) {
+    return String(raw || "")
+        .replace(/,/g, " ")
+        .trim()
+        .split(/\s+/)
+        .filter((token) => token.length > 0);
+}
+
+function validateWsprFrequencyBaseToken(token) {
+    const trimmed = String(token || "").trim();
+    if (!trimmed) {
+        return false;
+    }
+
+    const bandAliases = new Set([
+        "lf",
+        "2200m",
+        "mf",
+        "630m",
+        "160m",
+        "80m",
+        "60m",
+        "40m",
+        "30m",
+        "22m",
+        "20m",
+        "17m",
+        "15m",
+        "12m",
+        "10m",
+        "6m",
+        "4m",
+        "2m",
+    ]);
+    if (bandAliases.has(trimmed.toLowerCase())) {
+        return true;
+    }
+
+    const numericRx = /^(?:(?:\d+(?:\.\d*)?)|(?:\.\d+))(?:hz|khz|mhz|ghz)?$/i;
+    if (!numericRx.test(trimmed)) {
+        return false;
+    }
+
+    return Number.isFinite(Number.parseFloat(trimmed));
+}
+
+function validateWsprFrequencyToken(token) {
+    const trimmed = String(token || "").trim();
+    if (!trimmed) {
+        return false;
+    }
+
+    const atPos = trimmed.indexOf("@");
+    if (atPos === -1) {
+        return validateWsprFrequencyBaseToken(trimmed);
+    }
+
+    if (trimmed.indexOf("@", atPos + 1) !== -1) {
+        return false;
+    }
+
+    const baseToken = trimmed.slice(0, atPos).trim();
+    let gpioToken = trimmed.slice(atPos + 1).trim();
+    if (!baseToken || !gpioToken) {
+        return false;
+    }
+
+    const suffix = gpioToken.slice(-1).toUpperCase();
+    if (suffix === "H" || suffix === "L") {
+        gpioToken = gpioToken.slice(0, -1).trim();
+        if (!gpioToken) {
+            return false;
+        }
+    }
+
+    if (!/^\d+$/.test(gpioToken)) {
+        return false;
+    }
+
+    const gpio = Number.parseInt(gpioToken, 10);
+    if (!Number.isInteger(gpio) || gpio < 0 || gpio > 27) {
+        return false;
+    }
+
+    return validateWsprFrequencyBaseToken(baseToken);
+}
+
 function validateFrequencies() {
     let valid = true;
     const fld = document.getElementById("frequencies");
@@ -1742,39 +1829,19 @@ function validateFrequencies() {
         valid = false;
     }
 
-    // Match numeric values with optional frequency unit
-    const numericRx = /^(\d+(?:\.\d+)?)(hz|khz|mhz|ghz)?$/i;
-
-    // Match named amateur bands
-    const bandRx =
-        /^(?:lf(?:-15)?|mf(?:-15)?|160m(?:-15)?|80m|60m|40m|30m|20m|17m|15m|12m|10m|6m|4m|2m)$/i;
-
-    // Split on any whitespace
-    const tokens = raw.split(/\s+/);
+    const tokens = splitWsprFrequencyTokens(raw);
 
     for (const tok of tokens) {
-        if (bandRx.test(tok)) {
-            continue;
+        if (!validateWsprFrequencyToken(tok)) {
+            valid = false;
+            break;
         }
-
-        const numericMatch = tok.match(numericRx);
-        if (numericMatch) {
-            const value = Number.parseFloat(numericMatch[1]);
-            const unit = numericMatch[2]?.toLowerCase() || "";
-
-            // Bare numbers must be at least 137
-            if (!unit && value < 137) {
-                valid = false;
-            }
-
-            continue;
-        }
-
-        valid = false;
     }
 
     fld.setCustomValidity(
-        valid ? "" : "Enter band names like 80m, or numeric frequencies 137 or higher."
+        valid
+            ? ""
+            : "Enter WSPR band names like 20m or 2200m, numeric frequencies or 0, separated by spaces or commas. Optional @GPIO, @GPIOH, or @GPIOL suffixes are supported."
     );
 
     fld.classList.toggle("is-invalid", !valid);
