@@ -357,7 +357,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                 id="qrss_frequency"
                                                 data-bs-toggle="tooltip"
                                                 title="CW.Base Frequency in Hz. QRSS uses this directly; FSKCW/DFCW add Shift Hz for the second tone."
-                                                value="7040000.0"
+                                                value="14096900.0"
                                                 required />
                                         </div>
 

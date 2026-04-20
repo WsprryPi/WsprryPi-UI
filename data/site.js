@@ -1063,7 +1063,7 @@ function populateConfig(callback = null) {
                 );
                 let dot_length = getConfigFloatValue(cw, "CW", "Dot Seconds", 3.0);
                 let fsk_offset = getConfigFloatValue(cw, "CW", "Shift Hz", 500.0);
-                let cw_base_frequency = getConfigFloatValue(cw, "CW", "Base Frequency", 3572000.0);
+                let cw_base_frequency = getConfigFloatValue(cw, "CW", "Base Frequency", 14096900.0);
                 let tx_start_minute = getConfigIntValue(cw, "CW", "Start Minute", 0);
                 let tx_repeat_every = getConfigIntValue(cw, "CW", "Repeat Minutes", 10);
                 let cw_message = getConfigValue(cw, "CW", "Message", "");
