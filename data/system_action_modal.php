@@ -32,10 +32,10 @@
             </div>
             <div class="modal-body">
                 <!-- We'll fill this via JS -->
-                <p id="confirmModalBody"></p>
+                <p id="confirmModalBody" class="mb-0"></p>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" id="confirmCancelBtn" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" id="confirmActionBtn" class="btn btn-danger">Yes, proceed</button>
             </div>
         </div>

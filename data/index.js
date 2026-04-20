@@ -173,7 +173,13 @@ function requestTransmitEnabledChange(enabled, previousEnabled, options = {}) {
             const formattedMessage = formatTransmitFailureMessage(unavailableMessage);
             setTransmitFromBackend(previousEnabled);
             showBackendStatus(formattedMessage, "danger", "runtime");
-            alert(formattedMessage);
+            if (typeof showMessageDialog === "function") {
+                showMessageDialog({
+                    title: "Transmit unavailable",
+                    message: formattedMessage,
+                    acknowledgeLabel: "Close"
+                });
+            }
             if (onFailure) {
                 onFailure(formattedMessage);
             }
@@ -231,7 +237,13 @@ function requestTransmitEnabledChange(enabled, previousEnabled, options = {}) {
             message = formatTransmitFailureMessage(message);
             setTransmitFromBackend(previousEnabled);
             showBackendStatus(message, "danger", "runtime");
-            alert(message);
+            if (typeof showMessageDialog === "function") {
+                showMessageDialog({
+                    title: "Unable to update transmit state",
+                    message,
+                    acknowledgeLabel: "Close"
+                });
+            }
             if (onFailure) {
                 onFailure(message);
             }

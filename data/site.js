@@ -2182,25 +2182,80 @@ function showSystemModal(action, pause = true) {
 
 // Show the “Are you sure?” question
 function openConfirmModal(action, confirmModal) {
-    pendingSystemAction = action;
-    const msg = action === 'reboot'
-        ? 'Are you sure you want to reboot the system?'
-        : 'Are you sure you want to shut down the system?';
-    document.getElementById('confirmModalBody').textContent = msg;
-
-    // configure the confirm button
-    $('#confirmActionBtn')
-        .off('click')
-        .on('click', () => {
-            confirmModal.hide();
-            // now actually do it
-            if (action === 'reboot') {
-                showSystemModal('reboot', false);
+    showConfirmationDialog({
+        title: "Please Confirm",
+        message: action === "reboot"
+            ? "Are you sure you want to reboot the system?"
+            : "Are you sure you want to shut down the system?",
+        confirmLabel: "Yes, proceed",
+        confirmClass: "btn-danger",
+        onConfirm: () => {
+            pendingSystemAction = action;
+            if (action === "reboot") {
+                showSystemModal("reboot", false);
             } else {
-                showSystemModal('shutdown', true);
+                showSystemModal("shutdown", true);
             }
             sendCommand(action);
+        }
+    }, confirmModal);
+}
+
+function showConfirmationDialog(options = {}, modalInstance = null) {
+    const modalEl = document.getElementById("confirmModal");
+    if (!modalEl) {
+        if (typeof options.onConfirm === "function") {
+            options.onConfirm();
+        }
+        return;
+    }
+
+    const confirmModal = modalInstance || bootstrap.Modal.getOrCreateInstance(modalEl, {
+        backdrop: "static",
+        keyboard: false
+    });
+    const title = typeof options.title === "string" && options.title.trim()
+        ? options.title.trim()
+        : "Please Confirm";
+    const message = typeof options.message === "string" ? options.message : "";
+    const confirmLabel = typeof options.confirmLabel === "string" && options.confirmLabel.trim()
+        ? options.confirmLabel.trim()
+        : "Continue";
+    const cancelLabel = typeof options.cancelLabel === "string" && options.cancelLabel.trim()
+        ? options.cancelLabel.trim()
+        : "Cancel";
+    const confirmClass = typeof options.confirmClass === "string" && options.confirmClass.trim()
+        ? options.confirmClass.trim()
+        : "btn-primary";
+    const showCancel = options.showCancel !== false;
+
+    document.getElementById("confirmModalLabel").textContent = title;
+    document.getElementById("confirmModalBody").textContent = message;
+
+    const $cancelBtn = $("#confirmCancelBtn");
+    const $confirmBtn = $("#confirmActionBtn");
+    $cancelBtn.text(cancelLabel).toggleClass("d-none", !showCancel);
+    $confirmBtn
+        .attr("class", `btn ${confirmClass}`)
+        .text(confirmLabel)
+        .off("click")
+        .on("click", () => {
+            confirmModal.hide();
+            if (typeof options.onConfirm === "function") {
+                options.onConfirm();
+            }
         });
 
     confirmModal.show();
+}
+
+function showMessageDialog(options = {}) {
+    showConfirmationDialog({
+        title: options.title || "Notice",
+        message: options.message || "",
+        confirmLabel: options.acknowledgeLabel || "OK",
+        confirmClass: options.confirmClass || "btn-primary",
+        showCancel: false,
+        onConfirm: options.onConfirm
+    });
 }

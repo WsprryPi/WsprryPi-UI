@@ -8,9 +8,9 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                 <div class="config-header-bar mb-2">
                     <div class="config-header-context">
                         <div class="config-header-copy">
-                            <div class="config-header-label">Control Surface</div>
-                            <div class="config-header-title-row">
-                                <div class="config-header-title">Signal setup</div>
+                            <p class="config-header-label mb-0">Control Surface</p>
+                            <div class="config-header-title-row" role="group" aria-labelledby="configPageTitle">
+                                <h1 id="configPageTitle" class="config-header-title mb-0">Signal setup</h1>
                                 <span
                                     id="configSaveStatus"
                                     class="config-save-status"
@@ -81,7 +81,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                     <fieldset class="config-operator-strip mb-4" id="global_runtime_control">
                         <legend class="visually-hidden">Operating controls</legend>
                         <div class="config-operator-panel config-operator-panel--mode">
-                            <div class="config-operator-label">Signal mode</div>
+                            <h2 class="config-operator-label mb-0">Signal mode</h2>
                             <div class="btn-group config-mode-toggle" role="group" aria-label="Signal mode">
                                 <input type="radio" class="btn-check" name="mode_toggle" id="wspr_mode" value="WSPR" autocomplete="off" checked>
                                 <label class="btn config-mode-toggle__segment" for="wspr_mode">WSPR</label>
@@ -94,7 +94,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                         <div class="config-operator-panel config-operator-panel--runtime">
                             <div class="config-runtime-header">
                                 <div class="config-runtime-header__copy">
-                                    <div class="config-operator-label">Runtime state</div>
+                                    <h2 class="config-operator-label mb-0">Runtime state</h2>
                                 </div>
                                 <div class="config-runtime-header__control">
                                     <div class="form-check form-switch mb-0">

@@ -13,7 +13,7 @@ require __DIR__ . '/../card_header.php';
                     aria-atomic="true"
                     title="Log stream disconnected">Disconnected</div>
 
-                <div id="logs-overlay-controls" aria-label="Log controls" class="logs-overlay">
+                <div id="logs-overlay-controls" role="toolbar" aria-label="Log controls" class="logs-overlay">
                     <button id="btn-clear"
                         class="btn btn-outline-warning btn-sm glass-btn glass-clear btn-soft"
                         type="button">Clear</button>

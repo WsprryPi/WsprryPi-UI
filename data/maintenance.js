@@ -53,7 +53,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const toastWrapper = document.createElement("div");
 
         toastWrapper.innerHTML = `
-            <div class="toast ${classes} border shadow-sm bg-white"
+            <div class="toast ${classes} border shadow-sm bg-body text-body"
                  role="alert"
                  aria-live="assertive"
                  aria-atomic="true">
@@ -261,11 +261,18 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     restoreButton.addEventListener("click", () => {
-        const confirmed = window.confirm(
-            "Restore configuration to stock defaults? This will replace the current configuration."
-        );
-
-        if (confirmed) {
+        if (typeof showConfirmationDialog === "function") {
+            showConfirmationDialog({
+                title: "Reset configuration",
+                message:
+                    "Restore configuration to stock defaults? This will replace the current configuration.",
+                confirmLabel: "Reset to defaults",
+                confirmClass: "btn-danger",
+                onConfirm: () => {
+                    postRepairVerb("restore", restoreButton);
+                }
+            });
+        } else {
             postRepairVerb("restore", restoreButton);
         }
     });

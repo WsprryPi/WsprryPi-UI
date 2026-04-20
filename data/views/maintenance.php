@@ -35,8 +35,8 @@ require __DIR__ . '/../card_header.php';
 
                 <div class="maintenance-split">
                     <section class="maintenance-pane">
-                        <div class="maintenance-pane__eyebrow">Safer first step</div>
-                        <h5 class="mb-3">Repair configuration</h5>
+                        <p class="maintenance-pane__eyebrow mb-0">Safer first step</p>
+                        <h2 class="mb-3 h5">Repair configuration</h2>
                         <p class="mb-3">
                             Check the current configuration for missing or invalid
                             values and repair what can be repaired. This keeps as
@@ -62,8 +62,8 @@ require __DIR__ . '/../card_header.php';
                     </section>
 
                     <section class="maintenance-pane">
-                        <div class="maintenance-pane__eyebrow maintenance-pane__eyebrow--danger">Use only when needed</div>
-                        <h5 class="mb-3">Reset configuration</h5>
+                        <p class="maintenance-pane__eyebrow maintenance-pane__eyebrow--danger mb-0">Use only when needed</p>
+                        <h2 class="mb-3 h5">Reset configuration</h2>
                         <p class="mb-3">
                             Replace the current configuration with the stock
                             defaults. Use this when you want to start over from
@@ -89,8 +89,8 @@ require __DIR__ . '/../card_header.php';
                     </section>
 
                     <section class="maintenance-pane">
-                        <div class="maintenance-pane__eyebrow">Operational check</div>
-                        <h5 class="mb-3">Test tone</h5>
+                        <p class="maintenance-pane__eyebrow mb-0">Operational check</p>
+                        <h2 class="mb-3 h5">Test tone</h2>
                         <p class="mb-3">
                             Start a manual test tone without changing the saved configuration.
                             Use this as a quick transmit-path check before returning to normal scheduling.
