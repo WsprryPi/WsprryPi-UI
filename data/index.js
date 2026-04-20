@@ -82,7 +82,9 @@ function bindIndexActions() {
             renderRuntimeStatus(currentRuntimeStatus);
         }
     });
+    $("#dot_length").on("input blur", validateCwDotSeconds);
     $("#fsk_offset").on("input blur", validateCwShiftHz);
+    $("#tx_repeat_every").on("input blur", validateCwRepeatMinutes);
     $("#si5351_i2c_address").on("input blur", validateSi5351I2cAddress);
     $("#si5351_i2c_bus, #si5351_reference_frequency").on(
         "input blur",
@@ -1125,10 +1127,16 @@ function validatePage() {
         if (!validateCwBaseFrequency()) {
             invalidCount++;
         }
+        if (!validateCwDotSeconds()) {
+            invalidCount++;
+        }
         if (!validateCwMessage()) {
             invalidCount++;
         }
         if (!validateCwShiftHz()) {
+            invalidCount++;
+        }
+        if (!validateCwRepeatMinutes()) {
             invalidCount++;
         }
         clearValidationState("#wspr_config");
@@ -1928,6 +1936,27 @@ function validateCwMessage() {
     return valid;
 }
 
+function validateCwDotSeconds() {
+    const fld = document.getElementById("dot_length");
+    const mode = selectedConfigMode();
+
+    if (mode === "WSPR" || fld.disabled) {
+        fld.setCustomValidity("");
+        fld.classList.remove("is-invalid");
+        fld.classList.remove("is-valid");
+        return true;
+    }
+
+    const value = Number.parseFloat(fld.value);
+    const valid = Number.isFinite(value) && value > 0;
+
+    fld.setCustomValidity(valid ? "" : "Enter a positive CW dot length.");
+    fld.classList.toggle("is-invalid", !valid);
+    fld.classList.toggle("is-valid", valid);
+
+    return valid;
+}
+
 function validateCwShiftHz() {
     const fld = document.getElementById("fsk_offset");
     const mode = selectedConfigMode();
@@ -1943,6 +1972,27 @@ function validateCwShiftHz() {
     const valid = Number.isFinite(value) && value > 0;
 
     fld.setCustomValidity(valid ? "" : "Enter a positive CW frequency offset.");
+    fld.classList.toggle("is-invalid", !valid);
+    fld.classList.toggle("is-valid", valid);
+
+    return valid;
+}
+
+function validateCwRepeatMinutes() {
+    const fld = document.getElementById("tx_repeat_every");
+    const mode = selectedConfigMode();
+
+    if (mode === "WSPR" || fld.disabled) {
+        fld.setCustomValidity("");
+        fld.classList.remove("is-invalid");
+        fld.classList.remove("is-valid");
+        return true;
+    }
+
+    const value = Number.parseInt(fld.value, 10);
+    const valid = Number.isInteger(value) && value > 0;
+
+    fld.setCustomValidity(valid ? "" : "Enter a repeat interval of at least 1 minute.");
     fld.classList.toggle("is-invalid", !valid);
     fld.classList.toggle("is-valid", valid);
 
