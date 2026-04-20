@@ -263,7 +263,7 @@ function patchTransmitControl() {
     requestTransmitEnabledChange(enabled, previous);
 }
 
-function stopTransmission() {
+function stopTransmission(options = {}) {
     const $stop = $("#stop_transmit");
     if ($stop.prop("disabled")) {
         return false;
@@ -277,7 +277,14 @@ function stopTransmission() {
     stopRequestInFlight = true;
     syncStopButtonState();
 
-    ws.send(JSON.stringify({ command: "stop" }));
+    const persistTransmit =
+        options && options.persistTransmit === false ? false : true;
+    ws.send(
+        JSON.stringify({
+            command: "stop",
+            persist_transmit: persistTransmit,
+        })
+    );
     return true;
 }
 
@@ -478,7 +485,7 @@ function requestConfigModeChange(targetMode) {
                 if (modal) {
                     modal.hide();
                 }
-                if (!stopTransmission()) {
+                if (!stopTransmission({ persistTransmit: false })) {
                     clearPendingModeChange();
                 }
             },
@@ -507,16 +514,8 @@ function requestConfigModeChange(targetMode) {
                 if (modal) {
                     modal.hide();
                 }
-                requestTransmitEnabledChange(false, true, {
-                    updateCheckboxOnSuccess: true,
-                    syncAutosaveBaselineOnSuccess: false,
-                    onSuccess() {
-                        finalizePendingModeChange(requestedMode);
-                    },
-                    onFailure() {
-                        clearPendingModeChange();
-                    },
-                });
+                setTransmitFromBackend(false);
+                finalizePendingModeChange(requestedMode);
             },
             onCancel() {
                 clearPendingModeChange();
