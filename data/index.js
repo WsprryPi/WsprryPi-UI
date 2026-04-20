@@ -1469,7 +1469,7 @@ function buildConfigPayload() {
     // CW shared non-WSPR settings
     let dot_length = parseFloat($('#dot_length').val());
     let fsk_offset = parseFloat($('#fsk_offset').val());
-    let cw_base_frequency = parseFloat($('#qrss_frequency').val());
+    let cw_base_frequency = parseFrequencyWithOptionalUnits($('#qrss_frequency').val());
     let tx_start_minute = parseInt($('#tx_start_minute').val(), 10);
     let tx_repeat_every = parseInt($('#tx_repeat_every').val(), 10);
     let cw_message = String($('#qrss_message').val() || "").trim();
@@ -1850,6 +1850,36 @@ function validateFrequencies() {
     return valid;
 }
 
+function parseFrequencyWithOptionalUnits(rawValue) {
+    const raw = String(rawValue || "").trim();
+    if (!raw) {
+        return Number.NaN;
+    }
+
+    const numericRx = /^(\d+(?:\.\d+)?)(hz|khz|mhz|ghz)?$/i;
+    const match = raw.match(numericRx);
+    if (!match) {
+        return Number.NaN;
+    }
+
+    const value = Number.parseFloat(match[1]);
+    if (!Number.isFinite(value)) {
+        return Number.NaN;
+    }
+
+    const unit = (match[2] || "").toLowerCase();
+    if (unit === "ghz") {
+        return value * 1e9;
+    }
+    if (unit === "mhz") {
+        return value * 1e6;
+    }
+    if (unit === "khz") {
+        return value * 1e3;
+    }
+    return value;
+}
+
 /**
  * Validate the shared CW “Base Frequency” field.
  * @returns {boolean} true if valid, false otherwise.
@@ -1870,14 +1900,8 @@ function validateCwBaseFrequency() {
         valid = false;
     }
 
-    // Allow a frequency unit
-    const numericRx = /^\d+(\.\d+)?(hz|khz|mhz|ghz)?$/i;
-    if (!numericRx.test(raw)) {
-        valid = false;
-    }
-
     if (valid) {
-        const value = Number.parseFloat(raw);
+        const value = parseFrequencyWithOptionalUnits(raw);
         if (!Number.isFinite(value) || value <= 0) {
             valid = false;
         }
