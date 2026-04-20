@@ -58,31 +58,78 @@
         _cacheTS = 0,
         _refreshTimer = null;
 
-    function renderState(title, body, actionLabel = "") {
-        const actionMarkup = actionLabel
-            ? `<button type="button" class="btn btn-outline-primary btn-sm mt-3" id="spotsRetryButton">${actionLabel}</button>`
-            : "";
+    function getSpotsBody() {
+        return document.querySelector(".card-body.tab-content");
+    }
 
-        $(".card-body.tab-content").html(`
-            <div class="spots-state py-5 px-3" role="status" aria-live="polite">
-                <div class="spots-state__title fw-semibold mb-2">${title}</div>
-                <p class="spots-state__body text-body-secondary mb-0">${body}</p>
-                ${actionMarkup}
-            </div>
-        `);
+    function renderState(title, body, actionLabel = "") {
+        const container = getSpotsBody();
+        if (!container) {
+            return;
+        }
+
+        container.replaceChildren();
+
+        const state = document.createElement("div");
+        state.className = "spots-state py-5 px-3";
+        state.setAttribute("role", "status");
+        state.setAttribute("aria-live", "polite");
+
+        const titleElement = document.createElement("div");
+        titleElement.className = "spots-state__title fw-semibold mb-2";
+        titleElement.textContent = title;
+
+        const bodyElement = document.createElement("p");
+        bodyElement.className = "spots-state__body text-body-secondary mb-0";
+        bodyElement.textContent = body;
+
+        state.append(titleElement, bodyElement);
+
+        if (actionLabel) {
+            const actionButton = document.createElement("button");
+            actionButton.type = "button";
+            actionButton.id = "spotsRetryButton";
+            actionButton.className = "btn btn-outline-primary btn-sm mt-3";
+            actionButton.textContent = actionLabel;
+            state.appendChild(actionButton);
+        }
+
+        container.appendChild(state);
     }
 
     // Show a Bootstrap spinner in the card-body
     function renderLoading() {
-        $(".card-body.tab-content").html(`
-            <div class="spots-state py-5 px-3" role="status" aria-live="polite">
-                <div class="spinner-border text-primary mb-3" role="status">
-                    <span class="visually-hidden">Loading…</span>
-                </div>
-                <div class="spots-state__title fw-semibold">Loading recent spots</div>
-                <p class="spots-state__body text-body-secondary mb-0">Checking the last hour of WSPRNet spot reports for this transmitter.</p>
-            </div>
-        `);
+        const container = getSpotsBody();
+        if (!container) {
+            return;
+        }
+
+        container.replaceChildren();
+
+        const state = document.createElement("div");
+        state.className = "spots-state py-5 px-3";
+        state.setAttribute("role", "status");
+        state.setAttribute("aria-live", "polite");
+
+        const spinner = document.createElement("div");
+        spinner.className = "spinner-border text-primary mb-3";
+        spinner.setAttribute("role", "status");
+
+        const hiddenLabel = document.createElement("span");
+        hiddenLabel.className = "visually-hidden";
+        hiddenLabel.textContent = "Loading…";
+        spinner.appendChild(hiddenLabel);
+
+        const title = document.createElement("div");
+        title.className = "spots-state__title fw-semibold";
+        title.textContent = "Loading recent spots";
+
+        const body = document.createElement("p");
+        body.className = "spots-state__body text-body-secondary mb-0";
+        body.textContent = "Checking the last hour of WSPRNet spot reports for this transmitter.";
+
+        state.append(spinner, title, body);
+        container.appendChild(state);
     }
 
     // Render an error message in the card-body

@@ -25,7 +25,7 @@ document.addEventListener("DOMContentLoaded", () => {
      * @returns {void}
      */
     function clearToasts() {
-        globalToastContainer.innerHTML = "";
+        globalToastContainer.replaceChildren();
     }
 
     /**
@@ -50,27 +50,30 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const classes = typeMap[type] || typeMap.info;
 
-        const toastWrapper = document.createElement("div");
+        const toastElement = document.createElement("div");
+        toastElement.className = `toast ${classes} border shadow-sm bg-body text-body`;
+        toastElement.setAttribute("role", "alert");
+        toastElement.setAttribute("aria-live", "assertive");
+        toastElement.setAttribute("aria-atomic", "true");
 
-        toastWrapper.innerHTML = `
-            <div class="toast ${classes} border shadow-sm bg-body text-body"
-                 role="alert"
-                 aria-live="assertive"
-                 aria-atomic="true">
-                <div class="toast-body text-center">
-                    <div class="mb-3">${message}</div>
+        const toastBody = document.createElement("div");
+        toastBody.className = "toast-body text-center";
 
-                    <div class="d-flex justify-content-center">
-                        <button type="button"
-                                class="btn btn-sm btn-outline-secondary maintenance-toast-ok">
-                            OK
-                        </button>
-                    </div>
-                </div>
-            </div>
-        `.trim();
+        const messageBlock = document.createElement("div");
+        messageBlock.className = "mb-3";
+        messageBlock.textContent = message;
 
-        const toastElement = toastWrapper.firstElementChild;
+        const actionRow = document.createElement("div");
+        actionRow.className = "d-flex justify-content-center";
+
+        const okButton = document.createElement("button");
+        okButton.type = "button";
+        okButton.className = "btn btn-sm btn-outline-secondary maintenance-toast-ok";
+        okButton.textContent = "OK";
+
+        actionRow.appendChild(okButton);
+        toastBody.append(messageBlock, actionRow);
+        toastElement.appendChild(toastBody);
         globalToastContainer.appendChild(toastElement);
 
         const toast = new bootstrap.Toast(toastElement, {
@@ -78,11 +81,9 @@ document.addEventListener("DOMContentLoaded", () => {
             delay: 10000
         });
 
-        toastElement
-            .querySelector(".maintenance-toast-ok")
-            .addEventListener("click", () => {
-                toast.hide();
-            });
+        okButton.addEventListener("click", () => {
+            toast.hide();
+        });
 
         toastElement.addEventListener("hidden.bs.toast", () => {
             toastElement.remove();

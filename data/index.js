@@ -787,17 +787,29 @@ function clickTransmitBackend() {
 function updateGpioPowerLabel() {
     var val = this.value;
     var rangeValues = {
-        0: "2mA<br/>3.0dBm",
-        1: "4mA<br/>6.0dBm",
-        2: "6mA<br/>7.8dBm",
-        3: "8mA<br/>9.0dBm",
-        4: "10mA<br/>10.0dBm",
-        5: "12mA<br/>10.8dBm",
-        6: "14mA<br/>11.5dBm",
-        7: "16mA<br/>12.0dBm",
+        0: ["2mA", "3.0dBm"],
+        1: ["4mA", "6.0dBm"],
+        2: ["6mA", "7.8dBm"],
+        3: ["8mA", "9.0dBm"],
+        4: ["10mA", "10.0dBm"],
+        5: ["12mA", "10.8dBm"],
+        6: ["14mA", "11.5dBm"],
+        7: ["16mA", "12.0dBm"],
     };
-    var label = rangeValues[val] || val;
-    $("#gpio-power-range-value").html(label);
+    var label = rangeValues[val] || [String(val)];
+    var labelElement = document.getElementById("gpio-power-range-value");
+
+    if (!labelElement) {
+        return;
+    }
+
+    labelElement.replaceChildren();
+    label.forEach((part, index) => {
+        if (index > 0) {
+            labelElement.appendChild(document.createElement("br"));
+        }
+        labelElement.appendChild(document.createTextNode(part));
+    });
 }
 
 function updateSi5351PowerLabel() {
@@ -809,7 +821,13 @@ function updateSi5351PowerLabel() {
         4: "8mA",
     };
     var label = rangeValues[val] || val;
-    $("#si5351-power-range-value").html(label);
+    var labelElement = document.getElementById("si5351-power-range-value");
+
+    if (!labelElement) {
+        return;
+    }
+
+    labelElement.textContent = label;
 }
 
 function clickUseLED() {
