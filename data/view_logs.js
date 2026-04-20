@@ -477,6 +477,11 @@
 
 
     function bindLogViewActions() {
+        if (logViewActionsBound) {
+            return;
+        }
+        logViewActionsBound = true;
+
         onClick("btn-clear", () => {
             clearPanes();
         });
@@ -691,8 +696,11 @@
     let watchdogTimer = null;
     let reconnectAttempts = 0;
     let reconnectPending = false;
+    let reconnectTimer = null;
     let isReloading = false;
     let unloadHookInstalled = false;
+    let logViewActionsBound = false;
+    let logStreamInitialized = false;
 
     const CURSOR_STORAGE_KEY = "log_stream_last_cursor";
 
@@ -742,7 +750,8 @@
             "Next attempt in " + formatDelay(delayMs) + ". " + reason
         );
 
-        setTimeout(() => {
+        reconnectTimer = window.setTimeout(() => {
+            reconnectTimer = null;
             reconnectPending = false;
             restartLogStream();
         }, delayMs);
@@ -805,6 +814,21 @@
     }
 
     function startLogStream() {
+        if (!("EventSource" in window)) {
+            setSseStatus("disconnected", "Unavailable", "This browser does not support server-sent events");
+            renderEmptyState(
+                "all",
+                "Live stream unavailable",
+                "This browser cannot open the live log stream. Use a current browser with server-sent event support to view live journal output."
+            );
+            return;
+        }
+
+        if (evt) {
+            evt.close();
+            evt = null;
+        }
+
         const url = buildStreamUrl();
         debugConsole("info", "Connecting to", url);
 
@@ -1002,6 +1026,11 @@
 
     function stopLogStream() {
         setSseStatus("disconnected", "Disconnected", "Disconnected");
+        reconnectPending = false;
+        if (reconnectTimer !== null) {
+            clearTimeout(reconnectTimer);
+            reconnectTimer = null;
+        }
         if (evt) {
             evt.close();
             evt = null;
@@ -1032,6 +1061,14 @@
     }
 
     function init() {
+        if (logStreamInitialized) {
+            if (!evt) {
+                startLogStream();
+            }
+            return;
+        }
+        logStreamInitialized = true;
+
         setSseStatus("disconnected", "Disconnected", "Disconnected");
         registerConsoleApi();
         applyView(loadInitialView(), false);
