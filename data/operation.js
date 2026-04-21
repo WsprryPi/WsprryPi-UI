@@ -1,6 +1,7 @@
 let isUpdatingTransmitFromBackend = false;
 let stopRequestInFlight = false;
 let stopRequestTimeoutHandle = null;
+let operationRetryInFlight = false;
 const CONFIG_REQUEST_TIMEOUT_MS = 15000;
 const STOP_REQUEST_TIMEOUT_MS = 10000;
 
@@ -171,21 +172,38 @@ function setOperationRecoveryUi({
 
     container.hidden = !show;
     retryButton.hidden = !retryVisible;
-    retryButton.disabled = !!retryDisabled;
-    retryButton.textContent = retryLabel;
+    retryButton.disabled = !!retryDisabled || operationRetryInFlight;
+    retryButton.textContent = operationRetryInFlight ? "Retrying..." : retryLabel;
     setupButton.hidden = !setupVisible;
-    hintNode.textContent = hint;
+    hintNode.textContent = operationRetryInFlight
+        ? "Requesting a fresh runtime snapshot from the controller."
+        : hint;
+}
+
+function finishOperationRetryFeedback() {
+    if (!operationRetryInFlight) {
+        return;
+    }
+
+    operationRetryInFlight = false;
+    updateOperationStatusSummary(currentRuntimeStatus);
 }
 
 function retryOperationRuntimeLoad() {
+    if (operationRetryInFlight) {
+        return;
+    }
+
     if (navigator.onLine === false) {
         showBackendStatus(browserOfflineOperationMessage(), "warning", "runtime");
         updateOperationStatusSummary(currentRuntimeStatus);
         return;
     }
 
+    operationRetryInFlight = true;
     clearBackendStatus("runtime");
     clearBackendStatus("backend");
+    updateOperationStatusSummary(currentRuntimeStatus);
 
     if (typeof reloadAllData === "function") {
         reloadAllData();
@@ -399,6 +417,7 @@ function handleStopCommandResponse(message) {
 }
 
 function handleOperationConfigSnapshot(snapshot = {}) {
+    finishOperationRetryFeedback();
     operationSnapshotLoaded = true;
     operationSnapshot = {
         mode: typeof snapshot.mode === "string" ? snapshot.mode : "",
@@ -408,6 +427,23 @@ function handleOperationConfigSnapshot(snapshot = {}) {
     };
 
     updateOperationStatusSummary(currentRuntimeStatus);
+}
+
+function setOperationStatePresentation(stateNode, detailNode, hintNode, {
+    state = "",
+    tone = "idle",
+    detail = "",
+    hint = "",
+} = {}) {
+    const announcementNode = document.getElementById("operationStatusAnnouncement");
+    stateNode.textContent = state;
+    stateNode.setAttribute("data-state", tone);
+    if (announcementNode) {
+        announcementNode.setAttribute("data-state", tone);
+        announcementNode.setAttribute("aria-label", state ? `Runtime status: ${state}. ${detail}` : "Runtime status updated.");
+    }
+    detailNode.textContent = detail;
+    hintNode.textContent = hint;
 }
 
 function updateOperationStatusSummary(status) {
@@ -436,9 +472,12 @@ function updateOperationStatusSummary(status) {
 
     if (!operationSnapshotLoaded) {
         if (navigator.onLine === false) {
-            stateNode.textContent = "Browser offline";
-            detailNode.textContent = "Operation is waiting for this browser to reconnect before it can load current controller state.";
-            hintNode.textContent = "Reconnect this browser, then retry loading runtime state.";
+            setOperationStatePresentation(stateNode, detailNode, hintNode, {
+                state: "Browser offline",
+                tone: "offline",
+                detail: "Operation is waiting for this browser to reconnect before it can load current controller state.",
+                hint: "Reconnect this browser, then retry loading runtime state.",
+            });
             setOperationRecoveryUi({
                 show: true,
                 retryVisible: true,
@@ -450,9 +489,12 @@ function updateOperationStatusSummary(status) {
         }
 
         if (!backendConnected) {
-            stateNode.textContent = "Controller unavailable";
-            detailNode.textContent = "Operation could not load saved controller values, so live controls are temporarily unavailable.";
-            hintNode.textContent = "Retry loading runtime state. If this persists after recovery, use Setup or Maintenance for investigation.";
+            setOperationStatePresentation(stateNode, detailNode, hintNode, {
+                state: "Controller unavailable",
+                tone: "degraded",
+                detail: "Operation could not load saved controller values, so live controls are temporarily unavailable.",
+                hint: "Retry loading runtime state. If this persists after recovery, use Setup or Maintenance for investigation.",
+            });
             setOperationRecoveryUi({
                 show: true,
                 retryVisible: true,
@@ -462,16 +504,28 @@ function updateOperationStatusSummary(status) {
             return;
         }
 
-        stateNode.textContent = "Loading runtime state";
-        detailNode.textContent = "Connecting to the controller and loading the latest operating values.";
-        hintNode.textContent = "Wait for the current runtime snapshot to load before using live controls.";
+        setOperationStatePresentation(stateNode, detailNode, hintNode, {
+            state: "Loading runtime state",
+            tone: "loading",
+            detail: "Connecting to the controller and loading the latest operating values.",
+            hint: "Wait for the current runtime snapshot to load before using live controls.",
+        });
+        if (operationRetryInFlight) {
+            setOperationRecoveryUi({
+                show: true,
+                retryVisible: true,
+            });
+        }
         return;
     }
 
     if (!configuredEnough) {
-        stateNode.textContent = "Setup required";
-        detailNode.textContent = "Station identity is incomplete. Open Setup before normal operation so the controller can build valid transmit frames.";
-        hintNode.textContent = "Open Setup to complete callsign and grid before relying on this page for normal operation.";
+        setOperationStatePresentation(stateNode, detailNode, hintNode, {
+            state: "Setup required",
+            tone: "setup",
+            detail: "Station identity is incomplete. Open Setup before normal operation so the controller can build valid transmit frames.",
+            hint: "Open Setup to complete callsign and grid before relying on this page for normal operation.",
+        });
         setOperationRecoveryUi({
             show: true,
             setupVisible: true,
@@ -481,9 +535,12 @@ function updateOperationStatusSummary(status) {
     }
 
     if (navigator.onLine === false) {
-        stateNode.textContent = "Browser offline";
-        detailNode.textContent = "Last known operating values remain visible, but live control is paused until this browser reconnects.";
-        hintNode.textContent = "Reconnect this browser to resume live runtime control.";
+        setOperationStatePresentation(stateNode, detailNode, hintNode, {
+            state: "Browser offline",
+            tone: "offline",
+            detail: "Last known operating values remain visible, but live control is paused until this browser reconnects.",
+            hint: "Reconnect this browser to resume live runtime control.",
+        });
         setOperationRecoveryUi({
             show: true,
             retryVisible: true,
@@ -495,9 +552,12 @@ function updateOperationStatusSummary(status) {
     }
 
     if (!backendConnected || !websocketConnected) {
-        stateNode.textContent = "Reconnecting";
-        detailNode.textContent = "Last known operating values remain visible while Operation retries the controller connection.";
-        hintNode.textContent = "Use Retry now if the controller is back but this page has not recovered yet.";
+        setOperationStatePresentation(stateNode, detailNode, hintNode, {
+            state: "Reconnecting",
+            tone: "degraded",
+            detail: "Last known operating values remain visible while Operation retries the controller connection.",
+            hint: "Use Retry now if the controller is back but this page has not recovered yet.",
+        });
         setOperationRecoveryUi({
             show: true,
             retryVisible: true,
@@ -507,16 +567,22 @@ function updateOperationStatusSummary(status) {
     }
 
     if (stopRequestInFlight) {
-        stateNode.textContent = "Stopping transmission";
-        detailNode.textContent = "A stop command is in flight. Wait for controller confirmation before retrying or changing transmit state.";
-        hintNode.textContent = "If the controller does not confirm the stop request, a warning will appear and the control will re-enable.";
+        setOperationStatePresentation(stateNode, detailNode, hintNode, {
+            state: "Stopping transmission",
+            tone: "active",
+            detail: "A stop command is in flight. Wait for controller confirmation before retrying or changing transmit state.",
+            hint: "If the controller does not confirm the stop request, a warning will appear and the control will re-enable.",
+        });
         return;
     }
 
     if (unavailableMessage) {
-        stateNode.textContent = "Transmit unavailable";
-        detailNode.textContent = formatTransmitFailureMessage(unavailableMessage);
-        hintNode.textContent = "Review Transmitter settings in Setup before enabling transmissions from this page.";
+        setOperationStatePresentation(stateNode, detailNode, hintNode, {
+            state: "Transmit unavailable",
+            tone: "warning",
+            detail: formatTransmitFailureMessage(unavailableMessage),
+            hint: "Review Transmitter settings in Setup before enabling transmissions from this page.",
+        });
         setOperationRecoveryUi({
             show: true,
             setupVisible: true,
@@ -526,24 +592,33 @@ function updateOperationStatusSummary(status) {
     }
 
     if (txState === "transmitting") {
-        stateNode.textContent = "Transmitting";
-        detailNode.textContent = "An active transmission is underway. Use Stop only if you need to interrupt it immediately.";
-        hintNode.textContent = "Monitor the current mode and plan below. Open Setup only if you need to change saved operating values after the transmission stops.";
+        setOperationStatePresentation(stateNode, detailNode, hintNode, {
+            state: "Transmitting",
+            tone: "active",
+            detail: "An active transmission is underway. Use Stop only if you need to interrupt it immediately.",
+            hint: "Monitor the current mode and plan below. Open Setup only if you need to change saved operating values after the transmission stops.",
+        });
         return;
     }
 
     if (!transmitEnabled) {
-        stateNode.textContent = "Transmit paused";
-        detailNode.textContent = "Saved runtime settings are loaded, but transmissions are disabled until you re-enable them here.";
-        hintNode.textContent = "Enable transmissions when you are ready to resume normal scheduling.";
+        setOperationStatePresentation(stateNode, detailNode, hintNode, {
+            state: "Transmit paused",
+            tone: "warning",
+            detail: "Saved runtime settings are loaded, but transmissions are disabled until you re-enable them here.",
+            hint: "Enable transmissions when you are ready to resume normal scheduling.",
+        });
         return;
     }
 
-    stateNode.textContent = nextTransmissionAt ? "Standing by" : "Ready";
-    detailNode.textContent = nextTransmissionAt
-        ? `The controller is idle and waiting for the next scheduled activity at ${nextTransmissionAt}.`
-        : "The controller is connected and ready. Review the current mode and plan below for operating context.";
-    hintNode.textContent = "Use this page for live monitoring and high-level control. Open Setup only when a saved value needs to change.";
+    setOperationStatePresentation(stateNode, detailNode, hintNode, {
+        state: nextTransmissionAt ? "Standing by" : "Ready",
+        tone: "ready",
+        detail: nextTransmissionAt
+            ? `The controller is idle and waiting for the next scheduled activity at ${nextTransmissionAt}.`
+            : "The controller is connected and ready. Review the current mode and plan below for operating context.",
+        hint: "Use this page for live monitoring and high-level control. Open Setup only when a saved value needs to change.",
+    });
 }
 
 function handleRuntimeStatusUpdate(status) {

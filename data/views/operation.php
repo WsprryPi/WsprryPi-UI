@@ -8,7 +8,13 @@ require __DIR__ . '/../card_header.php';
                 <section class="operation-hero" aria-labelledby="operationPageTitle">
                     <div class="operation-hero__status">
                         <p class="operation-hero__eyebrow mb-0">Primary landing view</p>
-                        <div class="operation-hero__headline">
+                        <div
+                            id="operationStatusAnnouncement"
+                            class="operation-hero__headline"
+                            role="status"
+                            aria-live="polite"
+                            aria-atomic="true"
+                            aria-relevant="text">
                             <div class="operation-hero__state">
                                 <span class="operation-hero__state-label">Current state</span>
                                 <span id="operationCurrentState" class="operation-hero__state-value">Loading runtime state</span>

@@ -911,6 +911,10 @@ function setConfigLoadFailureState() {
         return;
     }
 
+    if (typeof finishOperationRetryFeedback === "function") {
+        finishOperationRetryFeedback();
+    }
+
     const message = configLoadFailureMessage();
     if (typeof showBackendStatus === "function") {
         showBackendStatus(message, "warning", "backend");
@@ -923,6 +927,10 @@ function setConfigLoadFailureState() {
 function clearConfigLoadFailureState() {
     if (!isRuntimeControlView()) {
         return;
+    }
+
+    if (typeof finishOperationRetryFeedback === "function") {
+        finishOperationRetryFeedback();
     }
 
     if (typeof clearBackendStatus === "function") {
