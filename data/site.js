@@ -58,6 +58,7 @@ let currentRuntimeConfigStatus = {
 let chromeOffsetSyncHandle = null;
 let lastNavbarOffset = null;
 let lastFooterOffset = null;
+let websocketReconnectTimer = null;
 
 // Websocket Creation
 let ws;
@@ -67,6 +68,23 @@ const WS_RECONNECT = 5000; // Retry again every 5s
 let lastSaveTimestamp = null;
 // Keep track of any scheduled reloads
 let pendingPopulateConfigTimeout = null;
+
+function currentViewKey() {
+    return typeof window.WSPRRYPI_VIEW === "string" ? window.WSPRRYPI_VIEW : "";
+}
+
+function isConfigView() {
+    return currentViewKey() === "config";
+}
+
+function isOperationView() {
+    return currentViewKey() === "operation";
+}
+
+function isRuntimeControlView() {
+    const view = currentViewKey();
+    return view === "config" || view === "operation";
+}
 
 // Semaphore for singleton data load
 let populateConfigRunning = false;
@@ -456,6 +474,10 @@ function bindActions() {
         bindIndexActions();
     }
 
+    if (typeof bindOperationActions === "function") {
+        bindOperationActions();
+    }
+
     // Log viewer bindings
     if (typeof bindLogViewActions === "function") {
         bindLogViewActions();
@@ -837,6 +859,31 @@ function armOutageBannerIfReady() {
     }
 }
 
+function clearPendingPopulateConfigRetry() {
+    if (pendingPopulateConfigTimeout) {
+        clearTimeout(pendingPopulateConfigTimeout);
+        pendingPopulateConfigTimeout = null;
+    }
+}
+
+function schedulePopulateConfigRetry(callback = null, delayMs = 10000) {
+    clearPendingPopulateConfigRetry();
+    pendingPopulateConfigTimeout = setTimeout(
+        function () {
+            pendingPopulateConfigTimeout = null;
+            populateConfig(callback);
+        },
+        delayMs
+    );
+}
+
+function clearWebSocketReconnectTimer() {
+    if (websocketReconnectTimer) {
+        clearTimeout(websocketReconnectTimer);
+        websocketReconnectTimer = null;
+    }
+}
+
 function syncConnectionAlert() {
     if (!outageBannerArmed || pageUnloading) {
         hideConnectionAlert();
@@ -849,6 +896,49 @@ function syncConnectionAlert() {
     }
 
     showConnectionAlert();
+}
+
+function configLoadFailureMessage() {
+    if (navigator.onLine === false) {
+        return "This browser is offline. Runtime controls are temporarily read-only until the controller can be reached again.";
+    }
+
+    return "The controller is temporarily unavailable. Last known values remain visible, and hardware controls are read-only while the page retries.";
+}
+
+function setConfigLoadFailureState() {
+    if (!isRuntimeControlView()) {
+        return;
+    }
+
+    const message = configLoadFailureMessage();
+    if (typeof showBackendStatus === "function") {
+        showBackendStatus(message, "warning", "backend");
+    }
+    if (isConfigView() && typeof setConfigSaveStatus === "function") {
+        setConfigSaveStatus("load-error", "Controller unavailable", message);
+    }
+}
+
+function clearConfigLoadFailureState() {
+    if (!isRuntimeControlView()) {
+        return;
+    }
+
+    if (typeof clearBackendStatus === "function") {
+        clearBackendStatus("backend");
+    }
+
+    const node = document.getElementById("configSaveStatus");
+    if (
+        isConfigView() &&
+        node &&
+        node.dataset &&
+        node.dataset.state === "load-error" &&
+        typeof setConfigSaveStatus === "function"
+    ) {
+        setConfigSaveStatus("", "", "");
+    }
 }
 
 // Data Load
@@ -867,6 +957,8 @@ function populateConfig(callback = null) {
                 backendConnectedOnce = true;
                 armOutageBannerIfReady();
                 syncConnectionAlert();
+                clearConfigLoadFailureState();
+                clearPendingPopulateConfigRetry();
 
                 validateConfigSchema(configJson, configSchema);
 
@@ -950,12 +1042,12 @@ function populateConfig(callback = null) {
                     transmitBackend = "gpio";
                 }
                 const callsignWasLoaded = hasConfigValue(wspr, "Call Sign");
-                let callsign = getConfigValue(
+                let callsign = String(getConfigValue(
                     wspr,
                     "WSPR",
                     "Call Sign",
                     "N0CALL"
-                );
+                ) || "").trim() || "N0CALL";
                 if (
                     !callsignWasLoaded &&
                     typeof callsign === "string" &&
@@ -966,12 +1058,12 @@ function populateConfig(callback = null) {
                     );
                 }
                 const gridSquareWasLoaded = hasConfigValue(wspr, "Grid Square");
-                let gridsquare = getConfigValue(
+                let gridsquare = String(getConfigValue(
                     wspr,
                     "WSPR",
                     "Grid Square",
                     "ZZ99"
-                );
+                ) || "").trim() || "ZZ99";
                 if (
                     !gridSquareWasLoaded &&
                     typeof gridsquare === "string" &&
@@ -981,13 +1073,13 @@ function populateConfig(callback = null) {
                         'Config key "WSPR.Grid Square" is placeholder (ZZ99).'
                     );
                 }
-                let dbm = getConfigIntValue(wspr, "WSPR", "TX Power", 0);
-                let frequencies = getConfigValue(
+                let dbm = getConfigIntValue(wspr, "WSPR", "TX Power", 20);
+                let frequencies = String(getConfigValue(
                     wspr,
                     "WSPR",
                     "Frequency",
                     "20m"
-                );
+                ) || "").trim() || "20m";
                 let tx_pin = getConfigIntValue(
                     gpio,
                     "GPIO",
@@ -1062,14 +1154,14 @@ function populateConfig(callback = null) {
                     19
                 );
                 let dot_length = getConfigFloatValue(cw, "CW", "Dot Seconds", 3.0);
-                let fsk_offset = getConfigFloatValue(cw, "CW", "Shift Hz", 500.0);
+                let fsk_offset = getConfigFloatValue(cw, "CW", "Shift Hz", 5.0);
                 let cw_base_frequency = getConfigFloatValue(cw, "CW", "Base Frequency", 14096900.0);
                 let cw_intra_element_gap = getConfigFloatValue(cw, "CW", "Intra Element Gap", 1.0);
                 let cw_inter_character_gap = getConfigFloatValue(cw, "CW", "Inter Character Gap", 3.0);
                 let cw_inter_word_gap = getConfigFloatValue(cw, "CW", "Inter Word Gap", 7.0);
                 let tx_start_minute = getConfigIntValue(cw, "CW", "Start Minute", 0);
                 let tx_repeat_every = getConfigIntValue(cw, "CW", "Repeat Minutes", 10);
-                let cw_message = getConfigValue(cw, "CW", "Message", "");
+                let cw_message = String(getConfigValue(cw, "CW", "Message", "") || "").trim();
 
                 // Operation.Web Port and Operation.Socket Port remain
                 // backend-managed settings without visible controls on this
@@ -1078,7 +1170,7 @@ function populateConfig(callback = null) {
                 // @GPIO[H|L] metadata, not as a single GPIO-wide setting.
 
                 // If we are on the config page
-                if (window.currentPage == "index.php") {
+                if (isConfigView()) {
                     if (typeof suspendConfigAutosave === "function") {
                         suspendConfigAutosave(true);
                     }
@@ -1176,8 +1268,35 @@ function populateConfig(callback = null) {
                     if (typeof syncConfigAutosaveBaseline === "function") {
                         syncConfigAutosaveBaseline();
                     }
+                    if (typeof restorePersistedConfigDraft === "function") {
+                        restorePersistedConfigDraft();
+                    }
                     if (typeof suspendConfigAutosave === "function") {
                         suspendConfigAutosave(false);
+                    }
+                } else if (isOperationView()) {
+                    if (typeof setTransmitFromBackend === "function") {
+                        setTransmitFromBackend(transmit);
+                    } else {
+                        $("#transmit").prop("checked", transmit);
+                    }
+                    if (typeof setSelectedRuntimeTransmitBackend === "function") {
+                        setSelectedRuntimeTransmitBackend(transmitBackend);
+                    }
+                    if (typeof updateRuntimeControlConfigStatus === "function") {
+                        updateRuntimeControlConfigStatus(mode, transmit);
+                    }
+                    if (typeof handleOperationConfigSnapshot === "function") {
+                        handleOperationConfigSnapshot({
+                            mode,
+                            transmit,
+                            transmitBackend,
+                            callsign,
+                            gridsquare,
+                        });
+                    }
+                    if (typeof clearOfflineDefaults === "function") {
+                        clearOfflineDefaults();
                     }
                 } else if (window.currentPage == "view_logs.php") {
                     $("#callsign").val(callsign);
@@ -1193,29 +1312,25 @@ function populateConfig(callback = null) {
                     callback();
                 }
             } catch (error) {
-                if (window.currentPage == "index.php" &&
+                if (isConfigView() &&
                     typeof suspendConfigAutosave === "function") {
                     suspendConfigAutosave(false);
                 }
                 debugConsole("error", "Error parsing config JSON:", error);
                 backendCurrentlyConnected = false;
                 syncConnectionAlert();
-                if (window.currentPage == "index.php" && shouldShowBackendLossStatus() && typeof setOfflineDefaults === "function") {
+                setConfigLoadFailureState();
+                if (isRuntimeControlView() && shouldShowBackendLossStatus() && typeof setOfflineDefaults === "function") {
                     setOfflineDefaults();
                 }
                 // Only try to load if the system is *not* paused
                 if (!systemPaused) {
-                    pendingPopulateConfigTimeout = setTimeout(
-                        function () {
-                            populateConfig(callback);
-                        },
-                        10000
-                    );
+                    schedulePopulateConfigRetry(callback, 10000);
                 }
             }
         })
         .fail(function (jqXHR, textStatus, errorThrown) {
-            if (window.currentPage == "index.php" &&
+            if (isConfigView() &&
                 typeof suspendConfigAutosave === "function") {
                 suspendConfigAutosave(false);
             }
@@ -1227,17 +1342,13 @@ function populateConfig(callback = null) {
             );
             backendCurrentlyConnected = false;
             syncConnectionAlert();
-            if (window.currentPage == "index.php" && shouldShowBackendLossStatus() && typeof setOfflineDefaults === "function") {
+            setConfigLoadFailureState();
+            if (isRuntimeControlView() && shouldShowBackendLossStatus() && typeof setOfflineDefaults === "function") {
                 setOfflineDefaults();
             }
             // Only try to load if the system is *not* paused
             if (!systemPaused) {
-                pendingPopulateConfigTimeout = setTimeout(
-                    function () {
-                        populateConfig(callback);
-                    },
-                    10000
-                );
+                schedulePopulateConfigRetry(callback, 10000);
             }
         })
         .always(function () {
@@ -1252,13 +1363,14 @@ function resetToolTips(e) {
 }
 
 /**
- * Update the connection-status icon and its tooltip.
+ * Update the connection-status icon, visible text, and tooltip.
  *
  * @param {'disconnected'|'connecting'|'connected'|'transmitting'} state
  * @param {string} [timestamp]  Optional timestamp for “transmitting”
  */
 function setConnectionState(state, timestamp = "") {
     const icon = document.getElementById("connIcon");
+    const textElement = document.getElementById("connStatusText");
     if (!icon) return;
 
     // Remove old state classes
@@ -1289,6 +1401,10 @@ function setConnectionState(state, timestamp = "") {
             break;
         default:
             text = "";
+    }
+
+    if (textElement) {
+        textElement.textContent = text.replace(/\.$/, "");
     }
 
     // Update Bootstrap’s tooltip data attr (do NOT set title)
@@ -1694,6 +1810,12 @@ function debugConsole(method, ...args) {
  *   Milliseconds to wait before trying to reconnect after a close or error.
  */
 function connectWebSocket(url, reconnectDelay = 5000) {
+    clearWebSocketReconnectTimer();
+
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+        return ws;
+    }
+
     // Notify the UI we’re attempting to connect
     setConnectionState("connecting");
     debugConsole("debug", `WebSocket ▶️ connecting to ${url}`);
@@ -1724,7 +1846,7 @@ function connectWebSocket(url, reconnectDelay = 5000) {
         } else {
             getTxState();
             syncConnectionAlert();
-            if (window.currentPage == "index.php" && typeof clearOfflineDefaults === "function") {
+            if (isRuntimeControlView() && typeof clearOfflineDefaults === "function") {
                 clearOfflineDefaults();
             }
         }
@@ -1798,10 +1920,7 @@ function connectWebSocket(url, reconnectDelay = 5000) {
         // {"state":"reload","timestamp":"2025-04-27T22:25:43Z","type":"configuration"}
         if (msg.type === "configuration" && msg.state === "reload") {
             // Clear any pending retry
-            if (pendingPopulateConfigTimeout) {
-                clearTimeout(pendingPopulateConfigTimeout);
-                pendingPopulateConfigTimeout = null;
-            }
+            clearPendingPopulateConfigRetry();
 
             // Reload if it’s been more than 2 min since our last save
             const now = Date.now();
@@ -1858,7 +1977,10 @@ function connectWebSocket(url, reconnectDelay = 5000) {
         syncConnectionAlert();
 
         if (!systemPaused) {
-            setTimeout(() => connectWebSocket(url, reconnectDelay), reconnectDelay);
+            websocketReconnectTimer = setTimeout(() => {
+                websocketReconnectTimer = null;
+                connectWebSocket(url, reconnectDelay);
+            }, reconnectDelay);
         }
     });
 
@@ -2119,7 +2241,7 @@ function handleSystemReload() {
 function handleSystemModalHidden() {
     systemPaused = false;
     connectWebSocket(WEBSOCKET_URL, WS_RECONNECT);
-    setTimeout(populateConfig, 10000);
+    schedulePopulateConfigRetry(null, 10000);
 }
 
 /**
@@ -2183,7 +2305,7 @@ function showSystemModal(action, pause = true) {
             } else {
                 systemPaused = false;
                 connectWebSocket(WEBSOCKET_URL, WS_RECONNECT);
-                setTimeout(populateConfig, 10000);
+                schedulePopulateConfigRetry(null, 10000);
             }
         });
 

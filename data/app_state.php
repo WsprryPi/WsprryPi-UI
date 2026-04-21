@@ -1,11 +1,23 @@
 <?php
 
 $viewMetadata = [
-    'config' => [
-        'title' => 'Wsprry Pi Configuration',
-        'navLabel' => 'Configuration',
-        'navIcon' => 'fa-sliders',
+    'operation' => [
+        'title' => 'Wsprry Pi Operation',
+        'navLabel' => 'Operation',
+        'navIcon' => 'fa-tower-broadcast',
         'legacyScript' => 'index.php',
+        'cardClass' => 'operation-card',
+        'bodyClass' => '',
+        'htmlTheme' => 'auto',
+        'css' => ['index.css', 'operation.css'],
+        'js' => ['operation.js'],
+        'partial' => __DIR__ . '/views/operation.php',
+    ],
+    'config' => [
+        'title' => 'Wsprry Pi Setup',
+        'navLabel' => 'Setup',
+        'navIcon' => 'fa-sliders',
+        'legacyScript' => 'config.php',
         'cardClass' => 'template-card',
         'bodyClass' => '',
         'htmlTheme' => 'auto',
@@ -59,7 +71,7 @@ if ($requestedPage === null && isset($_GET['view']) && is_string($_GET['view']) 
 }
 
 if (!is_string($requestedPage) || !array_key_exists($requestedPage, $viewMetadata)) {
-    $requestedPage = 'config';
+    $requestedPage = 'operation';
 }
 
 $activeView = $requestedPage;

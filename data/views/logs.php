@@ -4,7 +4,7 @@ $cardTitleText = 'Wsprry Pi Log';
 require __DIR__ . '/../card_header.php';
 ?>
 
-            <div class="card-body" style="position: relative;">
+            <div class="card-body logs-card-body">
                 <div
                     id="sse-status-badge"
                     class="sse-disconnected logs-overlay"
@@ -23,11 +23,11 @@ require __DIR__ . '/../card_header.php';
                         type="button">Start stream</button>
                 </div>
 
-                <button id="btn-jump-bottom" type="button" class="btn btn-sm btn-primary" style="display:none; position:absolute; right:12px; bottom:12px; z-index:10;">Jump to newest</button>
+                <button id="btn-jump-bottom" type="button" class="btn btn-sm btn-primary logs-jump-bottom" hidden>Jump to newest</button>
                 <div id="log-scroll">
                     <div id="logsTabContent">
                         <div id="all"></div>
-                        <div id="internal" style="display:none;"></div>
+                        <div id="internal" hidden></div>
                     </div>
                 </div>
             </div>

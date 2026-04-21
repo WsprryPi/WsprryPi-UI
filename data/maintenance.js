@@ -68,7 +68,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const okButton = document.createElement("button");
         okButton.type = "button";
-        okButton.className = "btn btn-sm btn-outline-secondary maintenance-toast-ok";
+        okButton.className = "btn btn-outline-secondary maintenance-toast-ok";
         okButton.textContent = "OK";
 
         actionRow.appendChild(okButton);
@@ -177,7 +177,7 @@ document.addEventListener("DOMContentLoaded", () => {
             ? "Configuration repaired"
             : "Configuration reset to stock defaults";
         const successText = isRepair
-            ? "Review the configuration page now. Confirm the repaired settings, then save any adjustments you still need."
+            ? "Review the Setup page now. Confirm the repaired settings, then save any adjustments you still need."
             : "Review station, transmit mode, and hardware settings now. The stock baseline is loaded, but you still need to save your intended operating values.";
         const warningText = isRepair
             ? "The repair completed, but the updated configuration could not be reloaded automatically. Reload the page and verify the repaired values before transmitting."

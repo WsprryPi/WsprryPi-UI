@@ -17,7 +17,7 @@ require __DIR__ . '/../card_header.php';
                         Use reset only when you want to replace the current configuration with the stock baseline.
                     </p>
                     <p class="mb-0 text-body-secondary">
-                        After either action, review the configuration page, confirm the transmit mode and hardware settings,
+                        After either action, review the Setup page, confirm the transmit mode and hardware settings,
                         then save any changes you still need.
                     </p>
                 </section>
@@ -45,7 +45,7 @@ require __DIR__ . '/../card_header.php';
                         <ul class="maintenance-consequence-list">
                             <li>Keeps existing settings whenever they are still usable.</li>
                             <li>Best when the transmitter worked before and only needs cleanup.</li>
-                            <li>Review the config page afterward to confirm the repaired values.</li>
+                            <li>Review the Setup page afterward to confirm the repaired values.</li>
                         </ul>
                         <div class="maintenance-action-copy">
                             What happens next:

@@ -42,6 +42,21 @@
     overflow: hidden;
 }
 
+.logs-card-body {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+.logs-jump-bottom {
+    position: absolute;
+    right: 12px;
+    bottom: 12px;
+    z-index: 10;
+    min-height: 2.75rem;
+    padding: 0.5rem 1rem;
+}
+
 /* Top-left overlay controls inside the black log pane (not the header). */
 #logs-overlay-controls {
     position: absolute;
@@ -49,6 +64,7 @@
     left: 12px;
     z-index: 13;
     display: inline-flex;
+    flex-wrap: wrap;
     gap: 8px;
     align-items: center;
 
@@ -75,9 +91,12 @@
     border-width: 1px;
 
     /* Keep buttons the same width so the cluster does not wobble. */
-    min-width: 88px;
+    min-width: 6.5rem;
+    min-height: 2.75rem;
+    padding: 0.5rem 0.9rem;
     font-size: var(--text-caption);
     font-weight: var(--weight-semibold);
+    line-height: 1.2;
 
     background-color: color-mix(in srgb, var(--logs-surface) 94%, var(--bs-secondary-bg) 6%);
     box-shadow: none;
@@ -89,7 +108,8 @@
     top: 12px;
     right: 12px;
     z-index: 12;
-    padding: 2px 10px;
+    min-height: 2rem;
+    padding: 0.3rem 0.75rem;
     border-radius: 999px;
     font-size: var(--text-kicker);
     font-weight: var(--weight-semibold);
@@ -120,7 +140,9 @@
     of view with the content.
 */
 #log-scroll {
-    height: 65vh;
+    flex: 1 1 auto;
+    min-height: clamp(18rem, 48dvh, 24rem);
+    max-height: clamp(24rem, 58dvh, 42rem);
     overflow-y: auto;
 
     /* Prevent horizontal shift from any overlay/shadow or long lines. */
@@ -137,6 +159,7 @@
     gap: 0.4rem;
     padding: 5.5rem 1.25rem 2rem;
     color: var(--logs-muted);
+    justify-items: start;
 }
 
 .logs-empty-state__title {
@@ -147,6 +170,13 @@
 
 .logs-empty-state__body {
     max-width: 60ch;
+    overflow-wrap: anywhere;
+}
+
+.logs-empty-state__action {
+    margin-top: 0.4rem;
+    min-height: 2.75rem;
+    padding: 0.5rem 1rem;
 }
 
 .logs-ts-cont {
@@ -228,5 +258,44 @@
 @media (prefers-reduced-motion: reduce) {
     .logs-toolbar-btn {
         transition: none !important;
+    }
+}
+
+@media (max-width: 767.98px) {
+    #log-scroll {
+        min-height: clamp(16rem, 42dvh, 20rem);
+        max-height: clamp(20rem, 50dvh, 30rem);
+    }
+
+    #logs-overlay-controls {
+        top: 0.75rem;
+        left: 0.75rem;
+        right: 0.75rem;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    #logs-overlay-controls .btn,
+    .logs-jump-bottom {
+        width: 100%;
+    }
+
+    #sse-status-badge {
+        top: auto;
+        right: 0.75rem;
+        bottom: 0.75rem;
+    }
+
+    .logs-jump-bottom {
+        left: 0.75rem;
+        right: 0.75rem;
+        bottom: 3.6rem;
+    }
+}
+
+@media (max-height: 760px) {
+    #log-scroll {
+        min-height: clamp(14rem, 38dvh, 18rem);
+        max-height: clamp(18rem, 46dvh, 26rem);
     }
 }

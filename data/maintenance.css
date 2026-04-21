@@ -117,8 +117,8 @@
 
 .maintenance-toast-host .toast {
     border-width: 2px;
-    min-width: 320px;
-    max-width: 420px;
+    width: min(100%, 26.25rem);
+    max-width: calc(100vw - 1.5rem);
     z-index: 1080;
 }
 
@@ -126,8 +126,17 @@
     font-weight: var(--weight-medium);
 }
 
+.maintenance-toast-ok {
+    min-height: 2.75rem;
+    padding: 0.5rem 1rem;
+}
+
 #globalToastContainer {
-    top: 200px;
+    top: clamp(5rem, 18dvh, 12.5rem);
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(100vw - 1rem, 28rem);
+    padding-inline: 0.5rem;
 }
 
 .maintenance-overlay {

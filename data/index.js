@@ -1,6 +1,9 @@
 let isUpdatingTransmitFromBackend = false;
 let stopRequestInFlight = false;
 const CONFIG_AUTOSAVE_DELAY_MS = 800;
+const CONFIG_REQUEST_TIMEOUT_MS = 15000;
+const STOP_REQUEST_TIMEOUT_MS = 10000;
+const CONFIG_DRAFT_STORAGE_KEY = "wsprrypi.configDraft";
 let configAutosaveTimer = null;
 let configAutosaveSuspended = false;
 let configAutosaveInFlight = false;
@@ -8,6 +11,7 @@ let configAutosavePendingAfterFlight = false;
 let configAutosaveDirty = false;
 let lastSavedConfigPayload = "";
 let lastFailedConfigPayload = "";
+let lastFailedConfigMessage = "";
 let configSaveStatusClearTimer = null;
 let configAutosaveNeedsRuntimeRefresh = false;
 let pendingPersistedMode = "";
@@ -15,16 +19,300 @@ let currentConfigModeSelection = "WSPR";
 let pendingModeChange = null;
 let modeChangeGuardBusy = false;
 let suppressModeChangeGuard = false;
+let configNetworkHandlersBound = false;
+let configNavigationGuardBound = false;
+let stopRequestTimeoutHandle = null;
+
+function browserOfflineConfigMessage() {
+    return "This browser is offline. Changes stay local until the connection returns.";
+}
+
+function transientConfigSaveMessage(textStatus = "") {
+    const normalizedStatus = typeof textStatus === "string"
+        ? textStatus.trim().toLowerCase()
+        : "";
+
+    if (navigator.onLine === false) {
+        return browserOfflineConfigMessage();
+    }
+
+    if (normalizedStatus === "timeout") {
+        return "The controller did not respond before the save timed out. Changes stay local until retry.";
+    }
+
+    return "The controller could not be reached for this save. Changes stay local until retry.";
+}
+
+function runtimeConnectionUnavailableMessage() {
+    if (navigator.onLine === false) {
+        return "This browser is offline, so runtime controls cannot reach the controller.";
+    }
+
+    return "The controller connection is unavailable right now, so the action could not be completed.";
+}
+
+function transientRuntimeActionMessage(textStatus = "") {
+    const normalizedStatus = typeof textStatus === "string"
+        ? textStatus.trim().toLowerCase()
+        : "";
+
+    if (navigator.onLine === false) {
+        return runtimeConnectionUnavailableMessage();
+    }
+
+    if (normalizedStatus === "timeout") {
+        return "The controller did not respond before the action timed out. Check connectivity and try again.";
+    }
+
+    return runtimeConnectionUnavailableMessage();
+}
+
+function isTransientNetworkFailure(xhr, textStatus = "") {
+    if (navigator.onLine === false) {
+        return true;
+    }
+
+    const normalizedStatus = typeof textStatus === "string"
+        ? textStatus.trim().toLowerCase()
+        : "";
+
+    if (normalizedStatus === "timeout" || normalizedStatus === "error") {
+        if (!xhr || typeof xhr.status !== "number" || xhr.status === 0) {
+            return true;
+        }
+    }
+
+    return !!xhr && typeof xhr.status === "number" && xhr.status === 0;
+}
+
+function bindConfigNetworkHandlers() {
+    if (configNetworkHandlersBound) {
+        return;
+    }
+    configNetworkHandlersBound = true;
+
+    window.addEventListener("offline", () => {
+        if (configAutosaveInFlight || configAutosaveDirty) {
+            setConfigSaveStatus("error", "Save paused", browserOfflineConfigMessage());
+        }
+        showBackendStatus(browserOfflineConfigMessage(), "warning", "runtime");
+    });
+
+    window.addEventListener("online", () => {
+        clearBackendStatus("runtime");
+        if (configAutosaveDirty) {
+            setConfigSaveStatus("saving", "Connection restored", "Retrying pending changes.");
+            scheduleAutosave();
+        }
+    });
+}
+
+function currentConfigPayloadSnapshot() {
+    try {
+        return JSON.stringify(buildConfigPayload());
+    } catch {
+        return "";
+    }
+}
+
+function hasUnsavedLocalConfigChanges() {
+    if (systemPaused) {
+        return false;
+    }
+
+    if (configAutosaveInFlight || configAutosaveDirty || configAutosavePendingAfterFlight) {
+        return true;
+    }
+
+    const snapshot = currentConfigPayloadSnapshot();
+    if (!snapshot) {
+        return false;
+    }
+
+    return snapshot !== lastSavedConfigPayload;
+}
+
+function bindConfigNavigationGuard() {
+    if (configNavigationGuardBound) {
+        return;
+    }
+    configNavigationGuardBound = true;
+
+    window.addEventListener("beforeunload", (event) => {
+        if (!hasUnsavedLocalConfigChanges()) {
+            return;
+        }
+
+        event.preventDefault();
+        event.returnValue = "";
+    });
+}
+
+function removePersistedConfigDraft() {
+    try {
+        window.sessionStorage.removeItem(CONFIG_DRAFT_STORAGE_KEY);
+    } catch {
+    }
+}
+
+function persistLocalConfigDraftIfPossible() {
+    if (systemPaused || typeof validatePage !== "function" || !validatePage()) {
+        return;
+    }
+
+    const snapshot = currentConfigPayloadSnapshot();
+    if (!snapshot || snapshot === lastSavedConfigPayload) {
+        removePersistedConfigDraft();
+        return;
+    }
+
+    try {
+        const parsed = JSON.parse(snapshot);
+        if (parsed && parsed.Operation) {
+            delete parsed.Operation.Transmit;
+        }
+        window.sessionStorage.setItem(
+            CONFIG_DRAFT_STORAGE_KEY,
+            JSON.stringify({
+                version: 1,
+                savedAt: Date.now(),
+                payload: parsed,
+            })
+        );
+    } catch {
+    }
+}
+
+function restorePersistedConfigDraft() {
+    let rawDraft = "";
+    try {
+        rawDraft = window.sessionStorage.getItem(CONFIG_DRAFT_STORAGE_KEY) || "";
+    } catch {
+        return false;
+    }
+
+    if (!rawDraft) {
+        return false;
+    }
+
+    let draft;
+    try {
+        draft = JSON.parse(rawDraft);
+    } catch {
+        removePersistedConfigDraft();
+        return false;
+    }
+
+    const payload = draft && typeof draft.payload === "object" ? draft.payload : null;
+    if (!payload) {
+        removePersistedConfigDraft();
+        return false;
+    }
+
+    const draftSnapshot = JSON.stringify(payload);
+    if (draftSnapshot === lastSavedConfigPayload) {
+        removePersistedConfigDraft();
+        return false;
+    }
+
+    if (typeof suspendConfigAutosave === "function") {
+        suspendConfigAutosave(true);
+    }
+
+    const operation = payload.Operation || {};
+    const gpio = payload.GPIO || {};
+    const calibration = payload.Calibration || {};
+    const si5351 = payload.Si5351 || {};
+    const wspr = payload.WSPR || {};
+    const cw = payload.CW || {};
+    const bandGpio = payload["Band GPIO"] || {};
+
+    if (typeof applyConfigModeSelection === "function") {
+        applyConfigModeSelection(String(operation.Mode || "WSPR"));
+    }
+
+    $("#planner_preference").val(String(wspr["Planner Preference"] || "auto")).trigger("change");
+    $("#transmit_backend").val(String(operation["Transmit Backend"] || "gpio")).trigger("change");
+    if (typeof updateBackendPlatformSupportUi === "function") {
+        updateBackendPlatformSupportUi();
+    }
+
+    if (typeof setTxPin === "function") {
+        setTxPin(Number(gpio["Transmit Pin"]));
+    }
+    $("#use_led").prop("checked", !!operation["Use LED"]).trigger("change");
+    if (typeof setLEDPin === "function") {
+        setLEDPin(Number(operation["LED Pin"]));
+    }
+    $("#use_shutdown").prop("checked", !!operation["Use Shutdown"]).trigger("change");
+    if (typeof setShutdownPin === "function") {
+        setShutdownPin(Number(operation["Shutdown Button"]));
+    }
+    if (typeof populateBandGpioForm === "function") {
+        populateBandGpioForm(bandGpio);
+    }
+
+    $("#callsign").val(String(wspr["Call Sign"] || "")).trigger("change");
+    $("#gridsquare").val(String(wspr["Grid Square"] || "")).trigger("change");
+    $("#dbm").val(Number(wspr["TX Power"])).trigger("change");
+    $("#frequencies").val(String(wspr["Frequency"] || "")).trigger("change");
+    $("#useoffset").prop("checked", !!wspr["Use Random Offset"]).trigger("change");
+
+    $("#dot_length").val(Number(cw["Dot Seconds"])).trigger("change");
+    $("#fsk_offset").val(Number(cw["Shift Hz"])).trigger("change");
+    $("#qrss_frequency").val(Number(cw["Base Frequency"])).trigger("change");
+    $("#cw_intra_element_gap").val(Number(cw["Intra Element Gap"])).trigger("change");
+    $("#cw_inter_character_gap").val(Number(cw["Inter Character Gap"])).trigger("change");
+    $("#cw_inter_word_gap").val(Number(cw["Inter Word Gap"])).trigger("change");
+    $("#tx_start_minute").val(Number(cw["Start Minute"])).trigger("change");
+    $("#tx_repeat_every").val(Number(cw["Repeat Minutes"])).trigger("change");
+    $("#qrss_message").val(String(cw.Message || "")).trigger("change");
+
+    $("#use_ntp").prop("checked", !!gpio["Use NTP"]).trigger("change");
+    $("#ppm").val(Number(calibration.PPM)).trigger("change");
+    $("#ppm_cw").val(Number(calibration.PPM)).trigger("change");
+
+    $("#gpio-power-range").val(Number(gpio["Power Level"])).trigger("input");
+    $("#si5351_i2c_bus").val(Number(si5351["I2C Bus"])).trigger("change");
+    if (typeof setSi5351AddressValue === "function") {
+        setSi5351AddressValue(si5351["I2C Address"] || "0x60");
+    }
+    $("#si5351_reference_frequency").val(Number(si5351["Reference Frequency"])).trigger("change");
+    $("#si5351-power-range").val(Number(si5351["Power Level"])).trigger("input");
+
+    validatePage();
+    configAutosaveDirty = true;
+    configAutosavePendingAfterFlight = false;
+    setConfigSaveStatus(
+        "error",
+        "Local draft restored",
+        "Unsaved local configuration from this tab was restored. Review the draft and save when ready."
+    );
+
+    if (typeof suspendConfigAutosave === "function") {
+        suspendConfigAutosave(false);
+    }
+
+    persistLocalConfigDraftIfPossible();
+    return true;
+}
 
 function bindIndexActions() {
+    bindConfigNetworkHandlers();
+    bindConfigNavigationGuard();
+
     // Bind the Mode Switch
     $('input[name="mode_toggle"]').on('change', clickModeToggle);
 
     // Operation.Transmit is global and is patched immediately, independent of Save.
-    $("#transmit").on("change", patchTransmitControl);
+    if ($("#transmit").length) {
+        $("#transmit").on("change", patchTransmitControl);
+    }
 
     // Stop is an explicit operator action, separate from Operation.Transmit PATCH.
-    $("#stop_transmit").on("click", stopTransmission);
+    if ($("#stop_transmit").length) {
+        $("#stop_transmit").on("click", stopTransmission);
+    }
 
     // Bind the shared CW mode radio buttons
     $('input[name="qrss_type"]').on('change', clickQRSSModeToggle);
@@ -60,6 +348,8 @@ function bindIndexActions() {
     // Bind the transmit power slider
     $("#gpio-power-range").on("input", updateGpioPowerLabel);
     $("#si5351-power-range").on("input", updateSi5351PowerLabel);
+    $("#configSaveStatusDetail").on("click", navigateToFirstInvalidConfigControl);
+    $("#configSaveStatusDetail").on("keydown", handleConfigSaveStatusDetailKeydown);
 
     // Bind clicks on buttons/switches for resetting tooltips
     $(document).on(
@@ -85,6 +375,7 @@ function bindIndexActions() {
     $("#dot_length").on("input blur", validateCwDotSeconds);
     $("#fsk_offset").on("input blur", validateCwShiftHz);
     $("#tx_repeat_every").on("input blur", validateCwRepeatMinutes);
+    $("#tx_start_minute").on("input blur", validateCwStartMinute);
     $("#cw_intra_element_gap").on("input blur", function () {
         validatePositiveCwField(
             "cw_intra_element_gap",
@@ -157,6 +448,20 @@ function syncStopButtonState() {
     $stop.prop("disabled", stopRequestInFlight || !transmitting);
 }
 
+function clearStopRequestTimeout() {
+    if (stopRequestTimeoutHandle !== null) {
+        clearTimeout(stopRequestTimeoutHandle);
+        stopRequestTimeoutHandle = null;
+    }
+}
+
+function failStopRequest(message) {
+    clearStopRequestTimeout();
+    stopRequestInFlight = false;
+    syncStopButtonState();
+    showBackendStatus(message, "warning", "runtime");
+}
+
 function requestTransmitEnabledChange(enabled, previousEnabled, options = {}) {
     const $transmit = $("#transmit");
     const updateCheckboxOnSuccess = options.updateCheckboxOnSuccess === true;
@@ -168,7 +473,7 @@ function requestTransmitEnabledChange(enabled, previousEnabled, options = {}) {
         typeof options.onFailure === "function" ? options.onFailure : null;
 
     if (enabled) {
-        const unavailableMessage = selectedBackendUnavailableMessage();
+        const unavailableMessage = currentTransmitUnavailableMessage();
         if (unavailableMessage) {
             const formattedMessage = formatTransmitFailureMessage(unavailableMessage);
             setTransmitFromBackend(previousEnabled);
@@ -187,12 +492,23 @@ function requestTransmitEnabledChange(enabled, previousEnabled, options = {}) {
         }
     }
 
+    if (navigator.onLine === false) {
+        const message = runtimeConnectionUnavailableMessage();
+        setTransmitFromBackend(previousEnabled);
+        showBackendStatus(message, "warning", "runtime");
+        if (onFailure) {
+            onFailure(message);
+        }
+        return null;
+    }
+
     $transmit.prop("disabled", true);
 
     return $.ajax({
         url: SETTINGS_URL,
         type: "PATCH",
         contentType: "application/merge-patch+json",
+        timeout: CONFIG_REQUEST_TIMEOUT_MS,
         data: JSON.stringify({
             Operation: {
                 "Transmit": enabled,
@@ -217,9 +533,19 @@ function requestTransmitEnabledChange(enabled, previousEnabled, options = {}) {
                 syncConfigAutosaveBaseline();
             }
         })
-        .fail(function (xhr) {
+        .fail(function (xhr, textStatus) {
             let message = "Failed to update transmit state.";
             console.error("Failed to update Operation.Transmit:", xhr);
+
+            if (isTransientNetworkFailure(xhr, textStatus)) {
+                message = transientRuntimeActionMessage(textStatus);
+                showBackendStatus(message, "warning", "runtime");
+                setTransmitFromBackend(previousEnabled);
+                if (onFailure) {
+                    onFailure(message);
+                }
+                return;
+            }
 
             if (xhr.responseJSON && typeof xhr.responseJSON === "object") {
                 message = buildConfigErrorMessage(xhr.responseJSON, message);
@@ -282,12 +608,18 @@ function stopTransmission(options = {}) {
     }
 
     if (!ws || ws.readyState !== WebSocket.OPEN) {
+        const message = runtimeConnectionUnavailableMessage();
         console.error("Failed to stop transmission: WebSocket is not connected.");
+        showBackendStatus(message, "warning", "runtime");
         return false;
     }
 
     stopRequestInFlight = true;
     syncStopButtonState();
+    clearStopRequestTimeout();
+    stopRequestTimeoutHandle = window.setTimeout(() => {
+        failStopRequest("Stop command timed out before the controller confirmed it. Check controller connectivity and runtime state, then try again.");
+    }, STOP_REQUEST_TIMEOUT_MS);
 
     const persistTransmit =
         options && options.persistTransmit === false ? false : true;
@@ -304,6 +636,7 @@ function handleStopCommandResponse(message) {
     const response = message && typeof message === "object" ? message : {};
     const stopSucceeded =
         response.transmit_disabled === true || response.stop_performed === true;
+    clearStopRequestTimeout();
 
     if (pendingModeChange && pendingModeChange.prerequisite === "stop") {
         if (stopSucceeded) {
@@ -473,7 +806,9 @@ function requestConfigModeChange(targetMode) {
             ? currentRuntimeStatus
             : null;
     const transmitting = runtimeStatus && runtimeStatus.txState === "transmitting";
-    const transmitEnabled = $("#transmit").is(":checked");
+    const transmitEnabled = document.getElementById("transmit")
+        ? $("#transmit").is(":checked")
+        : currentRuntimeConfigStatus.transmitEnabled === true;
 
     if (typeof suspendConfigAutosave === "function") {
         suspendConfigAutosave(true);
@@ -544,17 +879,50 @@ function updateRuntimeControlStatusFromForm(mode) {
         return;
     }
 
+    const transmitField = document.getElementById("transmit");
+    const transmitEnabled = transmitField
+        ? $("#transmit").is(":checked")
+        : currentRuntimeConfigStatus.transmitEnabled === true;
+
     updateRuntimeControlConfigStatus(
         mode || selectedConfigMode(),
-        $("#transmit").is(":checked")
+        transmitEnabled
     );
 
+    syncTransmitAvailabilityUi();
     syncStopButtonState();
 }
 
 function selectedTransmitBackend() {
     const backend = String($("#transmit_backend").val() || "gpio").toLowerCase();
     return backend === "si5351" ? "si5351" : "gpio";
+}
+
+function syncTransmitAvailabilityUi() {
+    const transmitField = document.getElementById("transmit");
+    const transmitHint = document.getElementById("transmitAvailabilityHint");
+    if (!transmitField) {
+        return;
+    }
+
+    const unavailableMessage = currentTransmitUnavailableMessage();
+    const formattedMessage = unavailableMessage
+        ? formatTransmitFailureMessage(unavailableMessage)
+        : "";
+    const transmitEnabled = transmitField.checked;
+    const shouldDisableEnable = !!unavailableMessage && !transmitEnabled;
+
+    transmitField.disabled = shouldDisableEnable;
+    if (shouldDisableEnable) {
+        transmitField.setAttribute("title", formattedMessage);
+    } else {
+        transmitField.removeAttribute("title");
+    }
+
+    if (transmitHint) {
+        transmitHint.hidden = !formattedMessage;
+        transmitHint.textContent = formattedMessage;
+    }
 }
 
 function showBackendStatus(message, level = "warning", source = "runtime") {
@@ -569,7 +937,8 @@ function showBackendStatus(message, level = "warning", source = "runtime") {
         "alert-warning";
 
     $status
-        .removeClass("d-none alert-warning alert-danger alert-info")
+        .prop("hidden", false)
+        .removeClass("alert-warning alert-danger alert-info")
         .addClass(alertClass)
         .attr("data-source", source)
         .text(message);
@@ -586,7 +955,7 @@ function clearBackendStatus(source = null) {
     }
 
     $status
-        .addClass("d-none")
+        .prop("hidden", true)
         .removeClass("alert-warning alert-danger alert-info")
         .removeAttr("data-source")
         .text("");
@@ -629,6 +998,49 @@ function selectedBackendUnavailableMessage() {
     }
 
     return "";
+}
+
+function resolveSupportedTransmitBackend(preferredBackend = null) {
+    const platform = window.WSPRRYPI_PLATFORM || {};
+    const preferred = preferredBackend === "si5351" ? "si5351" : "gpio";
+    const gpioSupported = platform.gpioClockTransmissionSupported !== false;
+    const si5351Supported = platform.si5351Detected !== false;
+
+    if (preferred === "si5351") {
+        if (si5351Supported) {
+            return "si5351";
+        }
+        if (gpioSupported) {
+            return "gpio";
+        }
+        return "si5351";
+    }
+
+    if (gpioSupported) {
+        return "gpio";
+    }
+    if (si5351Supported) {
+        return "si5351";
+    }
+    return "gpio";
+}
+
+function hasAnySupportedTransmitBackend() {
+    const platform = window.WSPRRYPI_PLATFORM || {};
+    return (
+        platform.gpioClockTransmissionSupported !== false ||
+        platform.si5351Detected !== false
+    );
+}
+
+function noBackendAvailableMessage() {
+    return "No supported transmit backend is currently available on this system.";
+}
+
+function currentTransmitUnavailableMessage() {
+    return hasAnySupportedTransmitBackend()
+        ? selectedBackendUnavailableMessage()
+        : noBackendAvailableMessage();
 }
 
 function isGpioUnsupportedReason(reason) {
@@ -686,6 +1098,10 @@ function formatBackendBannerMessage(reason) {
 }
 
 function formatTransmitFailureMessage(reason) {
+    if (reason === noBackendAvailableMessage()) {
+        return "Transmit cannot be enabled because no supported backend is currently available.";
+    }
+
     if (isGpioUnsupportedReason(reason)) {
         return "Transmit cannot be enabled with the GPIO backend on this Raspberry Pi.";
     }
@@ -709,22 +1125,57 @@ function formatReloadFailureMessage(reason) {
     return reason;
 }
 
+function formatBackendRecoveryMessage(fromBackend, toBackend) {
+    const fromLabel = fromBackend === "si5351" ? "Si5351" : "GPIO";
+    const toLabel = toBackend === "si5351" ? "Si5351" : "GPIO";
+    return `${fromLabel} is unavailable on this system. Switched to ${toLabel}.`;
+}
+
 function updateBackendPlatformSupportUi() {
     const platform = window.WSPRRYPI_PLATFORM || {};
     const gpioSupported = platform.gpioClockTransmissionSupported !== false;
-    const backendWarning = selectedBackendUnavailableMessage();
+    const si5351Supported = platform.si5351Detected !== false;
+    const anyBackendSupported = hasAnySupportedTransmitBackend();
+    const currentBackend = selectedTransmitBackend();
+    const resolvedBackend = resolveSupportedTransmitBackend(currentBackend);
     const $gpioOption = $('#transmit_backend option[value="gpio"]');
+    const $si5351Option = $('#transmit_backend option[value="si5351"]');
     const $hint = $("#backendPlatformHint");
+    const $backend = $("#transmit_backend");
+
+    if (currentBackend !== resolvedBackend) {
+        $backend.val(resolvedBackend);
+    }
+
+    const recoveryMessage =
+        currentBackend !== resolvedBackend
+            ? formatBackendRecoveryMessage(currentBackend, resolvedBackend)
+            : "";
+    const backendWarning = anyBackendSupported
+        ? selectedBackendUnavailableMessage()
+        : noBackendAvailableMessage();
+    const inlineHint = anyBackendSupported
+        ? backendInlineHintMessage()
+        : noBackendAvailableMessage();
 
     $gpioOption.text(gpioSupported ? "GPIO" : "GPIO (Unsupported on this Pi)");
     $gpioOption.prop("disabled", !gpioSupported);
-    $hint.text(backendInlineHintMessage());
+    $si5351Option.text(si5351Supported ? "Si5351" : "Si5351 (Not detected)");
+    $si5351Option.prop("disabled", !si5351Supported);
+    $backend.prop("disabled", !anyBackendSupported);
+    $hint
+        .prop("hidden", !inlineHint)
+        .text(inlineHint);
 
     if (backendWarning) {
         showBackendStatus(formatBackendBannerMessage(backendWarning), "warning", "platform");
+    } else if (recoveryMessage) {
+        showBackendStatus(recoveryMessage, "info", "platform");
     } else {
         clearBackendStatus("platform");
     }
+
+    syncTransmitAvailabilityUi();
 }
 
 function syncCalibrationControls() {
@@ -737,8 +1188,10 @@ function syncCalibrationControls() {
     $ppmCw.prop("disabled", useNtp);
 
     if (useNtp) {
-        $ppm.removeClass("is-valid is-invalid").prop("required", false);
-        $ppmCw.removeClass("is-valid is-invalid").prop("required", false);
+        clearFieldValidationState($ppm.get(0));
+        clearFieldValidationState($ppmCw.get(0));
+        $ppm.prop("required", false);
+        $ppmCw.prop("required", false);
     } else {
         $ppm.prop("required", true);
         $ppmCw.prop("required", true);
@@ -761,13 +1214,15 @@ function syncPpmFields(source = "wspr") {
 }
 
 function clickTransmitBackend() {
-    const backend = selectedTransmitBackend();
-    const gpioActive = backend === "gpio";
     const $gpioPanel = $("#gpio-backend-panel");
     const $si5351Panel = $("#si5351-backend-panel");
+    updateBackendPlatformSupportUi();
 
-    $gpioPanel.toggleClass("d-none", !gpioActive);
-    $si5351Panel.toggleClass("d-none", gpioActive);
+    const backend = selectedTransmitBackend();
+    const gpioActive = backend === "gpio";
+
+    $gpioPanel.prop("hidden", !gpioActive);
+    $si5351Panel.prop("hidden", gpioActive);
 
     $gpioPanel
         .find("input, select, button")
@@ -777,7 +1232,6 @@ function clickTransmitBackend() {
         .prop("disabled", gpioActive);
 
     syncCalibrationControls();
-    updateBackendPlatformSupportUi();
     validateTransmitterHardwareFields();
     validatePage();
     scheduleAutosave();
@@ -1042,9 +1496,25 @@ function validateBandGpioFields() {
 
     getBandGpioRows().each(function () {
         const $row = $(this);
+        const band = String($row.data("band") || "").trim();
         const enabled = $row.find(".band-gpio-enabled").is(":checked");
-        const gpioValue = $row.find(".band-gpio-input").val();
+        const gpioField = $row.find(".band-gpio-input").get(0);
+        const gpioValue = gpioField ? gpioField.value : "";
         const valid = !enabled || (gpioValue !== "" && gpioValue !== null);
+
+        if (gpioField) {
+            gpioField.setCustomValidity(
+                valid
+                    ? ""
+                    : `Select a GPIO pin for ${band || "this band"} before enabling Band GPIO.`
+            );
+
+            if (enabled) {
+                setFieldValidationState(gpioField, valid);
+            } else {
+                clearFieldValidationState(gpioField);
+            }
+        }
 
         if (!valid) {
             invalidCount++;
@@ -1158,6 +1628,210 @@ function buildConfigErrorMessage(data, fallbackMessage) {
     return lines.join("\n");
 }
 
+function describeControlLabel(control) {
+    if (!control) {
+        return "the highlighted field";
+    }
+
+    const controlId = typeof control.id === "string" ? control.id.trim() : "";
+    if (controlId) {
+        const selectorId =
+            typeof CSS !== "undefined" && typeof CSS.escape === "function"
+                ? CSS.escape(controlId)
+                : controlId;
+        const label = document.querySelector(`label[for="${selectorId}"]`);
+        if (label) {
+            const text = label.textContent.replace(/\s+/g, " ").trim().replace(/:\s*$/, "");
+            if (text) {
+                return text;
+            }
+        }
+    }
+
+    const ariaLabel = String(control.getAttribute("aria-label") || "").trim();
+    if (ariaLabel) {
+        return ariaLabel.replace(/:\s*$/, "");
+    }
+
+    return "the highlighted field";
+}
+
+function describeControlSection(control) {
+    if (!control || typeof control.closest !== "function") {
+        return "";
+    }
+
+    const fieldset = control.closest("fieldset");
+    if (!fieldset) {
+        return "";
+    }
+
+    const legend = fieldset.querySelector("legend");
+    if (!legend) {
+        return "";
+    }
+
+    return legend.textContent.replace(/\s+/g, " ").trim();
+}
+
+function describeControlTab(control) {
+    if (!control || typeof control.closest !== "function") {
+        return "";
+    }
+
+    const tabPane = control.closest('[role="tabpanel"]');
+    if (!tabPane) {
+        return "";
+    }
+
+    const labelledBy = String(tabPane.getAttribute("aria-labelledby") || "").trim();
+    if (!labelledBy) {
+        return "";
+    }
+
+    const tabButton = document.getElementById(labelledBy);
+    if (!tabButton) {
+        return "";
+    }
+
+    return tabButton.textContent.replace(/\s+/g, " ").trim();
+}
+
+function firstInvalidConfigControl() {
+    const candidates = document.querySelectorAll(
+        '#wsprform input, #wsprform select, #wsprform textarea'
+    );
+
+    let firstHiddenInvalid = null;
+
+    for (const control of candidates) {
+        if (control.disabled) {
+            continue;
+        }
+
+        const ariaInvalid = control.getAttribute("aria-invalid") === "true";
+        const nativeInvalid =
+            typeof control.checkValidity === "function" && !control.checkValidity();
+
+        if (ariaInvalid || nativeInvalid) {
+            const isVisible =
+                control.offsetParent !== null || control.getClientRects().length > 0;
+            if (isVisible) {
+                return control;
+            }
+
+            if (!firstHiddenInvalid) {
+                firstHiddenInvalid = control;
+            }
+        }
+    }
+
+    return firstHiddenInvalid;
+}
+
+function invalidAutosaveDetailMessage() {
+    const invalidControl = firstInvalidConfigControl();
+    if (!invalidControl) {
+        return "Fix the highlighted fields before autosave can continue.";
+    }
+
+    const label = describeControlLabel(invalidControl);
+    const section = describeControlSection(invalidControl);
+    const tab = describeControlTab(invalidControl);
+    const validationMessage =
+        typeof invalidControl.validationMessage === "string"
+            ? invalidControl.validationMessage.trim()
+            : "";
+    let location = label;
+    if (section) {
+        location += ` in ${section}`;
+    }
+    if (tab) {
+        location += ` on ${tab}`;
+    }
+
+    if (validationMessage) {
+        return `Fix ${location}: ${validationMessage}`;
+    }
+
+    return `Fix ${location} before autosave can continue.`;
+}
+
+function revealControlTab(control) {
+    if (!control || typeof control.closest !== "function") {
+        return null;
+    }
+
+    const tabPane = control.closest('[role="tabpanel"]');
+    if (!tabPane) {
+        return null;
+    }
+
+    const tabList = document.getElementById("configTabs");
+    const paneSelector = tabPane.id ? `#${tabPane.id}` : "";
+    if (!tabList || !paneSelector || typeof bootstrap === "undefined" || !bootstrap.Tab) {
+        return null;
+    }
+
+    const trigger = findTabTriggerBySelector(tabList, paneSelector);
+    if (!trigger) {
+        return null;
+    }
+
+    bootstrap.Tab.getOrCreateInstance(trigger).show();
+    return trigger;
+}
+
+function focusInvalidConfigControl(control) {
+    if (!control) {
+        return;
+    }
+
+    window.requestAnimationFrame(() => {
+        if (typeof control.focus === "function") {
+            control.focus({ preventScroll: false });
+        }
+        if (typeof control.scrollIntoView === "function") {
+            control.scrollIntoView({ block: "center", behavior: "smooth" });
+        }
+    });
+}
+
+function navigateToFirstInvalidConfigControl() {
+    const invalidControl = firstInvalidConfigControl();
+    if (!invalidControl) {
+        return;
+    }
+
+    const targetPane = invalidControl.closest('[role="tabpanel"]');
+    const paneNeedsReveal =
+        !!targetPane &&
+        (!targetPane.classList.contains("active") || !targetPane.classList.contains("show"));
+    const trigger = revealControlTab(invalidControl);
+
+    if (paneNeedsReveal && trigger) {
+        $(trigger).one("shown.bs.tab", () => {
+            focusInvalidConfigControl(invalidControl);
+        });
+        return;
+    }
+
+    focusInvalidConfigControl(invalidControl);
+}
+
+function handleConfigSaveStatusDetailKeydown(event) {
+    if (!event) {
+        return;
+    }
+
+    if (event.key !== "Enter" && event.key !== " ") {
+        return;
+    }
+
+    event.preventDefault();
+    navigateToFirstInvalidConfigControl();
+}
+
 function validatePage() {
     let invalidCount = 0;
     const activeSelectors = ["#global_runtime_control"];
@@ -1186,6 +1860,9 @@ function validatePage() {
         if (!validateCwRepeatMinutes()) {
             invalidCount++;
         }
+        if (!validateCwStartMinute()) {
+            invalidCount++;
+        }
         if (!validatePositiveCwField("cw_intra_element_gap", "Enter a positive CW intra-element gap.")) {
             invalidCount++;
         }
@@ -1202,7 +1879,9 @@ function validatePage() {
         invalidCount++;
     }
 
-    validateBandGpioFields();
+    if (!validateBandGpioFields()) {
+        invalidCount++;
+    }
 
     // ONLY visible/relevant .form-control elements for the selected mode.
     document
@@ -1213,11 +1892,9 @@ function validatePage() {
             setIdentityValidity(ctrl);
 
             if (ctrl.checkValidity()) {
-                ctrl.classList.add("is-valid");
-                ctrl.classList.remove("is-invalid");
+                setFieldValidationState(ctrl, true);
             } else {
-                ctrl.classList.add("is-invalid");
-                ctrl.classList.remove("is-valid");
+                setFieldValidationState(ctrl, false);
                 invalidCount++;
             }
         });
@@ -1228,22 +1905,41 @@ function validatePage() {
 function clearValidationState(selector) {
     document.querySelectorAll(`${selector} .form-control`).forEach((ctrl) => {
         ctrl.setCustomValidity("");
-        ctrl.classList.remove("is-valid", "is-invalid");
+        clearFieldValidationState(ctrl);
     });
+}
+
+function setFieldValidationState(field, valid) {
+    if (!field) {
+        return;
+    }
+
+    field.classList.toggle("is-invalid", !valid);
+    field.classList.toggle("is-valid", !!valid);
+    field.setAttribute("aria-invalid", valid ? "false" : "true");
+}
+
+function clearFieldValidationState(field) {
+    if (!field) {
+        return;
+    }
+
+    field.classList.remove("is-valid", "is-invalid");
+    field.removeAttribute("aria-invalid");
 }
 
 function syncConfigModeSections() {
     const selected = $('input[name="mode_toggle"]:checked').val();
     if (selected === "QRSS") {
-        $('#wspr_config').hide();
-        $('#qrss_config').show();
+        $('#wspr_config').prop("hidden", true);
+        $('#qrss_config').prop("hidden", false);
         if (!$('input[name="qrss_type"]:checked').length) {
             $('input[name="qrss_type"][value="QRSS"]').prop("checked", true);
         }
         syncSelectedCwModeControls();
     } else {
-        $('#qrss_config').hide();
-        $('#wspr_config').show();
+        $('#qrss_config').prop("hidden", true);
+        $('#wspr_config').prop("hidden", false);
     }
 
     updateRuntimeControlStatusFromForm(null);
@@ -1354,8 +2050,7 @@ function validateSi5351I2cAddress() {
         }
     }
 
-    fld.classList.toggle("is-invalid", !valid);
-    fld.classList.toggle("is-valid", valid);
+    setFieldValidationState(fld, valid);
     return valid;
 }
 
@@ -1378,47 +2073,60 @@ function validateTransmitterHardwareFields() {
                 : ""
         );
     }
-    $("#tx_pin").toggleClass("is-invalid", backend === "gpio" && !txPinValid);
-    $("#tx_pin").toggleClass("is-valid", backend === "gpio" && txPinValid);
+    setFieldValidationState(txPinField, !(backend === "gpio") || txPinValid);
     if (backend === "gpio" && !txPinValid) {
         invalidCount++;
     } else if (backend !== "gpio") {
-        $("#tx_pin").removeClass("is-valid is-invalid");
+        txPinField.setCustomValidity("");
+        clearFieldValidationState(txPinField);
     }
 
+    const gpioPowerField = document.getElementById("gpio-power-range");
     const gpioPowerValid = gpioPower >= 0 && gpioPower <= 7;
-    $("#gpio-power-range").toggleClass("is-invalid", backend === "gpio" && !gpioPowerValid);
+    setFieldValidationState(
+        gpioPowerField,
+        !(backend === "gpio") || gpioPowerValid
+    );
     if (backend === "gpio" && !gpioPowerValid) {
         invalidCount++;
+    } else if (backend !== "gpio" && gpioPowerField) {
+        gpioPowerField.setCustomValidity("");
+        clearFieldValidationState(gpioPowerField);
     }
 
     const busValid = si5351Bus >= 0;
-    $("#si5351_i2c_bus")
-        .get(0)
-        .setCustomValidity(busValid ? "" : "I2C bus must be 0 or greater.");
-    $("#si5351_i2c_bus").toggleClass("is-invalid", backend === "si5351" && !busValid);
-    $("#si5351_i2c_bus").toggleClass("is-valid", backend === "si5351" && busValid);
+    const si5351BusField = $("#si5351_i2c_bus").get(0);
+    si5351BusField.setCustomValidity(busValid ? "" : "I2C bus must be 0 or greater.");
+    setFieldValidationState(si5351BusField, !(backend === "si5351") || busValid);
     if (backend === "si5351" && !busValid) {
         invalidCount++;
+    } else if (backend !== "si5351") {
+        si5351BusField.setCustomValidity("");
+        clearFieldValidationState(si5351BusField);
     }
 
     const refValid = si5351Reference > 0;
-    $("#si5351_reference_frequency")
-        .get(0)
-        .setCustomValidity(refValid ? "" : "Reference frequency must be greater than 0.");
-    $("#si5351_reference_frequency")
-        .toggleClass("is-invalid", backend === "si5351" && !refValid);
-    $("#si5351_reference_frequency")
-        .toggleClass("is-valid", backend === "si5351" && refValid);
+    const si5351ReferenceField = $("#si5351_reference_frequency").get(0);
+    si5351ReferenceField.setCustomValidity(refValid ? "" : "Reference frequency must be greater than 0.");
+    setFieldValidationState(si5351ReferenceField, !(backend === "si5351") || refValid);
     if (backend === "si5351" && !refValid) {
         invalidCount++;
+    } else if (backend !== "si5351") {
+        si5351ReferenceField.setCustomValidity("");
+        clearFieldValidationState(si5351ReferenceField);
     }
 
+    const si5351PowerField = document.getElementById("si5351-power-range");
     const si5351PowerValid = si5351Power >= 1 && si5351Power <= 4;
-    $("#si5351-power-range")
-        .toggleClass("is-invalid", backend === "si5351" && !si5351PowerValid);
+    setFieldValidationState(
+        si5351PowerField,
+        !(backend === "si5351") || si5351PowerValid
+    );
     if (backend === "si5351" && !si5351PowerValid) {
         invalidCount++;
+    } else if (backend !== "si5351" && si5351PowerField) {
+        si5351PowerField.setCustomValidity("");
+        clearFieldValidationState(si5351PowerField);
     }
 
     if (backend === "si5351" && !validateSi5351I2cAddress()) {
@@ -1427,7 +2135,7 @@ function validateTransmitterHardwareFields() {
         const fld = document.getElementById("si5351_i2c_address");
         if (fld) {
             fld.setCustomValidity("");
-            fld.classList.remove("is-valid", "is-invalid");
+            clearFieldValidationState(fld);
         }
     }
 
@@ -1514,21 +2222,35 @@ function buildConfigPayload() {
     let mode = selectedConfigMode();
 
     // Runtime
-    let transmit = parseBool($("#transmit").is(":checked"));
+    const transmitField = document.getElementById("transmit");
+    let transmit = transmitField
+        ? parseBool($("#transmit").is(":checked"))
+        : !!(currentRuntimeConfigStatus && currentRuntimeConfigStatus.transmitEnabled);
     let use_led = parseBool($("#use_led").is(":checked"));
     let led_pin = parseInt(getLEDPin()) || 18;
     let use_shutdown = parseBool($("#use_shutdown").is(":checked"));
     let shutdown_pin = parseInt(getShutdownPin()) || 19;
     let band_gpio = collectBandGpioConfig();
     let transmit_backend = selectedTransmitBackend();
+    if (transmit_backend !== "gpio" && transmit_backend !== "si5351") {
+        transmit_backend = "gpio";
+    }
 
     // WSPR
     let planner_preference = String($("#planner_preference").val() || "auto");
+    const validPlannerPreferences = new Set(["auto", "prefer_paired", "require_paired"]);
+    if (!validPlannerPreferences.has(planner_preference)) {
+        planner_preference = "auto";
+    }
     let callsign = trimIdentityValue($("#callsign").val());
     let gridsquare = trimIdentityValue($("#gridsquare").val());
     let dbm = parseInt($("#dbm").val());
-    let frequencies = $("#frequencies").val() || "";
+    let frequencies = String($("#frequencies").val() || "").trim();
     let useoffset = parseBool($("#useoffset").is(":checked"));
+    const validWsprDbmValues = new Set([0, 3, 7, 10, 13, 17, 20, 23, 27, 30, 33, 37, 40, 43, 47, 50, 53, 57, 60]);
+    if (!validWsprDbmValues.has(dbm)) {
+        dbm = 20;
+    }
 
     // CW shared non-WSPR settings
     let dot_length = parseFloat($('#dot_length').val());
@@ -1540,14 +2262,14 @@ function buildConfigPayload() {
     let cw_inter_character_gap = parseFloat($('#cw_inter_character_gap').val());
     let cw_inter_word_gap = parseFloat($('#cw_inter_word_gap').val());
     let cw_message = String($('#qrss_message').val() || "").trim();
-    if (!Number.isFinite(dot_length)) dot_length = 3.0;
-    if (!Number.isFinite(fsk_offset)) fsk_offset = 0.0;
-    if (!Number.isFinite(cw_base_frequency)) cw_base_frequency = 0.0;
-    if (!Number.isInteger(tx_start_minute)) tx_start_minute = 0;
-    if (!Number.isInteger(tx_repeat_every)) tx_repeat_every = 10;
-    if (!Number.isFinite(cw_intra_element_gap)) cw_intra_element_gap = 1.0;
-    if (!Number.isFinite(cw_inter_character_gap)) cw_inter_character_gap = 3.0;
-    if (!Number.isFinite(cw_inter_word_gap)) cw_inter_word_gap = 7.0;
+    if (!Number.isFinite(dot_length) || dot_length <= 0) dot_length = 3.0;
+    if (!Number.isFinite(fsk_offset) || fsk_offset <= 0) fsk_offset = 5.0;
+    if (!Number.isFinite(cw_base_frequency) || cw_base_frequency <= 0) cw_base_frequency = 14096900.0;
+    if (!Number.isInteger(tx_start_minute) || tx_start_minute < 0 || tx_start_minute > 59) tx_start_minute = 0;
+    if (!Number.isInteger(tx_repeat_every) || tx_repeat_every < 1) tx_repeat_every = 10;
+    if (!Number.isFinite(cw_intra_element_gap) || cw_intra_element_gap <= 0) cw_intra_element_gap = 1.0;
+    if (!Number.isFinite(cw_inter_character_gap) || cw_inter_character_gap <= 0) cw_inter_character_gap = 3.0;
+    if (!Number.isFinite(cw_inter_word_gap) || cw_inter_word_gap <= 0) cw_inter_word_gap = 7.0;
 
     // GPIO timing calibration
     let use_ntp = parseBool($("#use_ntp").is(":checked"));
@@ -1648,8 +2370,9 @@ function buildConfigPayload() {
     };
 }
 
-function setConfigSaveStatus(state, message = "") {
+function setConfigSaveStatus(state, message = "", detail = "") {
     const node = document.getElementById("configSaveStatus");
+    const detailNode = document.getElementById("configSaveStatusDetail");
     if (!node) {
         return;
     }
@@ -1662,12 +2385,35 @@ function setConfigSaveStatus(state, message = "") {
     node.dataset.state = state || "";
     node.textContent = message;
     node.classList.toggle("is-visible", !!message);
+    if (detailNode) {
+        detailNode.hidden = !detail;
+        detailNode.textContent = detail;
+        const isActionable = state === "invalid" && !!firstInvalidConfigControl();
+        detailNode.tabIndex = isActionable ? 0 : -1;
+        if (isActionable) {
+            detailNode.setAttribute("role", "button");
+            detailNode.setAttribute(
+                "aria-label",
+                `${detail} Activate to jump to the invalid field.`
+            );
+        } else {
+            detailNode.removeAttribute("role");
+            detailNode.removeAttribute("aria-label");
+        }
+    }
 
     if (state === "saved" && message) {
         configSaveStatusClearTimer = window.setTimeout(() => {
             node.textContent = "";
             node.dataset.state = "";
             node.classList.remove("is-visible");
+            if (detailNode) {
+                detailNode.hidden = true;
+                detailNode.textContent = "";
+                detailNode.tabIndex = -1;
+                detailNode.removeAttribute("role");
+                detailNode.removeAttribute("aria-label");
+            }
             configSaveStatusClearTimer = null;
         }, 1800);
     }
@@ -1685,18 +2431,22 @@ function syncConfigAutosaveBaseline() {
     if (typeof validatePage !== "function" || !validatePage()) {
         lastSavedConfigPayload = "";
         lastFailedConfigPayload = "";
+        lastFailedConfigMessage = "";
         configAutosaveDirty = false;
-        setConfigSaveStatus("", "");
+        removePersistedConfigDraft();
+        setConfigSaveStatus("", "", "");
         return;
     }
 
     const payloadJson = JSON.stringify(buildConfigPayload());
     lastSavedConfigPayload = payloadJson;
     lastFailedConfigPayload = "";
+    lastFailedConfigMessage = "";
     configAutosaveDirty = false;
     configAutosavePendingAfterFlight = false;
     pendingPersistedMode = "";
-    setConfigSaveStatus("saved", "Saved");
+    removePersistedConfigDraft();
+    setConfigSaveStatus("saved", "Saved", "");
 }
 
 function scheduleAutosave() {
@@ -1705,6 +2455,7 @@ function scheduleAutosave() {
     }
 
     configAutosaveDirty = true;
+    persistLocalConfigDraftIfPossible();
     if (configAutosaveTimer) {
         clearTimeout(configAutosaveTimer);
     }
@@ -1720,8 +2471,20 @@ function flushAutosave() {
         return;
     }
 
+    if (navigator.onLine === false) {
+        configAutosaveDirty = true;
+        persistLocalConfigDraftIfPossible();
+        setConfigSaveStatus("error", "Save paused", browserOfflineConfigMessage());
+        showBackendStatus(browserOfflineConfigMessage(), "warning", "runtime");
+        return;
+    }
+
     if (!validatePage()) {
-        setConfigSaveStatus("invalid", "Invalid - not saved");
+        setConfigSaveStatus(
+            "invalid",
+            "Invalid - not saved",
+            invalidAutosaveDetailMessage()
+        );
         return;
     }
 
@@ -1730,14 +2493,15 @@ function flushAutosave() {
     if (payloadJson === lastSavedConfigPayload) {
         configAutosaveDirty = false;
         lastFailedConfigPayload = "";
-        setConfigSaveStatus("saved", "Saved");
+        lastFailedConfigMessage = "";
+        setConfigSaveStatus("saved", "Saved", "");
         return;
     }
 
     if (payloadJson === lastFailedConfigPayload) {
         configAutosaveDirty = false;
         debugConsole("warn", "Suppressing autosave retry for unchanged rejected payload.");
-        setConfigSaveStatus("error", "Save failed");
+        setConfigSaveStatus("error", "Save failed", lastFailedConfigMessage);
         return;
     }
 
@@ -1749,28 +2513,43 @@ function flushAutosave() {
     configAutosaveInFlight = true;
     configAutosaveDirty = false;
     configAutosavePendingAfterFlight = false;
-    setConfigSaveStatus("saving", "Saving...");
+    setConfigSaveStatus("saving", "Saving...", "");
 
     $.ajax({
         url: SETTINGS_URL,
         type: "PATCH",
         contentType: "application/merge-patch+json",
+        timeout: CONFIG_REQUEST_TIMEOUT_MS,
         data: payloadJson,
     })
         .done(function () {
             lastSaveTimestamp = Date.now();
             lastSavedConfigPayload = payloadJson;
             lastFailedConfigPayload = "";
+            lastFailedConfigMessage = "";
             pendingPersistedMode = "";
-            setConfigSaveStatus("saved", "Saved");
+            setConfigSaveStatus("saved", "Saved", "");
+            clearBackendStatus("runtime");
             if (configAutosaveNeedsRuntimeRefresh && typeof getTxState === "function") {
                 configAutosaveNeedsRuntimeRefresh = false;
                 getTxState();
             }
         })
-        .fail(function (xhr) {
+        .fail(function (xhr, textStatus) {
             let message = "Save failed";
             let parsedError = null;
+
+            if (isTransientNetworkFailure(xhr, textStatus)) {
+                const networkMessage = transientConfigSaveMessage(textStatus);
+                debugConsole("warn", "Autosave paused by transient network failure.");
+                lastFailedConfigPayload = "";
+                lastFailedConfigMessage = "";
+                configAutosaveDirty = true;
+                persistLocalConfigDraftIfPossible();
+                setConfigSaveStatus("error", "Save paused", networkMessage);
+                showBackendStatus(networkMessage, "warning", "runtime");
+                return;
+            }
 
             if (xhr.responseJSON && typeof xhr.responseJSON === "object") {
                 parsedError = xhr.responseJSON;
@@ -1788,8 +2567,10 @@ function flushAutosave() {
 
             debugConsole("error", "Autosave failed:", message);
             lastFailedConfigPayload = payloadJson;
+            lastFailedConfigMessage = message;
             configAutosaveDirty = false;
-            setConfigSaveStatus("error", "Save failed");
+            setConfigSaveStatus("error", "Save failed", message);
+            showBackendStatus(message, "danger", "runtime");
         })
         .always(function () {
             configAutosaveInFlight = false;
@@ -1917,8 +2698,7 @@ function validateFrequencies() {
             : "Enter WSPR band names like 20m or 2200m, numeric frequencies or 0, separated by spaces or commas. Optional @GPIO, @GPIOH, or @GPIOL suffixes are supported."
     );
 
-    fld.classList.toggle("is-invalid", !valid);
-    fld.classList.toggle("is-valid", valid);
+    setFieldValidationState(fld, valid);
 
     return valid;
 }
@@ -1929,7 +2709,7 @@ function parseFrequencyWithOptionalUnits(rawValue) {
         return Number.NaN;
     }
 
-    const numericRx = /^(\d+(?:\.\d+)?)(hz|khz|mhz|ghz)?$/i;
+    const numericRx = /^((?:(?:\d+(?:\.\d*)?)|(?:\.\d+)))(hz|khz|mhz|ghz)?$/i;
     const match = raw.match(numericRx);
     if (!match) {
         return Number.NaN;
@@ -1983,8 +2763,7 @@ function validateCwBaseFrequency() {
     fld.setCustomValidity(valid ? "" : "Enter a positive CW base frequency.");
 
     // Apply visual styling
-    fld.classList.toggle("is-invalid", !valid);
-    fld.classList.toggle("is-valid", valid);
+    setFieldValidationState(fld, valid);
 
     return valid;
 }
@@ -1995,8 +2774,7 @@ function validateCwMessage() {
     const valid = message.length > 0;
 
     fld.setCustomValidity(valid ? "" : "CW message is required.");
-    fld.classList.toggle("is-invalid", !valid);
-    fld.classList.toggle("is-valid", valid);
+    setFieldValidationState(fld, valid);
 
     return valid;
 }
@@ -2007,8 +2785,7 @@ function validateCwDotSeconds() {
 
     if (mode === "WSPR" || fld.disabled) {
         fld.setCustomValidity("");
-        fld.classList.remove("is-invalid");
-        fld.classList.remove("is-valid");
+        clearFieldValidationState(fld);
         return true;
     }
 
@@ -2016,8 +2793,7 @@ function validateCwDotSeconds() {
     const valid = Number.isFinite(value) && value > 0;
 
     fld.setCustomValidity(valid ? "" : "Enter a positive CW dot length.");
-    fld.classList.toggle("is-invalid", !valid);
-    fld.classList.toggle("is-valid", valid);
+    setFieldValidationState(fld, valid);
 
     return valid;
 }
@@ -2028,8 +2804,7 @@ function validateCwShiftHz() {
 
     if (mode === "QRSS" || fld.disabled) {
         fld.setCustomValidity("");
-        fld.classList.remove("is-invalid");
-        fld.classList.remove("is-valid");
+        clearFieldValidationState(fld);
         return true;
     }
 
@@ -2037,8 +2812,7 @@ function validateCwShiftHz() {
     const valid = Number.isFinite(value) && value > 0;
 
     fld.setCustomValidity(valid ? "" : "Enter a positive CW frequency offset.");
-    fld.classList.toggle("is-invalid", !valid);
-    fld.classList.toggle("is-valid", valid);
+    setFieldValidationState(fld, valid);
 
     return valid;
 }
@@ -2049,8 +2823,7 @@ function validateCwRepeatMinutes() {
 
     if (mode === "WSPR" || fld.disabled) {
         fld.setCustomValidity("");
-        fld.classList.remove("is-invalid");
-        fld.classList.remove("is-valid");
+        clearFieldValidationState(fld);
         return true;
     }
 
@@ -2058,8 +2831,28 @@ function validateCwRepeatMinutes() {
     const valid = Number.isInteger(value) && value > 0;
 
     fld.setCustomValidity(valid ? "" : "Enter a repeat interval of at least 1 minute.");
-    fld.classList.toggle("is-invalid", !valid);
-    fld.classList.toggle("is-valid", valid);
+    setFieldValidationState(fld, valid);
+
+    return valid;
+}
+
+function validateCwStartMinute() {
+    const fld = document.getElementById("tx_start_minute");
+    const mode = selectedConfigMode();
+
+    if (mode === "WSPR" || !fld || fld.disabled) {
+        if (fld) {
+            fld.setCustomValidity("");
+            clearFieldValidationState(fld);
+        }
+        return true;
+    }
+
+    const value = Number.parseInt(fld.value, 10);
+    const valid = Number.isInteger(value) && value >= 0 && value <= 59;
+
+    fld.setCustomValidity(valid ? "" : "Enter a CW start minute from 0 through 59.");
+    setFieldValidationState(fld, valid);
 
     return valid;
 }
@@ -2071,8 +2864,7 @@ function validatePositiveCwField(fieldId, errorMessage) {
     if (mode === "WSPR" || !fld || fld.disabled) {
         if (fld) {
             fld.setCustomValidity("");
-            fld.classList.remove("is-invalid");
-            fld.classList.remove("is-valid");
+            clearFieldValidationState(fld);
         }
         return true;
     }
@@ -2081,8 +2873,7 @@ function validatePositiveCwField(fieldId, errorMessage) {
     const valid = Number.isFinite(value) && value > 0;
 
     fld.setCustomValidity(valid ? "" : errorMessage);
-    fld.classList.toggle("is-invalid", !valid);
-    fld.classList.toggle("is-valid", valid);
+    setFieldValidationState(fld, valid);
 
     return valid;
 }
@@ -2136,7 +2927,7 @@ function setHardwareControlsDisabled(disabled) {
 
 function setOfflineDefaults() {
     setTransmitFromBackend(false);
-    $("#transmit_backend").val("gpio");
+    $("#transmit_backend").val(resolveSupportedTransmitBackend("gpio"));
     setTxPin(4);
     $("#gpio-power-range").val(7);
     updateGpioPowerLabel.call(document.getElementById("gpio-power-range"));

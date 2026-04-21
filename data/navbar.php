@@ -1,5 +1,5 @@
 <?php require_once 'page_metadata.php'; ?>
-<?php $primaryNavViews = ['config', 'logs', 'spots', 'maintenance']; ?>
+<?php $primaryNavViews = ['operation', 'config', 'logs', 'spots', 'maintenance']; ?>
 
 <!-- Fixed Navbar -->
 <nav id="mainNavbar" class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top">
@@ -9,12 +9,20 @@
                 <span class="navbar-kicker">Wsprry Pi Console</span>
                 <span class="navbar-title"><?= htmlspecialchars($currentPageMetadata['navLabel']) ?></span>
             </span>
-            <span class="navbar-signal-status d-none d-lg-inline-flex" data-bs-toggle="tooltip" title="Transmitter connection state">
+            <span class="navbar-signal-status" aria-label="Controller link status">
                 <i
                     id="connIcon"
+                    data-bs-toggle="tooltip"
                     data-bs-original-title="Disconnected."
-                    class="fa-solid fa-tower-broadcast"></i>
+                    class="fa-solid fa-tower-broadcast"
+                    aria-hidden="true"></i>
                 <span class="navbar-signal-status__label">Link</span>
+                <span
+                    id="connStatusText"
+                    class="navbar-signal-status__value"
+                    role="status"
+                    aria-live="polite"
+                    aria-atomic="true">Disconnected</span>
             </span>
         </span>
         <button
@@ -34,7 +42,9 @@
                     <?php
                     $navMetadata = $viewMetadata[$viewKey];
                     $isActive = $activeView === $viewKey;
-                    $href = $viewKey === 'config' ? 'index.php' : 'index.php?page=' . rawurlencode($viewKey);
+                    $href = $viewKey === 'operation'
+                        ? 'index.php'
+                        : 'index.php?page=' . rawurlencode($viewKey);
                     ?>
                     <li class="nav-item">
                         <a

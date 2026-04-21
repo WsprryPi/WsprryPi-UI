@@ -58,6 +58,10 @@
     color: var(--wspr-state-active);
 }
 
+#connIcon {
+    flex: 0 0 auto;
+}
+
 .bg-primary {
     background-color: rgb(var(--wspr-accent-rgb)) !important;
 }
@@ -417,8 +421,10 @@ legend {
 .navbar-signal-status {
     display: inline-flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 0.45rem;
     padding: 0.45rem 0.75rem;
+    min-width: 0;
     color: rgba(var(--wspr-accent-text-rgb), 0.82);
     background-color: rgba(var(--wspr-accent-text-rgb), 0.06);
     border: 1px solid rgba(var(--wspr-accent-text-rgb), 0.12);
@@ -433,12 +439,29 @@ legend {
     text-transform: uppercase;
 }
 
+.navbar-signal-status__value {
+    min-width: 0;
+    font-size: var(--text-caption);
+    font-weight: var(--weight-medium);
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+}
+
 #mainNavbar .container {
     align-items: center;
     gap: 0.75rem 1rem;
 }
 
 @media (max-width: 991.98px) {
+    .navbar-brand-app {
+        min-width: 0;
+        flex: 1 1 auto;
+    }
+
+    .navbar-signal-status {
+        margin-inline-start: 0.75rem;
+    }
+
     #mainNav {
         width: 100%;
     }
@@ -602,6 +625,42 @@ legend {
     --bs-gutter-x: 2rem;
 }
 
+.config-range-control {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+}
+
+.config-range-control__slider {
+    flex: 1 1 auto;
+    max-width: min(60%, 16rem);
+    min-width: 10rem;
+}
+
+.config-range-control__value {
+    min-width: 4.75rem;
+}
+
+#configSaveStatusDetail {
+    display: block;
+    max-width: 48rem;
+    overflow-wrap: anywhere;
+    white-space: pre-line;
+}
+
+#configSaveStatusDetail[role="button"] {
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 0.14em;
+}
+
+#configSaveStatusDetail[role="button"]:focus-visible {
+    outline: none;
+    border-radius: 0.2rem;
+    box-shadow: var(--focus-ring);
+}
+
 @media (max-width: 767.98px) {
     .page-shell {
         padding-block: var(--page-space-lg);
@@ -754,6 +813,19 @@ footer .container {
 }
 
 @media (prefers-reduced-motion: reduce) {
+    html:focus-within {
+        scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+
     #connection-alert,
     input#themeToggle.form-check-input,
     input#themeToggle.form-check-input::before,

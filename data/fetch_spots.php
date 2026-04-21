@@ -2,92 +2,108 @@
 
 declare(strict_types=1);
 
-// Enable error reporting for debugging
-ini_set('display_errors', '1');
+@ini_set('display_errors', '0');
+@ini_set('log_errors', '1');
 error_reporting(E_ALL);
 
-// Always return JSON
 header('Content-Type: application/json; charset=UTF-8');
 
-// ─── Validate required parameters ───────────────────────────
-$txSign = $_GET['tx_sign'] ?? '';
-$start  = $_GET['start']   ?? '';
-$end    = $_GET['end']     ?? '';
-
-if (trim($txSign) === '' || trim($start) === '' || trim($end) === '') {
-    // Missing required parameter(s): return empty JSON array
-    echo json_encode([]);
+function respond(int $statusCode, array $payload): never
+{
+    http_response_code($statusCode);
+    echo json_encode($payload, JSON_UNESCAPED_SLASHES);
     exit;
 }
 
-// Sanitize and normalize tx_sign
-$txSign = strtoupper($txSign);
-$txSign = preg_replace('/[^A-Z0-9*%]/', '', $txSign);
+function normalizeEnvelope(mixed $decoded): array
+{
+    if (is_array($decoded) && array_is_list($decoded)) {
+        return ['data' => $decoded];
+    }
 
-// Validate start/end format "YYYY-MM-DD HH:MM:SS"
+    if (!is_array($decoded)) {
+        return ['data' => []];
+    }
+
+    if (!isset($decoded['data']) || !is_array($decoded['data'])) {
+        $decoded['data'] = [];
+    }
+
+    return $decoded;
+}
+
+$txSign = strtoupper(trim((string)($_GET['tx_sign'] ?? '')));
+$start = trim((string)($_GET['start'] ?? ''));
+$end = trim((string)($_GET['end'] ?? ''));
+
+if ($txSign === '' || $start === '' || $end === '') {
+    respond(400, ['error' => 'Missing required query parameters.']);
+}
+
+$txSign = preg_replace('/[^A-Z0-9*%]/', '', $txSign) ?? '';
+if ($txSign === '') {
+    respond(400, ['error' => 'A valid transmitter callsign is required.']);
+}
+
 $tsRegex = '/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/';
 if (!preg_match($tsRegex, $start) || !preg_match($tsRegex, $end)) {
-    echo json_encode([]);
-    exit;
+    respond(400, ['error' => 'Invalid timestamp format. Use YYYY-MM-DD HH:MM:SS.']);
 }
 
-// ─── Read optional parameters with defaults ────────────────
-$ttl        = isset($_GET['ttl'])          ? (int) $_GET['ttl']         : 120;
-$windowHrs  = isset($_GET['window_hours'])  ? (int) $_GET['window_hours'] : 2;
-$rxSign     = isset($_GET['rx_sign'])      ? strtoupper($_GET['rx_sign']) : '%';
-$rxSign     = preg_replace('/[^A-Z0-9*%]/', '', $rxSign);
-$format     = isset($_GET['format'])       ? $_GET['format']           : 'JSON';
+$ttl = isset($_GET['ttl']) ? max(30, min(900, (int)$_GET['ttl'])) : 120;
+$rxSign = strtoupper(trim((string)($_GET['rx_sign'] ?? '%')));
+$rxSign = preg_replace('/[^A-Z0-9*%]/', '', $rxSign) ?? '%';
+$format = strtoupper(trim((string)($_GET['format'] ?? 'JSON')));
+if ($format !== 'JSON') {
+    $format = 'JSON';
+}
 
-// ─── Prepare cache paths ───────────────────────────────────
-$cacheDir   = __DIR__ . '/cache';
-$cacheFile  = sprintf(
+$cacheDir = __DIR__ . '/cache';
+$cacheFile = sprintf(
     '%s/wspr_spots_%s_%s.json',
     $cacheDir,
     $txSign,
-    md5($start . '|' . $end)
+    md5($start . '|' . $end . '|' . $rxSign)
 );
-$now        = time();
+$now = time();
 
-// Ensure cache directory exists
 if (!is_dir($cacheDir) && !mkdir($cacheDir, 0755, true)) {
-    http_response_code(500);
-    echo json_encode(['error' => 'Cannot create cache directory']);
-    exit;
+    respond(500, ['error' => 'Cannot create cache directory.']);
 }
 
-// Serve from cache if still fresh
-if (file_exists($cacheFile) && ($now - filemtime($cacheFile) < $ttl)) {
-    readfile($cacheFile);
-    exit;
+if (is_file($cacheFile) && ($now - filemtime($cacheFile) < $ttl)) {
+    $cached = @file_get_contents($cacheFile);
+    if ($cached !== false) {
+        $decoded = json_decode($cached, true);
+        if (json_last_error() === JSON_ERROR_NONE) {
+            echo json_encode(normalizeEnvelope($decoded), JSON_UNESCAPED_SLASHES);
+            exit;
+        }
+    }
 }
 
-// ─── Build remote URL ──────────────────────────────────────
 $query = http_build_query([
-    'start'   => $start,
-    'end'     => $end,
+    'start' => $start,
+    'end' => $end,
     'tx_sign' => $txSign,
     'rx_sign' => $rxSign,
-    'format'  => $format,
+    'format' => $format,
 ]);
 $url = 'https://wspr.live/wspr_downloader.php?' . $query;
 
-// ─── Fetch from remote with timeout ────────────────────────
-$ctxOpts = [
+$ctx = stream_context_create([
     'http' => [
-        'method'  => 'GET',
+        'method' => 'GET',
         'timeout' => 20,
-    ]
-];
-$ctx      = stream_context_create($ctxOpts);
-$response = @file_get_contents($url, false, $ctx);
+        'ignore_errors' => true,
+    ],
+]);
 
+$response = @file_get_contents($url, false, $ctx);
 if ($response === false) {
-    http_response_code(502);
-    echo json_encode(['error' => 'Fetch failed']);
-    exit;
+    respond(502, ['error' => 'Unable to reach the upstream WSPR spot service.']);
 }
 
-// ─── Check HTTP status from headers ───────────────────────
 $status = 0;
 if (
     isset($http_response_header[0]) &&
@@ -95,12 +111,21 @@ if (
 ) {
     $status = (int)$m[1];
 }
+
 if ($status !== 200) {
-    http_response_code(502);
-    echo json_encode(['error' => "Remote HTTP status $status"]);
-    exit;
+    respond(502, ['error' => sprintf('Upstream WSPR spot service returned HTTP %d.', $status)]);
 }
 
-// ─── Cache & output the fresh result ──────────────────────
-@file_put_contents($cacheFile, $response);
-echo $response;
+$decoded = json_decode($response, true);
+if (json_last_error() !== JSON_ERROR_NONE) {
+    respond(502, ['error' => 'Upstream WSPR spot service returned invalid JSON.']);
+}
+
+$normalized = normalizeEnvelope($decoded);
+$encoded = json_encode($normalized, JSON_UNESCAPED_SLASHES);
+if ($encoded === false) {
+    respond(500, ['error' => 'Unable to encode spot response.']);
+}
+
+@file_put_contents($cacheFile, $encoded);
+echo $encoded;

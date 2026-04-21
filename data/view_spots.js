@@ -56,13 +56,35 @@
     let _cacheData = null,
         _cacheKey = "",
         _cacheTS = 0,
-        _refreshTimer = null;
+        _refreshTimer = null,
+        _activeRequest = null,
+        _requestSequence = 0;
+
+    function clearRefreshTimer() {
+        if (_refreshTimer !== null) {
+            clearTimeout(_refreshTimer);
+            _refreshTimer = null;
+        }
+    }
+
+    function clearActiveRequest() {
+        if (_activeRequest && typeof _activeRequest.abort === "function") {
+            _activeRequest.abort();
+        }
+        _activeRequest = null;
+    }
 
     function getSpotsBody() {
         return document.querySelector(".card-body.tab-content");
     }
 
-    function renderState(title, body, actionLabel = "") {
+    function getConfigPageUrl() {
+        const url = new URL(window.location.href);
+        url.searchParams.set("page", "config");
+        return url.toString();
+    }
+
+    function renderState(title, body, action = null) {
         const container = getSpotsBody();
         if (!container) {
             return;
@@ -85,13 +107,20 @@
 
         state.append(titleElement, bodyElement);
 
-        if (actionLabel) {
-            const actionButton = document.createElement("button");
-            actionButton.type = "button";
-            actionButton.id = "spotsRetryButton";
-            actionButton.className = "btn btn-outline-primary btn-sm mt-3";
-            actionButton.textContent = actionLabel;
-            state.appendChild(actionButton);
+        if (action && action.label) {
+            let actionElement;
+            if (action.href) {
+                actionElement = document.createElement("a");
+                actionElement.href = action.href;
+            } else {
+                actionElement = document.createElement("button");
+                actionElement.type = "button";
+                actionElement.id = action.id || "spotsRetryButton";
+            }
+
+            actionElement.className = "btn btn-outline-primary spots-state__action mt-3";
+            actionElement.textContent = action.label;
+            state.appendChild(actionElement);
         }
 
         container.appendChild(state);
@@ -137,8 +166,20 @@
         renderState(
             "Unable to load spots",
             `${msg} Check the configured callsign and WSPRNet connection, then load the spots list again.`,
-            "Load spots again"
+            { id: "spotsRetryButton", label: "Load spots again" }
         );
+    }
+
+    function normalizeSpotResponse(response) {
+        if (Array.isArray(response)) {
+            return response;
+        }
+
+        if (response && Array.isArray(response.data)) {
+            return response.data;
+        }
+
+        return null;
     }
 
     function resolveSpotsErrorMessage(xhr, status) {
@@ -189,7 +230,7 @@
         const header = document.getElementById("spotsFor");
         if (!header) return;
 
-        const formatter = new Intl.DateTimeFormat("en-US", {
+        const formatter = new Intl.DateTimeFormat(undefined, {
             dateStyle: "medium",
             timeStyle: "medium",
             timeZone: "UTC"
@@ -202,7 +243,7 @@
         title.textContent = cs ? `Recent spots for ${cs}` : "Recent spots";
 
         const stamp = document.createElement("small");
-        stamp.className = "text-body-secondary ms-2";
+        stamp.className = "spots-header-stamp text-body-secondary";
         stamp.textContent = `Updated ${formatter.format(now)} UTC`;
 
         header.appendChild(title);
@@ -264,13 +305,19 @@
     // Fetch, parse, render, cache & repeat
     function fetchSpots() {
         const now = Date.now();
-        const callSign = $("#callsign").val().toUpperCase().trim();
+        const requestId = ++_requestSequence;
+        const rawCallSign = $("#callsign").val();
+        const callSign = typeof rawCallSign === "string"
+            ? rawCallSign.toUpperCase().trim()
+            : "";
 
         if (!callSign) {
             renderState(
-                "Callsign required",
-                "Save a station callsign on the configuration page first. The spots view uses that callsign to query the last hour of WSPRNet reports."
+                "Finish station setup",
+                "Save a station callsign on the Setup page first. The spots view uses that callsign to query the last hour of WSPRNet reports and confirm the station is being heard.",
+                { href: getConfigPageUrl(), label: "Open Setup" }
             );
+            clearRefreshTimer();
             return scheduleNext();
         }
 
@@ -288,15 +335,17 @@
         }
 
         if (!_cacheData) renderLoading();
+        clearActiveRequest();
 
         // time window
         const endDate = new Date(now);
         const startDate = new Date(now - MINUTES * 60 * 1000);
 
-        $.ajax({
+        _activeRequest = $.ajax({
             url: "fetch_spots.php",      // YOUR proxy
             dataType: "json",            // parse JSON for us
             cache: false,
+            timeout: 20000,
             data: {
                 tx_sign: callSign,
                 start: utcString(startDate),
@@ -305,8 +354,25 @@
             }
         })
             .done((response) => {
+                if (requestId !== _requestSequence) {
+                    return;
+                }
+
                 // response.data is the array of spot‐objects
-                let spots = Array.isArray(response.data) ? response.data : [];
+                const proxyError =
+                    response && typeof response.error === "string"
+                        ? response.error.trim()
+                        : "";
+                if (proxyError) {
+                    renderError(proxyError);
+                    return;
+                }
+
+                let spots = normalizeSpotResponse(response);
+                if (!Array.isArray(spots)) {
+                    renderError("The spots service returned an unexpected response.");
+                    return;
+                }
                 // drop anything older than 2 h
                 const cutoff = now - 2 * 3600 * 1000;
                 spots = spots.filter(s => {
@@ -322,10 +388,27 @@
                 refreshSpotsHeader();
             })
             .fail((xhr, status) => {
+                if (status === "abort" || requestId !== _requestSequence) {
+                    return;
+                }
+
                 console.error("Fetch error:", status);
-                renderError(resolveSpotsErrorMessage(xhr, status));
+                let message = resolveSpotsErrorMessage(xhr, status);
+
+                const proxyError =
+                    xhr?.responseJSON && typeof xhr.responseJSON.error === "string"
+                        ? xhr.responseJSON.error.trim()
+                        : "";
+                if (proxyError) {
+                    message = proxyError;
+                }
+
+                renderError(message);
             })
             .always(() => {
+                if (_activeRequest && requestId === _requestSequence) {
+                    _activeRequest = null;
+                }
                 scheduleNext();
             });
     }
@@ -335,5 +418,14 @@
     window.refreshSpotsHeader = refreshSpotsHeader;
 
     $(document).on("click", "#spotsRetryButton", fetchSpots);
+    window.addEventListener("offline", () => {
+        clearActiveRequest();
+        renderError("This browser went offline before the spots list could finish loading.");
+    });
+    window.addEventListener("online", fetchSpots);
+    window.addEventListener("beforeunload", () => {
+        clearRefreshTimer();
+        clearActiveRequest();
+    });
 
 })(jQuery);

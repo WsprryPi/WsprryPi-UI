@@ -131,6 +131,10 @@
         }, 120);
     }
 
+    function prefersReducedMotion() {
+        return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+    }
+
     function animateScrollTo(el, targetTop) {
         if (!el) return;
 
@@ -138,6 +142,16 @@
 
         // Mark as programmatic so the scroll listener does not flap UI state.
         programmaticScroll = true;
+
+        if (prefersReducedMotion()) {
+            el.scrollTop = scrollTarget;
+            programmaticScroll = false;
+            updateAutoFollow(el);
+            if (autoFollow) {
+                setJumpButton(0);
+            }
+            return;
+        }
 
         if (scrollAnimHandle !== null) {
             return; // Animation loop already running; it will converge on the new target.
@@ -190,7 +204,7 @@
                 clearTimeout(jumpHideTimer);
                 jumpHideTimer = null;
             }
-            btn.style.display = "inline-block";
+            btn.hidden = false;
             btn.textContent = label;
         };
 
@@ -199,20 +213,20 @@
                 clearTimeout(jumpHideTimer);
             }
             jumpHideTimer = setTimeout(() => {
-                btn.style.display = "none";
-                btn.textContent = "Jump to bottom";
+                btn.hidden = true;
+                btn.textContent = "Jump to newest";
                 jumpHideTimer = null;
             }, JUMP_HIDE_DELAY_MS);
         };
 
         // If count is null/undefined, show the button without a count.
         if (count === null || typeof count === "undefined") {
-            show("Jump to bottom");
+            show("Jump to newest");
             return;
         }
 
         if (count > 0) {
-            show(`Jump to bottom (${count})`);
+            show(`Jump to newest (${count})`);
             return;
         }
 
@@ -339,7 +353,7 @@
         );
     }
 
-    function renderEmptyState(paneId, title, body) {
+    function renderEmptyState(paneId, title, body, action = null) {
         const pane = document.getElementById(paneId);
         if (!pane) return;
 
@@ -358,6 +372,16 @@
 
         state.appendChild(heading);
         state.appendChild(copy);
+
+        if (action && action.id && action.label) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.id = action.id;
+            button.className = "btn btn-outline-primary logs-empty-state__action";
+            button.textContent = action.label;
+            state.appendChild(button);
+        }
+
         pane.appendChild(state);
     }
 
@@ -405,8 +429,8 @@
         const internalPane = document.getElementById("internal");
 
         // Keep the DOM nodes present for appendLine() to target regardless of view.
-        if (allPane) allPane.style.display = (v === "internal") ? "none" : "";
-        if (internalPane) internalPane.style.display = (v === "journal") ? "none" : "";
+        if (allPane) allPane.hidden = (v === "internal");
+        if (internalPane) internalPane.hidden = (v === "journal");
 
         const titleEl = document.getElementById("cardTitle");
         if (titleEl) {
@@ -488,6 +512,17 @@
 
         onClick("btn-reconnect", () => {
             restartLogStream();
+        });
+
+        document.addEventListener("click", (event) => {
+            const target = event.target;
+            if (!(target instanceof Element)) {
+                return;
+            }
+
+            if (target.id === "logsRetryButton") {
+                restartLogStream();
+            }
         });
 
         onClick("btn-jump-bottom", () => {
@@ -1015,6 +1050,14 @@
             if (evt.readyState === EventSource.CLOSED && !isReloading) {
                 debugConsole("warn", "SSE connection closed. Forcing reconnect");
                 setSseStatus("disconnected", "Disconnected", "Stream closed. Reconnecting");
+                renderEmptyState(
+                    "all",
+                    navigator.onLine === false ? "Offline" : "Log stream disconnected",
+                    navigator.onLine === false
+                        ? "The browser is offline, so the live log stream is paused. Reconnect to the network and start the stream again."
+                        : "The live log stream closed before new entries arrived. The UI will retry automatically, or you can reconnect now.",
+                    { id: "logsRetryButton", label: "Reconnect now" }
+                );
                 scheduleManualReconnect("eventsource closed");
                 return;
             }
@@ -1040,6 +1083,25 @@
     function restartLogStream() {
         stopLogStream();
         startLogStream();
+    }
+
+    function handleBrowserOffline() {
+        stopLogStream();
+        renderEmptyState(
+            "all",
+            "Offline",
+            "The browser is offline, so the live log stream is paused. Reconnect to the network and start the stream again.",
+            { id: "logsRetryButton", label: "Reconnect now" }
+        );
+    }
+
+    function handleBrowserOnline() {
+        renderEmptyState(
+            "all",
+            "Reconnecting log stream",
+            "Network connectivity returned. The viewer is reconnecting to the local log feed now."
+        );
+        restartLogStream();
     }
 
     function startWatchdog() {
@@ -1075,7 +1137,8 @@
         renderEmptyState(
             "all",
             "Waiting for log stream",
-            "The viewer will connect automatically. If nothing appears, use Start stream to reconnect to the local log feed."
+            "The viewer will connect automatically. If nothing appears, use Start stream to reconnect to the local log feed.",
+            { id: "logsRetryButton", label: "Start stream" }
         );
         renderEmptyState(
             "internal",
@@ -1087,6 +1150,8 @@
         // from loadPage(). We intentionally do not auto-start here to avoid
         // double-connecting if the page framework controls init order.
         bindLogViewActions();
+        window.addEventListener("offline", handleBrowserOffline);
+        window.addEventListener("online", handleBrowserOnline);
         startWatchdog();
         startLogStream();
     }

@@ -29,6 +29,7 @@
     background-clip: padding-box;
 }
 
+.spots-header-stamp,
 #spotsFor small {
     font-size: var(--text-caption);
     color: var(--bs-secondary-color);
@@ -37,15 +38,23 @@
 
 #spotsFor {
     min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.5rem;
 }
 
 #spotsFor .spots-header-text {
     display: inline-block;
-    max-width: min(100%, 20ch);
+    max-width: min(100%, 24ch);
     overflow: hidden;
     text-overflow: ellipsis;
     vertical-align: bottom;
     white-space: nowrap;
+}
+
+.spots-header-stamp {
+    overflow-wrap: anywhere;
 }
 
 .spots-state {
@@ -65,6 +74,11 @@
     overflow-wrap: anywhere;
 }
 
+.spots-state__action {
+    min-height: 2.75rem;
+    padding: 0.5rem 1rem;
+}
+
 .spots-card .table {
     table-layout: fixed;
 }
@@ -75,6 +89,10 @@
     vertical-align: top;
 }
 
+.spots-card .table td {
+    min-width: 0;
+}
+
 @media (max-width: 767.98px) {
     .spots-card {
         min-height: 0;
@@ -82,5 +100,9 @@
 
     .spots-card .card-body.tab-content {
         min-height: 14rem;
+    }
+
+    #spotsFor .spots-header-text {
+        max-width: 100%;
     }
 }
