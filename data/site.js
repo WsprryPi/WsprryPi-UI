@@ -239,6 +239,24 @@ function getPersistedTabStorageKey(tabList) {
     return `${TAB_STATE_STORAGE_PREFIX}:${pageKey}:${tabListKey}`;
 }
 
+function getPersistedTabUrlParamKey(tabList) {
+    if (!(tabList instanceof Element)) {
+        return "";
+    }
+
+    const configuredKey = tabList.dataset.persistTabQueryParam;
+    if (typeof configuredKey === "string" && configuredKey.trim()) {
+        return configuredKey.trim();
+    }
+
+    const tabListKey = tabList.id || tabList.getAttribute("aria-label") || "";
+    if (!tabListKey) {
+        return "";
+    }
+
+    return `tab_${tabListKey.replace(/[^A-Za-z0-9_-]+/g, "_")}`;
+}
+
 function getPersistedTabRestoreScope(tabList) {
     if (!(tabList instanceof Element)) {
         return "always";
@@ -283,6 +301,16 @@ function shouldRestorePersistedTabState(tabList) {
     return getNavigationType() === "reload";
 }
 
+function getDefaultTabSelector(tabList) {
+    if (!(tabList instanceof Element)) {
+        return "";
+    }
+
+    const defaultTrigger = tabList.querySelector('[data-bs-toggle="tab"]');
+
+    return getPersistedTabSelector(defaultTrigger);
+}
+
 function clearPersistedTabState(tabList) {
     const storageKey = getPersistedTabStorageKey(tabList);
     if (!storageKey) {
@@ -291,6 +319,23 @@ function clearPersistedTabState(tabList) {
 
     try {
         window.localStorage.removeItem(storageKey);
+    } catch {
+    }
+}
+
+function clearPersistedTabUrlState(tabList) {
+    const queryParamKey = getPersistedTabUrlParamKey(tabList);
+    if (!queryParamKey) {
+        return;
+    }
+
+    try {
+        const url = new URL(window.location.href);
+        if (!url.searchParams.has(queryParamKey)) {
+            return;
+        }
+        url.searchParams.delete(queryParamKey);
+        window.history.replaceState(window.history.state, "", url.toString());
     } catch {
     }
 }
@@ -313,6 +358,39 @@ function getPersistedTabSelector(trigger) {
     return "";
 }
 
+function getPersistedTabSelectorFromUrl(tabList) {
+    const queryParamKey = getPersistedTabUrlParamKey(tabList);
+    if (!queryParamKey) {
+        return "";
+    }
+
+    try {
+        const url = new URL(window.location.href);
+        return url.searchParams.get(queryParamKey) || "";
+    } catch {
+        return "";
+    }
+}
+
+function persistTabSelectorInUrl(tabList, selector) {
+    const queryParamKey = getPersistedTabUrlParamKey(tabList);
+    if (!queryParamKey) {
+        return;
+    }
+
+    try {
+        const url = new URL(window.location.href);
+        const defaultSelector = getDefaultTabSelector(tabList);
+        if (!selector || (defaultSelector && selector === defaultSelector)) {
+            url.searchParams.delete(queryParamKey);
+        } else {
+            url.searchParams.set(queryParamKey, selector);
+        }
+        window.history.replaceState(window.history.state, "", url.toString());
+    } catch {
+    }
+}
+
 function findTabTriggerBySelector(tabList, selector) {
     if (!(tabList instanceof Element) || typeof selector !== "string" || !selector.trim()) {
         return null;
@@ -328,6 +406,18 @@ function findTabTriggerBySelector(tabList, selector) {
 function restorePersistedTabState(tabList) {
     if (!(tabList instanceof Element)) {
         return;
+    }
+
+    const urlSelector = getPersistedTabSelectorFromUrl(tabList);
+    if (urlSelector) {
+        const urlTrigger = findTabTriggerBySelector(tabList, urlSelector);
+        if (urlTrigger) {
+            const tabInstance = bootstrap.Tab.getOrCreateInstance(urlTrigger);
+            tabInstance.show();
+            return;
+        }
+
+        clearPersistedTabUrlState(tabList);
     }
 
     if (!shouldRestorePersistedTabState(tabList)) {
@@ -377,6 +467,8 @@ function initPersistedTabState() {
                 const trigger = event.target;
                 const selector = getPersistedTabSelector(trigger);
                 const storageKey = getPersistedTabStorageKey(tabList);
+
+                persistTabSelectorInUrl(tabList, selector);
 
                 if (!selector || !storageKey) {
                     return;

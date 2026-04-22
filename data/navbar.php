@@ -16,7 +16,6 @@
                     data-bs-original-title="Disconnected."
                     class="fa-solid fa-tower-broadcast"
                     aria-hidden="true"></i>
-                <span class="navbar-signal-status__label">Link</span>
                 <span
                     id="connStatusText"
                     class="navbar-signal-status__value"

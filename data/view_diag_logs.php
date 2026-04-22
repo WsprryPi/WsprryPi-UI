@@ -275,7 +275,7 @@ $pathConfig = [
                     </div>
                 </div>
 
-                <ul class="nav nav-tabs mt-3" id="logsTabs" role="tablist">
+                <ul class="nav nav-tabs mt-3" id="logsTabs" role="tablist" data-persist-tab-query-param="tab">
                     <?php
                     $tabs = [
                         ['id' => 'all',     'label' => 'All'],
@@ -335,6 +335,69 @@ $pathConfig = [
     <script>
         (function() {
             const MAX_LINES = 8000; // Maximum number of log lines retained per tab/container
+            const LOG_TAB_QUERY_PARAM = "tab";
+
+            function getLogTabSelector(trigger) {
+                if (!(trigger instanceof Element)) {
+                    return "";
+                }
+
+                const target = trigger.getAttribute("data-bs-target");
+                if (typeof target === "string" && target.trim().startsWith("#")) {
+                    return target.trim();
+                }
+
+                return "";
+            }
+
+            function persistLogTabInUrl(selector) {
+                try {
+                    const url = new URL(window.location.href);
+                    const normalizedSelector =
+                        typeof selector === "string" && selector.startsWith("#")
+                            ? selector.slice(1)
+                            : "";
+
+                    if (!normalizedSelector || normalizedSelector === "all") {
+                        url.searchParams.delete(LOG_TAB_QUERY_PARAM);
+                    } else {
+                        url.searchParams.set(LOG_TAB_QUERY_PARAM, normalizedSelector);
+                    }
+
+                    window.history.replaceState(window.history.state, "", url.toString());
+                } catch {
+                }
+            }
+
+            function restoreLogTabFromUrl() {
+                let paneId = "";
+                try {
+                    const url = new URL(window.location.href);
+                    paneId = url.searchParams.get(LOG_TAB_QUERY_PARAM) || "";
+                } catch {
+                    paneId = "";
+                }
+
+                if (!paneId || paneId === "all") {
+                    return;
+                }
+
+                const trigger = document.querySelector(
+                    `#logsTabs [data-bs-toggle="tab"][data-bs-target="#${CSS.escape(paneId)}"]`
+                );
+
+                if (!trigger) {
+                    try {
+                        const url = new URL(window.location.href);
+                        url.searchParams.delete(LOG_TAB_QUERY_PARAM);
+                        window.history.replaceState(window.history.state, "", url.toString());
+                    } catch {
+                    }
+                    return;
+                }
+
+                bootstrap.Tab.getOrCreateInstance(trigger).show();
+            }
 
             function setSseStatus(state, text, title) {
                 const el = document.getElementById("sse-status-badge");
@@ -598,7 +661,8 @@ $pathConfig = [
             }
 
             function bindLogViewActions() {
-                $(document).on("shown.bs.tab", 'button[data-bs-toggle="tab"]', () => {
+                $(document).on("shown.bs.tab", '#logsTabs button[data-bs-toggle="tab"]', (event) => {
+                    persistLogTabInUrl(getLogTabSelector(event.target));
                     // When switching tabs, force the view to the bottom.
                     scrollLogsToBottom(true);
                 });
@@ -1215,6 +1279,7 @@ $pathConfig = [
 
             $(document).ready(() => {
                 bindLogViewActions();
+                restoreLogTabFromUrl();
                 startWatchdog();
                 startLogStream();
             });

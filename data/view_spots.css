@@ -70,7 +70,6 @@
 .spots-state__body {
     width: min(100%, 42rem);
     margin-inline: auto;
-    text-align: left;
     overflow-wrap: anywhere;
 }
 

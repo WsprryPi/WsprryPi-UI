@@ -1972,12 +1972,20 @@ function clickQRSSModeToggle() {
 
 function syncSelectedCwModeControls() {
     const selectedMode = $('input[name="qrss_type"]:checked').val();
+    const shiftField = document.getElementById("fsk_offset");
 
     // CW.Shift Hz is only used by FSKCW and DFCW.
     if (selectedMode === "QRSS") {
         $('#fsk_offset').prop('disabled', true);
     } else {
         $('#fsk_offset').prop('disabled', false);
+    }
+
+    validateCwShiftHz();
+
+    if (shiftField && shiftField.disabled) {
+        shiftField.setCustomValidity("");
+        clearFieldValidationState(shiftField);
     }
 }
 
@@ -2254,7 +2262,7 @@ function buildConfigPayload() {
 
     // CW shared non-WSPR settings
     let dot_length = parseFloat($('#dot_length').val());
-    let fsk_offset = parseFloat($('#fsk_offset').val());
+    let fsk_offset = parseInt($('#fsk_offset').val(), 10);
     let cw_base_frequency = parseFrequencyWithOptionalUnits($('#qrss_frequency').val());
     let tx_start_minute = parseInt($('#tx_start_minute').val(), 10);
     let tx_repeat_every = parseInt($('#tx_repeat_every').val(), 10);
@@ -2263,7 +2271,7 @@ function buildConfigPayload() {
     let cw_inter_word_gap = parseFloat($('#cw_inter_word_gap').val());
     let cw_message = String($('#qrss_message').val() || "").trim();
     if (!Number.isFinite(dot_length) || dot_length <= 0) dot_length = 3.0;
-    if (!Number.isFinite(fsk_offset) || fsk_offset <= 0) fsk_offset = 5.0;
+    if (!Number.isInteger(fsk_offset) || fsk_offset <= 0) fsk_offset = 5;
     if (!Number.isFinite(cw_base_frequency) || cw_base_frequency <= 0) cw_base_frequency = 14096900.0;
     if (!Number.isInteger(tx_start_minute) || tx_start_minute < 0 || tx_start_minute > 59) tx_start_minute = 0;
     if (!Number.isInteger(tx_repeat_every) || tx_repeat_every < 1) tx_repeat_every = 10;
@@ -2800,18 +2808,23 @@ function validateCwDotSeconds() {
 
 function validateCwShiftHz() {
     const fld = document.getElementById("fsk_offset");
-    const mode = selectedConfigMode();
+    const selectedCwMode = $('input[name="qrss_type"]:checked').val() || "QRSS";
 
-    if (mode === "QRSS" || fld.disabled) {
+    if (!fld) {
+        return true;
+    }
+
+    if (selectedConfigMode() === "WSPR" || selectedCwMode === "QRSS" || fld.disabled) {
         fld.setCustomValidity("");
         clearFieldValidationState(fld);
         return true;
     }
 
-    const value = Number.parseFloat(fld.value);
-    const valid = Number.isFinite(value) && value > 0;
+    const raw = String(fld.value || "").trim();
+    const value = Number.parseInt(raw, 10);
+    const valid = /^\d+$/.test(raw) && Number.isInteger(value) && value > 0;
 
-    fld.setCustomValidity(valid ? "" : "Enter a positive CW frequency offset.");
+    fld.setCustomValidity(valid ? "" : "Enter a whole-number CW frequency offset in Hz.");
     setFieldValidationState(fld, valid);
 
     return valid;

@@ -10,18 +10,6 @@ require __DIR__ . '/../card_header.php';
             </div>
 
             <div class="card-body tab-content bg-body">
-                <section class="maintenance-guidance mb-4" aria-label="Maintenance guidance">
-                    <div class="maintenance-guidance__label">Before you continue</div>
-                    <p class="mb-2">
-                        Start with repair when the configuration is mostly correct and only needs cleanup.
-                        Use reset only when you want to replace the current configuration with the stock baseline.
-                    </p>
-                    <p class="mb-0 text-body-secondary">
-                        After either action, review the Setup page, confirm the transmit mode and hardware settings,
-                        then save any changes you still need.
-                    </p>
-                </section>
-
                 <section
                     id="maintenanceResult"
                     class="maintenance-result d-none mb-4"
@@ -33,89 +21,87 @@ require __DIR__ . '/../card_header.php';
                     <p class="maintenance-result__body mb-0" id="maintenanceResultBody"></p>
                 </section>
 
-                <div class="maintenance-split">
-                    <section class="maintenance-pane">
-                        <p class="maintenance-pane__eyebrow mb-0">Safer first step</p>
-                        <h2 class="mb-3 h5">Repair configuration</h2>
-                        <p class="mb-3">
-                            Check the current configuration for missing or invalid
-                            values and repair what can be repaired. This keeps as
-                            much of your existing configuration as possible.
-                        </p>
-                        <ul class="maintenance-consequence-list">
-                            <li>Keeps existing settings whenever they are still usable.</li>
-                            <li>Best when the transmitter worked before and only needs cleanup.</li>
-                            <li>Review the Setup page afterward to confirm the repaired values.</li>
-                        </ul>
-                        <div class="maintenance-action-copy">
-                            What happens next:
-                            A repaired configuration is written, then the UI reloads the latest settings so you can verify them.
-                        </div>
-                        <div class="d-flex justify-content-center mt-3">
-                            <button
-                                id="repairConfigButton"
-                                type="button"
-                                class="btn btn-warning">
-                                Repair current configuration
-                            </button>
-                        </div>
-                    </section>
+                <section class="maintenance-recovery" aria-label="Recovery actions">
+                    <div class="maintenance-recovery__grid">
+                        <section class="maintenance-pane maintenance-pane--primary">
+                            <h3 class="maintenance-pane__title h5 mb-0">Repair configuration</h3>
+                            <p class="maintenance-pane__body mb-0">
+                                Check the current configuration for missing or invalid values and repair what can be repaired while preserving usable settings.
+                            </p>
+                            <dl class="maintenance-fact-list">
+                                <div class="maintenance-fact">
+                                    <dt>Keeps</dt>
+                                    <dd>Existing values whenever they are still valid.</dd>
+                                </div>
+                                <div class="maintenance-fact">
+                                    <dt>Use when</dt>
+                                    <dd>The transmitter worked before and only needs cleanup.</dd>
+                                </div>
+                                <div class="maintenance-fact">
+                                    <dt>Next</dt>
+                                    <dd>Setup reloads so you can confirm repaired values before transmitting.</dd>
+                                </div>
+                            </dl>
+                            <div class="maintenance-action maintenance-action--start">
+                                <button
+                                    id="repairConfigButton"
+                                    type="button"
+                                    class="btn btn-warning">
+                                    Repair current configuration
+                                </button>
+                            </div>
+                        </section>
 
-                    <section class="maintenance-pane">
-                        <p class="maintenance-pane__eyebrow maintenance-pane__eyebrow--danger mb-0">Use only when needed</p>
-                        <h2 class="mb-3 h5">Reset configuration</h2>
-                        <p class="mb-3">
-                            Replace the current configuration with the stock
-                            defaults. Use this when you want to start over from
-                            a clean baseline.
-                        </p>
-                        <ul class="maintenance-consequence-list">
-                            <li>Replaces the current configuration with stock defaults.</li>
-                            <li>Use this if the current settings are no longer trustworthy.</li>
-                            <li>You will need to review and re-save station, mode, and hardware settings afterward.</li>
-                        </ul>
-                        <div class="maintenance-action-copy maintenance-action-copy--danger">
-                            What happens next:
-                            Stock defaults are written, then the UI reloads that baseline so you can rebuild the configuration safely.
-                        </div>
-                        <div class="d-flex justify-content-center mt-3">
-                            <button
-                                id="restoreConfigButton"
-                                type="button"
-                                class="btn btn-danger">
-                                Reset to defaults
-                            </button>
-                        </div>
-                    </section>
+                        <section class="maintenance-pane maintenance-pane--danger">
+                            <h3 class="maintenance-pane__title h5 mb-0">Reset to stock defaults</h3>
+                            <p class="maintenance-pane__body mb-0">
+                                Replace the current configuration with the stock baseline when the existing settings are no longer trustworthy.
+                            </p>
+                            <dl class="maintenance-fact-list maintenance-fact-list--danger">
+                                <div class="maintenance-fact">
+                                    <dt>Replaces</dt>
+                                    <dd>The current configuration with stock defaults.</dd>
+                                </div>
+                                <div class="maintenance-fact">
+                                    <dt>Use when</dt>
+                                    <dd>You need a clean baseline instead of trying to salvage the current values.</dd>
+                                </div>
+                                <div class="maintenance-fact">
+                                    <dt>Next</dt>
+                                    <dd>Review and re-save station, mode, and hardware settings in Setup.</dd>
+                                </div>
+                            </dl>
+                            <div class="maintenance-action maintenance-action--start">
+                                <button
+                                    id="restoreConfigButton"
+                                    type="button"
+                                    class="btn btn-danger">
+                                    Reset to defaults
+                                </button>
+                            </div>
+                        </section>
+                    </div>
+                </section>
 
-                    <section class="maintenance-pane">
-                        <p class="maintenance-pane__eyebrow mb-0">Operational check</p>
-                        <h2 class="mb-3 h5">Test tone</h2>
-                        <p class="mb-3">
-                            Start a manual test tone without changing the saved configuration.
-                            Use this as a quick transmit-path check before returning to normal scheduling.
+                <section class="maintenance-utility" aria-labelledby="maintenanceUtilityTitle">
+                    <div class="maintenance-utility__copy">
+                        <p class="maintenance-pane__eyebrow mb-0">Utility</p>
+                        <h2 id="maintenanceUtilityTitle" class="maintenance-section-title h5 mb-0">Run a bench transmit-path check without touching saved settings.</h2>
+                        <p class="maintenance-pane__body mb-0">
+                            Test tone opens the manual tone dialog so you can start or stop a quick output-path check and then return to normal scheduling.
                         </p>
-                        <ul class="maintenance-consequence-list">
-                            <li>Uses the existing test-tone backend command path.</li>
-                            <li>Does not save or rewrite configuration values.</li>
-                            <li>Stop the tone explicitly before leaving this page.</li>
-                        </ul>
-                        <div class="maintenance-action-copy">
-                            What happens next:
-                            The Test Tone dialog opens so you can start or stop the manual tone immediately.
-                        </div>
-                        <div class="d-flex justify-content-center mt-3">
-                            <button
-                                id="test_tone"
-                                type="button"
-                                class="btn btn-outline-warning"
-                                data-bs-toggle="tooltip"
-                                title="Click to generate a test tone">
-                                Test tone
-                            </button>
-                        </div>
-                    </section>
-                </div>
+                    </div>
+                    <div class="maintenance-action maintenance-action--end">
+                        <button
+                            id="test_tone"
+                            type="button"
+                            class="btn btn-outline-warning"
+                            data-bs-toggle="tooltip"
+                            title="Click to generate a test tone">
+                            Test tone
+                        </button>
+                    </div>
+                </section>
             </div>
 
             <div id="maintenanceOverlay" class="maintenance-overlay d-none"></div>
@@ -129,7 +115,7 @@ require __DIR__ . '/../card_header.php';
                 <div class="modal-dialog modal-dialog-centered">
                     <div class="modal-content">
                         <div class="modal-header">
-                            <h5 class="modal-title" id="testToneModalLabel">Test Tone</h5>
+                            <h3 class="modal-title h5" id="testToneModalLabel">Test Tone</h3>
                             <button
                                 type="button"
                                 class="btn-close"

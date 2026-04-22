@@ -18,9 +18,6 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                     aria-live="polite"
                                     aria-atomic="true"></span>
                             </div>
-                            <p class="config-header-summary mb-0">
-                                Use Setup to define station identity, transmission behavior, and hardware mappings. For live status and transmit controls, use Operation.
-                            </p>
                             <div id="configSaveStatusHint" class="form-text mt-2">
                                 Changes save automatically. If a field is invalid, Setup keeps the edit locally and shows what still needs attention.
                             </div>
@@ -33,10 +30,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                     </div>
                 </div>
 
-                <div id="config-tabs-hint" class="form-text mt-2 mb-2">
-                    Signal Setup covers on-air identity and mode settings. Transmitter covers the RF output path and hardware. Pi I/O covers LED, shutdown, and band GPIO controls.
-                </div>
-                <ul class="nav nav-tabs card-header-tabs" id="configTabs" role="tablist" aria-describedby="config-tabs-hint" data-persist-tab-state="true" data-persist-tab-state-scope="reload">
+                <ul class="nav nav-tabs card-header-tabs" id="configTabs" role="tablist" aria-describedby="config-tabs-hint" data-persist-tab-state="true" data-persist-tab-state-scope="reload" data-persist-tab-query-param="setup_tab">
                     <li class="nav-item" role="presentation">
                         <button
                             class="nav-link active"
@@ -82,28 +76,6 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
             <div class="card-body">
 
                 <form id="wsprform" class="needs-validation config-setup-form" novalidate>
-                    <fieldset class="config-operator-strip mb-4" id="global_runtime_control">
-                        <legend class="visually-hidden">Configuration scope</legend>
-                        <div class="config-operator-panel config-operator-panel--mode">
-                            <div class="config-operator-copy">
-                                <h2 class="config-operator-label mb-0">Signal mode</h2>
-                                <p class="mb-0">
-                                    Choose the signal family first. Setup then shows only the identity, timing, and message fields that apply to that mode.
-                                </p>
-                            </div>
-                            <div class="btn-group config-mode-toggle" role="group" aria-label="Signal mode" aria-describedby="signal-mode-hint">
-                                <input type="radio" class="btn-check" name="mode_toggle" id="wspr_mode" value="WSPR" autocomplete="off" checked>
-                                <label class="btn config-mode-toggle__segment" for="wspr_mode">WSPR</label>
-
-                                <input type="radio" class="btn-check" name="mode_toggle" id="qrss_mode" value="QRSS" autocomplete="off">
-                                <label class="btn config-mode-toggle__segment" for="qrss_mode">CW Modes</label>
-                            </div>
-                            <div id="signal-mode-hint" class="form-text mt-2">
-                                WSPR shows beacon identity and scheduling. CW Modes shows QRSS, FSKCW, and DFCW timing, tone, and message settings.
-                            </div>
-                        </div>
-                    </fieldset>
-
                     <div class="tab-content config-tabs-content" id="configTabsContent">
                         <div
                             class="tab-pane fade show active"
@@ -116,6 +88,13 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                 <p class="mb-0">
                                     Set what the transmitter identifies as on air, then choose the planning and timing details for the selected signal family.
                                 </p>
+                                <div class="btn-group config-mode-toggle" role="group" aria-label="Signal mode">
+                                    <input type="radio" class="btn-check" name="mode_toggle" id="wspr_mode" value="WSPR" autocomplete="off" checked>
+                                    <label class="btn config-mode-toggle__segment" for="wspr_mode">WSPR</label>
+
+                                    <input type="radio" class="btn-check" name="mode_toggle" id="qrss_mode" value="QRSS" autocomplete="off">
+                                    <label class="btn config-mode-toggle__segment" for="qrss_mode">CW Modes</label>
+                                </div>
                             </div>
                             <div id="wspr_config" class="config-section-stack">
                                 <fieldset class="config-panel" id="op_info">
@@ -123,51 +102,47 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                     <p class="config-panel__summary">
                                         Enter the callsign and locator that WSPR reports on air.
                                     </p>
-                                    <div class="row gx-2 align-items-center">
-                                        <div class="col-md-6 mb-3 d-flex align-items-center">
-                                            <label for="callsign" class="form-label mb-0 me-2 flex-shrink-0">
+                                    <div class="row gx-2 gy-3 align-items-start">
+                                        <div class="col-md-6 config-stacked-field">
+                                            <label for="callsign" class="form-label">
                                                 Call Sign:
                                             </label>
-                                            <div class="flex-grow-1">
-                                                <input
-                                                    type="text"
-                                                    id="callsign"
-                                                    class="form-control"
-                                                    maxlength="32"
-                                                    pattern="(?:[A-Za-z0-9/]+|&lt;[A-Za-z0-9/]+&gt;)"
-                                                    autocapitalize="characters"
-                                                    autocomplete="off"
-                                                    spellcheck="false"
-                                                    aria-describedby="callsign-hint"
-                                                    data-bs-toggle="tooltip"
-                                                    title="Enter a callsign, compound callsign, or explicit Type 3 callsign such as AA0NT, AA0NT/12, or <AA0NT>"
-                                                    required />
-                                                <div id="callsign-hint" class="form-text mt-2">
-                                                    Use letters, digits, and `/` with no spaces. Explicit Type 3 forms such as `&lt;AA0NT&gt;` are also accepted.
-                                                </div>
+                                            <input
+                                                type="text"
+                                                id="callsign"
+                                                class="form-control"
+                                                maxlength="32"
+                                                pattern="(?:[A-Za-z0-9/]+|&lt;[A-Za-z0-9/]+&gt;)"
+                                                autocapitalize="characters"
+                                                autocomplete="off"
+                                                spellcheck="false"
+                                                aria-describedby="callsign-hint"
+                                                data-bs-toggle="tooltip"
+                                                title="Enter a callsign, compound callsign, or explicit Type 3 callsign such as AA0NT, AA0NT/12, or <AA0NT>"
+                                                required />
+                                            <div id="callsign-hint" class="form-text mt-2">
+                                                Use letters, digits, and `/` with no spaces. Explicit Type 3 forms such as `&lt;AA0NT&gt;` are also accepted.
                                             </div>
                                         </div>
-                                        <div class="col-md-6 mb-3 d-flex align-items-center">
-                                            <label for="gridsquare" class="form-label mb-0 me-2 flex-shrink-0">
+                                        <div class="col-md-6 config-stacked-field">
+                                            <label for="gridsquare" class="form-label">
                                                 Grid locator:
                                             </label>
-                                            <div class="flex-grow-1">
-                                                <input
-                                                    type="text"
-                                                    id="gridsquare"
-                                                    class="form-control"
-                                                    pattern="[A-Za-z]{2}[0-9]{2}(?:[A-Za-z]{2})?"
-                                                    maxlength="6"
-                                                    autocapitalize="characters"
-                                                    autocomplete="off"
-                                                    spellcheck="false"
-                                                    aria-describedby="gridsquare-hint"
-                                                    data-bs-toggle="tooltip"
-                                                    title="Enter a 4-character or 6-character Maidenhead locator such as EM18 or EM18IG"
-                                                    required />
-                                                <div id="gridsquare-hint" class="form-text mt-2">
-                                                    Use a 4-character or 6-character Maidenhead locator such as `EM18` or `EM18IG`.
-                                                </div>
+                                            <input
+                                                type="text"
+                                                id="gridsquare"
+                                                class="form-control"
+                                                pattern="[A-Za-z]{2}[0-9]{2}(?:[A-Za-z]{2})?"
+                                                maxlength="6"
+                                                autocapitalize="characters"
+                                                autocomplete="off"
+                                                spellcheck="false"
+                                                aria-describedby="gridsquare-hint"
+                                                data-bs-toggle="tooltip"
+                                                title="Enter a 4-character or 6-character Maidenhead locator such as EM18 or EM18IG"
+                                                required />
+                                            <div id="gridsquare-hint" class="form-text mt-2">
+                                                Use a 4-character or 6-character Maidenhead locator such as `EM18` or `EM18IG`.
                                             </div>
                                         </div>
                                     </div>
@@ -200,11 +175,11 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                             </div>
                                         </div>
 
-                                        <div class="config-wspr-top-row__item config-wspr-top-row__item--toggle">
-                                            <div class="config-wspr-top-row__toggle">
-                                                <label class="form-check-label mb-0" for="useoffset">
-                                                    Random offset
-                                                </label>
+                                        <div class="config-wspr-top-row__item config-wspr-top-row__field config-wspr-top-row__field--toggle">
+                                            <label class="form-label" for="useoffset">
+                                                Random offset
+                                            </label>
+                                            <div class="form-check form-switch config-wspr-switch">
                                                 <input
                                                     class="form-check-input"
                                                     type="checkbox"
@@ -213,9 +188,9 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                     data-bs-toggle="tooltip"
                                                     title="Randomly shift each WSPR transmission around the dial-derived RF frequency."
                                                     id="useoffset" />
-                                                <div id="useoffset-hint" class="form-text mt-2">
-                                                    Shift each WSPR transmission randomly around the selected dial-derived RF frequency.
-                                                </div>
+                                            </div>
+                                            <div id="useoffset-hint" class="form-text mt-2">
+                                                Shift each WSPR transmission randomly around the selected dial-derived RF frequency.
                                             </div>
                                         </div>
 
@@ -254,7 +229,9 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                 Choose the standard WSPR power value to report on air, from 0 through 60 dBm.
                                             </div>
                                         </div>
+                                    </div>
 
+                                    <div class="config-wspr-secondary-row">
                                         <div class="config-wspr-top-row__item config-wspr-top-row__field config-wspr-top-row__field--ppm">
                                             <label for="ppm" class="form-label">Frequency calibration (PPM)</label>
                                             <input
@@ -273,13 +250,11 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                             </div>
                                         </div>
 
-                                        <div class="config-wspr-top-row__item config-wspr-top-row__item--toggle">
-                                            <div class="config-wspr-top-row__toggle">
-                                                <label
-                                                    class="form-check-label mb-0"
-                                                    for="use_ntp">
-                                                    NTP calibration
-                                                </label>
+                                        <div class="config-wspr-top-row__item config-wspr-top-row__field config-wspr-top-row__field--toggle">
+                                            <label class="form-label" for="use_ntp">
+                                                NTP calibration
+                                            </label>
+                                            <div class="form-check form-switch config-wspr-switch">
                                                 <input
                                                     class="form-check-input"
                                                     type="checkbox"
@@ -288,9 +263,9 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                     data-bs-toggle="tooltip"
                                                     title="Use NTP for GPIO frequency calibration"
                                                     id="use_ntp" />
-                                                <div id="use-ntp-hint" class="form-text mt-2">
-                                                    Use NTP-based frequency calibration when the GPIO backend is active.
-                                                </div>
+                                            </div>
+                                            <div id="use-ntp-hint" class="form-text mt-2">
+                                                Use NTP-based frequency calibration when the GPIO backend is active.
                                             </div>
                                         </div>
 
@@ -322,7 +297,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                     <legend>CW Control</legend>
                                     <p class="config-panel__summary">Choose the CW mode and timing first, then set frequency and repeat timing.</p>
 
-                                    <div class="row gx-2 gy-3 align-items-center">
+                                    <div class="row gx-2 gy-3 align-items-start">
 
                                         <div class="col-12 col-lg-4">
                                             <fieldset class="d-flex align-items-center gap-3 flex-wrap border-0 p-0 m-0">
@@ -362,56 +337,52 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                             </fieldset>
                                         </div>
 
-                                        <div class="col-12 col-lg-4 d-flex align-items-center">
-                                            <label for="dot_length" class="form-label mb-0 me-2 flex-shrink-0">Dot Seconds:</label>
-                                            <div class="flex-grow-1">
-                                                <input
-                                                    type="number"
-                                                    class="form-control flex-grow-1"
-                                                    id="dot_length"
-                                                    min="0.000000001"
-                                                    step="any"
-                                                    inputmode="decimal"
-                                                    aria-describedby="dot-length-hint"
-                                                    data-bs-toggle="tooltip"
-                                                    title="CW.Dot Seconds: dot length in seconds for QRSS, FSKCW, and DFCW"
-                                                    value="3"
-                                                    required />
-                                                <div id="dot-length-hint" class="form-text mt-2">
-                                                    Enter a positive dot length in seconds.
-                                                </div>
+                                        <div class="col-12 col-lg-4 config-stacked-field">
+                                            <label for="dot_length" class="form-label">Dot Seconds:</label>
+                                            <input
+                                                type="number"
+                                                class="form-control"
+                                                id="dot_length"
+                                                min="0.000000001"
+                                                step="any"
+                                                inputmode="decimal"
+                                                aria-describedby="dot-length-hint"
+                                                data-bs-toggle="tooltip"
+                                                title="CW.Dot Seconds: dot length in seconds for QRSS, FSKCW, and DFCW"
+                                                value="3"
+                                                required />
+                                            <div id="dot-length-hint" class="form-text mt-2">
+                                                Enter a positive dot length in seconds.
                                             </div>
                                         </div>
 
-                                        <div class="col-12 col-lg-4 d-flex align-items-center">
-                                            <label for="fsk_offset" class="form-label mb-0 me-2 flex-shrink-0">Frequency Offset:</label>
-                                            <div class="flex-grow-1">
-                                                <input
-                                                    type="number"
-                                                    class="form-control flex-grow-1"
-                                                    id="fsk_offset"
-                                                    min="0.000000001"
-                                                    step="0.01"
-                                                    inputmode="decimal"
-                                                    aria-describedby="fsk-offset-hint"
-                                                    data-bs-toggle="tooltip"
-                                                    title="CW.Shift Hz: offset in Hz from the base frequency for FSKCW and DFCW. QRSS ignores this field."
-                                                    value="5"
-                                                    required />
-                                                <div id="fsk-offset-hint" class="form-text mt-2">
-                                                    Enter a positive shift in Hz for FSKCW or DFCW. QRSS ignores this field.
-                                                </div>
+                                        <div class="col-12 col-lg-4 config-stacked-field">
+                                            <label for="fsk_offset" class="form-label">Frequency Offset:</label>
+                                            <input
+                                                type="number"
+                                                class="form-control"
+                                                id="fsk_offset"
+                                                min="1"
+                                                step="1"
+                                                inputmode="numeric"
+                                                aria-describedby="fsk-offset-hint"
+                                                data-bs-toggle="tooltip"
+                                                title="CW.Shift Hz: offset in Hz from the base frequency for FSKCW and DFCW. QRSS ignores this field."
+                                                value="5"
+                                                required />
+                                            <div id="fsk-offset-hint" class="form-text mt-2">
+                                                Enter a whole-number positive shift in Hz for FSKCW or DFCW. QRSS ignores this field.
                                             </div>
                                         </div>
                                     </div>
 
-                                    <div class="row gx-2 gy-3 align-items-center mt-1">
+                                    <div class="row gx-2 gy-3 align-items-start mt-1">
 
-                                        <div class="col-12 col-lg-4 d-flex align-items-center">
-                                            <label for="qrss_frequency" class="form-label mb-0 me-2 flex-shrink-0">Base Frequency:</label>
+                                        <div class="col-12 col-lg-4 config-stacked-field">
+                                            <label for="qrss_frequency" class="form-label">Base Frequency:</label>
                                             <input
                                                 type="text"
-                                                class="form-control flex-grow-1"
+                                                class="form-control"
                                                 id="qrss_frequency"
                                                 inputmode="decimal"
                                                 aria-describedby="qrss-frequency-hint"
@@ -424,11 +395,11 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                             </div>
                                         </div>
 
-                                        <div class="col-12 col-lg-4 d-flex align-items-center">
-                                            <label for="ppm_cw" class="form-label mb-0 me-2 flex-shrink-0">Frequency calibration:</label>
+                                        <div class="col-12 col-lg-4 config-stacked-field">
+                                            <label for="ppm_cw" class="form-label">Frequency calibration:</label>
                                             <input
                                                 type="number"
-                                                class="form-control flex-grow-1"
+                                                class="form-control"
                                                 id="ppm_cw"
                                                 min="-200"
                                                 max="200"
@@ -442,11 +413,11 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                             </div>
                                         </div>
 
-                                        <div class="col-12 col-lg-4 d-flex align-items-center">
-                                            <label for="tx_start_minute" class="form-label mb-0 me-2 flex-shrink-0">Start minute:</label>
+                                        <div class="col-12 col-lg-4 config-stacked-field">
+                                            <label for="tx_start_minute" class="form-label">Start minute:</label>
                                             <input
                                                 type="number"
-                                                class="form-control flex-grow-1"
+                                                class="form-control"
                                                 id="tx_start_minute"
                                                 min="0"
                                                 max="59"
@@ -462,11 +433,11 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                             </div>
                                         </div>
 
-                                        <div class="col-12 col-lg-4 d-flex align-items-center">
-                                            <label for="tx_repeat_every" class="form-label mb-0 me-2 flex-shrink-0">Repeat interval:</label>
+                                        <div class="col-12 col-lg-4 config-stacked-field">
+                                            <label for="tx_repeat_every" class="form-label">Repeat interval:</label>
                                             <input
                                                 type="number"
-                                                class="form-control flex-grow-1"
+                                                class="form-control"
                                                 id="tx_repeat_every"
                                                 min="1"
                                                 step="1"
@@ -482,12 +453,12 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                         </div>
                                     </div>
 
-                                    <div class="row gx-2 gy-3 align-items-center mt-1">
-                                        <div class="col-12 col-lg-4 d-flex align-items-center">
-                                            <label for="cw_intra_element_gap" class="form-label mb-0 me-2 flex-shrink-0">Intra-Element Gap:</label>
+                                    <div class="row gx-2 gy-3 align-items-start mt-1">
+                                        <div class="col-12 col-lg-4 config-stacked-field">
+                                            <label for="cw_intra_element_gap" class="form-label">Intra-Element Gap:</label>
                                             <input
                                                 type="number"
-                                                class="form-control flex-grow-1"
+                                                class="form-control"
                                                 id="cw_intra_element_gap"
                                                 min="0.000000001"
                                                 step="any"
@@ -502,11 +473,11 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                             </div>
                                         </div>
 
-                                        <div class="col-12 col-lg-4 d-flex align-items-center">
-                                            <label for="cw_inter_character_gap" class="form-label mb-0 me-2 flex-shrink-0">Inter-Character Gap:</label>
+                                        <div class="col-12 col-lg-4 config-stacked-field">
+                                            <label for="cw_inter_character_gap" class="form-label">Inter-Character Gap:</label>
                                             <input
                                                 type="number"
-                                                class="form-control flex-grow-1"
+                                                class="form-control"
                                                 id="cw_inter_character_gap"
                                                 min="0.000000001"
                                                 step="any"
@@ -521,11 +492,11 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                             </div>
                                         </div>
 
-                                        <div class="col-12 col-lg-4 d-flex align-items-center">
-                                            <label for="cw_inter_word_gap" class="form-label mb-0 me-2 flex-shrink-0">Inter-Word Gap:</label>
+                                        <div class="col-12 col-lg-4 config-stacked-field">
+                                            <label for="cw_inter_word_gap" class="form-label">Inter-Word Gap:</label>
                                             <input
                                                 type="number"
-                                                class="form-control flex-grow-1"
+                                                class="form-control"
                                                 id="cw_inter_word_gap"
                                                 min="0.000000001"
                                                 step="any"
@@ -547,11 +518,12 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                     <p class="config-panel__summary">
                                         Enter the message sent by QRSS, FSKCW, or DFCW with the current CW timing and tone settings.
                                     </p>
-                                    <div class="row gx-2 gy-3 align-items-center mt-1">
-                                        <div class="col-12 col-lg-12 d-flex align-items-center">
+                                    <div class="row gx-2 gy-3 align-items-start mt-1">
+                                        <div class="col-12 col-lg-12 config-stacked-field">
+                                            <label for="qrss_message" class="form-label">Message</label>
                                             <input
                                                 type="text"
-                                                class="form-control flex-grow-1"
+                                                class="form-control"
                                                 id="qrss_message"
                                                 maxlength="59"
                                                 autocapitalize="characters"
@@ -592,7 +564,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
 
                                 <div class="row gx-3 gy-3 align-items-start">
                                     <div class="col-12 col-lg-4">
-                                        <label for="transmit_backend" class="form-label">RF output path</label>
+                                        <label for="transmit_backend" class="visually-hidden">RF output backend</label>
                                         <select
                                             id="transmit_backend"
                                             class="form-select"
@@ -618,21 +590,19 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                 </p>
 
                                 <div class="row gx-3 gy-3 align-items-start">
-                                    <div class="col-12 col-lg-4 d-flex align-items-center">
-                                        <label for="tx_pin" class="form-label mb-0 me-2 flex-shrink-0">Transmit Pin:</label>
-                                        <div class="flex-grow-1">
-                                            <select
-                                                id="tx_pin"
-                                                class="form-select"
-                                                aria-describedby="tx-pin-hint"
-                                                data-bs-toggle="tooltip"
-                                                title="Only GPIO4 and GPIO20 support GPCLK0 clock output on the 40-pin header.">
-                                                <option value="4">GPIO4</option>
-                                                <option value="20">GPIO20</option>
-                                            </select>
-                                            <div id="tx-pin-hint" class="form-text mt-2">
-                                                Only GPIO4 and GPIO20 support GPCLK0 clock output on the 40-pin header.
-                                            </div>
+                                    <div class="col-12 col-lg-4 config-stacked-field">
+                                        <label for="tx_pin" class="form-label">Transmit Pin:</label>
+                                        <select
+                                            id="tx_pin"
+                                            class="form-select"
+                                            aria-describedby="tx-pin-hint"
+                                            data-bs-toggle="tooltip"
+                                            title="Only GPIO4 and GPIO20 support GPCLK0 clock output on the 40-pin header.">
+                                            <option value="4">GPIO4</option>
+                                            <option value="20">GPIO20</option>
+                                        </select>
+                                        <div id="tx-pin-hint" class="form-text mt-2">
+                                            Only GPIO4 and GPIO20 support GPCLK0 clock output on the 40-pin header.
                                         </div>
                                     </div>
 
@@ -768,9 +738,9 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                         </div>
                                     </div>
 
-                                    <div class="col-12 col-xxl-3 d-flex align-items-center">
-                                        <label for="ledDropdownButton" class="form-label mb-0 me-2 flex-shrink-0">LED Pin:</label>
-                                        <div class="dropdown flex-grow-1">
+                                    <div class="col-12 col-xxl-3 config-stacked-field">
+                                        <label for="ledDropdownButton" class="form-label">LED Pin:</label>
+                                        <div class="dropdown">
                                             <?php
                                             $dropdownId = "ledDropdownButton";
                                             $defaultGpio = $defaultLedGpio;
@@ -803,9 +773,9 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                         </div>
                                     </div>
 
-                                    <div class="col-12 col-xxl-3 d-flex align-items-center">
-                                        <label for="shutdownDropdownButton" class="form-label mb-0 me-2 flex-shrink-0">Shutdown Pin:</label>
-                                        <div class="dropdown flex-grow-1">
+                                    <div class="col-12 col-xxl-3 config-stacked-field">
+                                        <label for="shutdownDropdownButton" class="form-label">Shutdown Pin:</label>
+                                        <div class="dropdown">
                                             <?php
                                             $dropdownId = "shutdownDropdownButton";
                                             $defaultGpio = $defaultShutdownGpio;
@@ -929,7 +899,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                     <div class="modal-dialog modal-dialog-centered">
                         <div class="modal-content">
                             <div class="modal-header">
-                                <h5 class="modal-title" id="modeChangeGuardModalLabel">Change mode</h5>
+                                <h3 class="modal-title h5" id="modeChangeGuardModalLabel">Change mode</h3>
                                 <button
                                     type="button"
                                     class="btn-close"

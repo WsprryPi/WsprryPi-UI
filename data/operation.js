@@ -443,7 +443,9 @@ function setOperationStatePresentation(stateNode, detailNode, hintNode, {
         announcementNode.setAttribute("aria-label", state ? `Runtime status: ${state}. ${detail}` : "Runtime status updated.");
     }
     detailNode.textContent = detail;
-    hintNode.textContent = hint;
+    if (hintNode) {
+        hintNode.textContent = hint;
+    }
 }
 
 function updateOperationStatusSummary(status) {
@@ -451,7 +453,7 @@ function updateOperationStatusSummary(status) {
     const detailNode = document.getElementById("operationStateDetail");
     const hintNode = document.getElementById("operationNextActionHint");
 
-    if (!stateNode || !detailNode || !hintNode) {
+    if (!stateNode || !detailNode) {
         return;
     }
 
