@@ -387,11 +387,11 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                 inputmode="decimal"
                                                 aria-describedby="qrss-frequency-hint"
                                                 data-bs-toggle="tooltip"
-                                                title="CW.Base Frequency in Hz. QRSS uses this directly; FSKCW/DFCW add Shift Hz for the second tone."
-                                                value="14096900.0"
+                                                title="Enter a whole-number frequency in Hz, or use Hz, kHz, MHz, or GHz units such as 14096900, 14096900Hz, 14096.9kHz, 14.0969MHz, or 0.0140969GHz. QRSS uses this directly; FSKCW/DFCW add Shift Hz for the second tone."
+                                                value="14096900"
                                                 required />
                                             <div id="qrss-frequency-hint" class="form-text mt-2">
-                                                Enter one positive base frequency with optional `Hz`, `kHz`, `MHz`, or `GHz` units.
+                                                Enter whole-number Hz such as `14096900`, or include `Hz`, `kHz`, `MHz`, or `GHz` for decimal values such as `14.0969MHz`.
                                             </div>
                                         </div>
 

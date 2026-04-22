@@ -2723,22 +2723,32 @@ function parseFrequencyWithOptionalUnits(rawValue) {
         return Number.NaN;
     }
 
-    const value = Number.parseFloat(match[1]);
+    const numericPart = match[1];
+    const value = Number.parseFloat(numericPart);
     if (!Number.isFinite(value)) {
         return Number.NaN;
     }
 
     const unit = (match[2] || "").toLowerCase();
+    if (!unit && numericPart.includes(".")) {
+        return Number.NaN;
+    }
+
+    let normalizedValue = value;
     if (unit === "ghz") {
-        return value * 1e9;
+        normalizedValue = value * 1e9;
+    } else if (unit === "mhz") {
+        normalizedValue = value * 1e6;
+    } else if (unit === "khz") {
+        normalizedValue = value * 1e3;
     }
-    if (unit === "mhz") {
-        return value * 1e6;
+
+    const roundedValue = Math.round(normalizedValue);
+    if (normalizedValue <= 0 || Math.abs(normalizedValue - roundedValue) > 1e-6) {
+        return Number.NaN;
     }
-    if (unit === "khz") {
-        return value * 1e3;
-    }
-    return value;
+
+    return roundedValue;
 }
 
 /**
@@ -2768,7 +2778,11 @@ function validateCwBaseFrequency() {
         }
     }
 
-    fld.setCustomValidity(valid ? "" : "Enter a positive CW base frequency.");
+    fld.setCustomValidity(
+        valid
+            ? ""
+            : "Enter CW base frequency as whole-number Hz or as a value with Hz, kHz, MHz, or GHz."
+    );
 
     // Apply visual styling
     setFieldValidationState(fld, valid);
