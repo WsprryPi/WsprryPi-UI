@@ -572,6 +572,10 @@ legend {
     cursor: pointer;
 }
 
+#confirmModalBody.confirm-modal-body--preformatted {
+    white-space: pre-wrap;
+}
+
 /* ------------------------------------------------------------
            Times‑wrapper (Local/UTC times)
 ------------------------------------------------------------ */

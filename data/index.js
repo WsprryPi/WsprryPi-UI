@@ -22,6 +22,8 @@ let suppressModeChangeGuard = false;
 let configNetworkHandlersBound = false;
 let configNavigationGuardBound = false;
 let stopRequestTimeoutHandle = null;
+const PAIRED_PLANNING_SHORT_MESSAGE =
+    "Paired planning requires a compound callsign and 6-character locator.";
 
 function browserOfflineConfigMessage() {
     return "This browser is offline. Changes stay local until the connection returns.";
@@ -1628,6 +1630,28 @@ function buildConfigErrorMessage(data, fallbackMessage) {
     return lines.join("\n");
 }
 
+function isPairedPlanningUnavailableError(data) {
+    return !!(
+        data &&
+        typeof data === "object" &&
+        typeof data.plan_status === "string" &&
+        data.plan_status.trim() === "PairedTransmissionUnavailable"
+    );
+}
+
+function openSetupDetailsDialog(detail) {
+    if (typeof detail !== "string" || !detail.trim()) {
+        return;
+    }
+
+    showMessageDialog({
+        title: "Setup details",
+        message: detail,
+        acknowledgeLabel: "Close",
+        preserveLineBreaks: true,
+    });
+}
+
 function describeControlLabel(control) {
     if (!control) {
         return "the highlighted field";
@@ -2378,7 +2402,7 @@ function buildConfigPayload() {
     };
 }
 
-function setConfigSaveStatus(state, message = "", detail = "") {
+function setConfigSaveStatus(state, message = "", detail = "", options = {}) {
     const node = document.getElementById("configSaveStatus");
     const detailNode = document.getElementById("configSaveStatusDetail");
     if (!node) {
@@ -2394,19 +2418,39 @@ function setConfigSaveStatus(state, message = "", detail = "") {
     node.textContent = message;
     node.classList.toggle("is-visible", !!message);
     if (detailNode) {
-        detailNode.hidden = !detail;
-        detailNode.textContent = detail;
-        const isActionable = state === "invalid" && !!firstInvalidConfigControl();
-        detailNode.tabIndex = isActionable ? 0 : -1;
-        if (isActionable) {
-            detailNode.setAttribute("role", "button");
-            detailNode.setAttribute(
-                "aria-label",
-                `${detail} Activate to jump to the invalid field.`
-            );
+        const detailActionLabel =
+            typeof options.detailActionLabel === "string"
+                ? options.detailActionLabel.trim()
+                : "";
+        const onDetailAction =
+            typeof options.onDetailAction === "function"
+                ? options.onDetailAction
+                : null;
+
+        detailNode.innerHTML = "";
+        detailNode.hidden = !detail && !detailActionLabel;
+        detailNode.tabIndex = -1;
+        detailNode.removeAttribute("role");
+        detailNode.removeAttribute("aria-label");
+
+        if (detailActionLabel && onDetailAction) {
+            const actionButton = document.createElement("button");
+            actionButton.type = "button";
+            actionButton.className = "btn btn-link btn-sm p-0 align-baseline";
+            actionButton.textContent = detailActionLabel;
+            actionButton.addEventListener("click", onDetailAction);
+            detailNode.appendChild(actionButton);
         } else {
-            detailNode.removeAttribute("role");
-            detailNode.removeAttribute("aria-label");
+            detailNode.textContent = detail;
+            const isActionable = state === "invalid" && !!firstInvalidConfigControl();
+            detailNode.tabIndex = isActionable ? 0 : -1;
+            if (isActionable) {
+                detailNode.setAttribute("role", "button");
+                detailNode.setAttribute(
+                    "aria-label",
+                    `${detail} Activate to jump to the invalid field.`
+                );
+            }
         }
     }
 
@@ -2573,11 +2617,26 @@ function flushAutosave() {
                 }
             }
 
+            const isPairedPlanningFailure =
+                isPairedPlanningUnavailableError(parsedError);
+
             debugConsole("error", "Autosave failed:", message);
             lastFailedConfigPayload = payloadJson;
             lastFailedConfigMessage = message;
             configAutosaveDirty = false;
-            setConfigSaveStatus("error", "Save failed", message);
+            if (isPairedPlanningFailure) {
+                setConfigSaveStatus(
+                    "error",
+                    PAIRED_PLANNING_SHORT_MESSAGE,
+                    message,
+                    {
+                        detailActionLabel: "More",
+                        onDetailAction: () => openSetupDetailsDialog(message),
+                    }
+                );
+            } else {
+                setConfigSaveStatus("error", "Save failed", message);
+            }
             showBackendStatus(message, "danger", "runtime");
         })
         .always(function () {

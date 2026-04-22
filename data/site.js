@@ -2450,6 +2450,7 @@ function showConfirmationDialog(options = {}, modalInstance = null) {
         ? options.title.trim()
         : "Please Confirm";
     const message = typeof options.message === "string" ? options.message : "";
+    const preserveLineBreaks = options.preserveLineBreaks === true;
     const confirmLabel = typeof options.confirmLabel === "string" && options.confirmLabel.trim()
         ? options.confirmLabel.trim()
         : "Continue";
@@ -2462,7 +2463,12 @@ function showConfirmationDialog(options = {}, modalInstance = null) {
     const showCancel = options.showCancel !== false;
 
     document.getElementById("confirmModalLabel").textContent = title;
-    document.getElementById("confirmModalBody").textContent = message;
+    const confirmModalBody = document.getElementById("confirmModalBody");
+    confirmModalBody.textContent = message;
+    confirmModalBody.classList.toggle(
+        "confirm-modal-body--preformatted",
+        preserveLineBreaks
+    );
 
     const $cancelBtn = $("#confirmCancelBtn");
     const $confirmBtn = $("#confirmActionBtn");
@@ -2487,6 +2493,7 @@ function showMessageDialog(options = {}) {
         message: options.message || "",
         confirmLabel: options.acknowledgeLabel || "OK",
         confirmClass: options.confirmClass || "btn-primary",
+        preserveLineBreaks: options.preserveLineBreaks === true,
         showCancel: false,
         onConfirm: options.onConfirm
     });
