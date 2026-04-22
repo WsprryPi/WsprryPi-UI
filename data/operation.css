@@ -64,6 +64,10 @@
 }
 
 .operation-hero__state-value[data-state="active"] {
+    color: color-mix(in srgb, var(--bs-success) 78%, var(--bs-body-color) 22%);
+}
+
+.operation-hero__state-value[data-state="stopping"] {
     color: color-mix(in srgb, var(--bs-danger) 80%, var(--bs-body-color) 20%);
 }
 

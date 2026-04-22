@@ -571,7 +571,7 @@ function updateOperationStatusSummary(status) {
     if (stopRequestInFlight) {
         setOperationStatePresentation(stateNode, detailNode, hintNode, {
             state: "Stopping transmission",
-            tone: "active",
+            tone: "stopping",
             detail: "A stop command is in flight. Wait for controller confirmation before retrying or changing transmit state.",
             hint: "If the controller does not confirm the stop request, a warning will appear and the control will re-enable.",
         });

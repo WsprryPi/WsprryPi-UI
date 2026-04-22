@@ -1497,7 +1497,7 @@ function setConnectionState(state, timestamp = "") {
             text = "Controller connected.";
             break;
         case "transmitting":
-            text = `Transmission in progress${timestamp ? ": " + timestamp : "."}`;
+            text = "Transmission in progress.";
             break;
         default:
             text = "";
