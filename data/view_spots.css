@@ -5,6 +5,42 @@
     min-height: min(42rem, calc(100vh - 12rem));
 }
 
+.spots-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+}
+
+.spots-toolbar__label {
+    margin: 0;
+    font-size: var(--text-caption);
+    color: var(--bs-secondary-color);
+}
+
+.spots-toolbar__select {
+    width: auto;
+    min-width: 11rem;
+}
+
+.spots-toolbar__status {
+    font-size: var(--text-caption);
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+.spots-toolbar__status--success {
+    color: var(--bs-success-text-emphasis);
+}
+
+.spots-toolbar__status--warning {
+    color: var(--bs-warning-text-emphasis);
+}
+
+.spots-toolbar__status--danger {
+    color: var(--bs-danger-text-emphasis);
+}
+
 /* Only the card body scrolls */
 .spots-card .card-body.tab-content {
     flex: 1;
@@ -95,6 +131,15 @@
 @media (max-width: 767.98px) {
     .spots-card {
         min-height: 0;
+    }
+
+    .spots-toolbar__select {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .spots-toolbar__status {
+        width: 100%;
     }
 
     .spots-card .card-body.tab-content {

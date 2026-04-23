@@ -2,16 +2,10 @@
 (function ($) {
     "use strict";
 
-    // Lookback window (minutes)
     const MINUTES = 60;
+    const TTL_MS = 2 * 60 * 1000;
+    const REFRESH_MS = 5 * 60 * 1000;
 
-    // Client‐side cache TTL before hitting server‐proxy again (ms)
-    const TTL_MS = 2 * 60 * 1000; // 2 minutes
-
-    // Auto-refresh interval (ms)
-    const REFRESH_MS = 5 * 60 * 1000; // 5 minutes
-
-    // Columns to show
     const COLUMNS = [
         "time",
         "tx_sign",
@@ -27,7 +21,6 @@
         "version",
     ];
 
-    // Map numeric codes → human modes
     const CODE_MAP = {
         1: "WSPR-2",
         2: "WSPR-15",
@@ -35,9 +28,9 @@
         4: "FST4W-300",
         5: "FST4W-900",
         8: "FST4W-1800",
+        16: "FST4W-900",
     };
 
-    // Column header names
     const HEADERS = {
         time: "Timestamp (UTC)",
         tx_sign: "Transmitter",
@@ -53,7 +46,13 @@
         version: "Decoder Ver.",
     };
 
-    let _cacheData = null,
+    const SOURCE_LABELS = {
+        auto: "Automatic failover",
+        wspr_live_downloader: "wspr.live downloader",
+        wspr_live_clickhouse: "wspr.live direct",
+    };
+
+    let _cacheEntry = null,
         _cacheKey = "",
         _cacheTS = 0,
         _refreshTimer = null,
@@ -76,6 +75,66 @@
 
     function getSpotsBody() {
         return document.querySelector(".card-body.tab-content");
+    }
+
+    function getSourceSelect() {
+        return document.getElementById("spotsSource");
+    }
+
+    function getSourceStatus() {
+        return document.getElementById("spotsSourceStatus");
+    }
+
+    function getSelectedSource() {
+        return getSourceSelect()?.value || "auto";
+    }
+
+    function sourceLabel(source) {
+        return SOURCE_LABELS[source] || source || "Unknown";
+    }
+
+    function cacheKeyFor(callSign, source) {
+        return `${callSign}::${source}`;
+    }
+
+    function setSourceStatus(message, tone = "") {
+        const status = getSourceStatus();
+        if (!status) {
+            return;
+        }
+
+        status.className = "spots-toolbar__status";
+        if (tone) {
+            status.classList.add(`spots-toolbar__status--${tone}`);
+        } else {
+            status.classList.add("text-body-secondary");
+        }
+        status.textContent = message;
+    }
+
+    function describeSourceStatus(meta, selectedSource) {
+        const selectedLabel = sourceLabel(selectedSource);
+        const actualSource = meta?.source_used || selectedSource;
+        const actualLabel = sourceLabel(actualSource);
+
+        if (selectedSource === "auto" && meta?.fallback_used) {
+            return {
+                message: `${selectedLabel}: downloader failed, showing ${actualLabel}.`,
+                tone: "warning",
+            };
+        }
+
+        if (selectedSource === "auto") {
+            return {
+                message: `${selectedLabel}: showing ${actualLabel}.`,
+                tone: "success",
+            };
+        }
+
+        return {
+            message: `Source: ${actualLabel}.`,
+            tone: "success",
+        };
     }
 
     function getConfigPageUrl() {
@@ -126,8 +185,7 @@
         container.appendChild(state);
     }
 
-    // Show a Bootstrap spinner in the card-body
-    function renderLoading() {
+    function renderLoading(selectedSource) {
         const container = getSpotsBody();
         if (!container) {
             return;
@@ -155,44 +213,52 @@
 
         const body = document.createElement("p");
         body.className = "spots-state__body text-body-secondary mb-0";
-        body.textContent = "Checking the last hour of WSPRNet spot reports for this transmitter.";
+        body.textContent = `Checking the last hour of spot reports for this transmitter using ${sourceLabel(selectedSource)}.`;
 
         state.append(spinner, title, body);
         container.appendChild(state);
+        setSourceStatus(`Loading spots via ${sourceLabel(selectedSource)}…`);
     }
 
-    // Render an error message in the card-body
-    function renderError(msg) {
+    function renderError(msg, selectedSource) {
         renderState(
             "Unable to load spots",
-            `${msg} Check the configured callsign and WSPRNet connection, then load the spots list again.`,
+            `${msg} Check the configured callsign and selected source, then load the spots list again.`,
             { id: "spotsRetryButton", label: "Load spots again" }
         );
+        setSourceStatus(`${sourceLabel(selectedSource)} failed.`, "danger");
     }
 
     function normalizeSpotResponse(response) {
         if (Array.isArray(response)) {
-            return response;
+            return { data: response, meta: {} };
         }
 
         if (response && Array.isArray(response.data)) {
-            return response.data;
+            return {
+                data: response.data,
+                meta: {
+                    source_used: response.source_used || "",
+                    fallback_used: Boolean(response.fallback_used),
+                    warning: typeof response.warning === "string" ? response.warning : "",
+                }
+            };
         }
 
         return null;
     }
 
-    function resolveSpotsErrorMessage(xhr, status) {
+    function resolveSpotsErrorMessage(xhr, status, selectedSource) {
         if (navigator.onLine === false) {
-            return "This browser is offline, so the WSPRNet proxy could not be reached.";
+            return "This browser is offline, so the local spots proxy could not be reached.";
         }
 
         if (status === "timeout") {
-            return "The request timed out before the spot list was returned.";
+            return `${sourceLabel(selectedSource)} did not respond before the request timed out.`;
         }
 
         if (status === "parsererror") {
-            return "The spot proxy returned an unreadable response.";
+            return "The spots proxy returned an unreadable response.";
         }
 
         if (!xhr || typeof xhr.status !== "number") {
@@ -208,7 +274,7 @@
         }
 
         if (xhr.status >= 500) {
-            return "The local spots proxy reported a server error while fetching WSPRNet data.";
+            return "The local spots proxy reported a server error while fetching spot data.";
         }
 
         if (xhr.status >= 400) {
@@ -218,12 +284,10 @@
         return "The spots request did not complete.";
     }
 
-    // Helper: format UTC date → "YYYY-MM-DD HH:MM:SS"
     function utcString(d) {
         return d.toISOString().slice(0, 19).replace("T", " ");
     }
 
-    // Call this whenever you want to refresh the header
     function refreshSpotsHeader() {
         const cs = $("#callsign").val() || "";
         const now = new Date();
@@ -250,7 +314,6 @@
         header.appendChild(stamp);
     }
 
-    // Render the table of spots and scroll to bottom
     function renderTable(spots) {
         const $c = $(".card-body.tab-content").empty();
         if (!Array.isArray(spots) || spots.length === 0) {
@@ -276,7 +339,7 @@
             COLUMNS.forEach(col => {
                 let val = spot[col];
                 if (col === "code") val = CODE_MAP[val] || val;
-                $("<td>").text(val).appendTo($tr);
+                $("<td>").text(val ?? "").appendTo($tr);
             });
             $tbody.append($tr);
         });
@@ -284,14 +347,12 @@
         $wrap.append($tbl);
         $c.append($wrap);
 
-        // Scroll to bottom
         const $pane = $(".spots-card .table-responsive");
         window.requestAnimationFrame(() => {
             $pane.scrollTop($pane.prop("scrollHeight"));
         });
     }
 
-    // Schedule next refresh
     function scheduleNext() {
         if (_refreshTimer !== null) {
             clearTimeout(_refreshTimer);
@@ -302,10 +363,10 @@
         }, REFRESH_MS);
     }
 
-    // Fetch, parse, render, cache & repeat
     function fetchSpots() {
         const now = Date.now();
         const requestId = ++_requestSequence;
+        const selectedSource = getSelectedSource();
         const rawCallSign = $("#callsign").val();
         const callSign = typeof rawCallSign === "string"
             ? rawCallSign.toUpperCase().trim()
@@ -314,43 +375,46 @@
         if (!callSign) {
             renderState(
                 "Finish station setup",
-                "Save a station callsign on the Setup page first. The spots view uses that callsign to query the last hour of WSPRNet reports and confirm the station is being heard.",
+                "Save a station callsign on the Setup page first. The spots view uses that callsign to query the last hour of reports and confirm the station is being heard.",
                 { href: getConfigPageUrl(), label: "Open Setup" }
             );
+            setSourceStatus("A station callsign is required before spot lookup can run.");
             clearRefreshTimer();
             return scheduleNext();
         }
 
-        if (_cacheKey !== callSign) {
-            _cacheData = null;
-            _cacheKey = callSign;
+        const cacheKey = cacheKeyFor(callSign, selectedSource);
+        if (_cacheKey !== cacheKey) {
+            _cacheEntry = null;
+            _cacheKey = cacheKey;
             _cacheTS = 0;
         }
 
-        // client cache
-        if (_cacheData && (now - _cacheTS) < TTL_MS) {
-            renderTable(_cacheData);
+        if (_cacheEntry && (now - _cacheTS) < TTL_MS) {
+            renderTable(_cacheEntry.spots);
             refreshSpotsHeader();
+            const status = describeSourceStatus(_cacheEntry.meta, selectedSource);
+            setSourceStatus(status.message, status.tone);
             return scheduleNext();
         }
 
-        if (!_cacheData) renderLoading();
+        if (!_cacheEntry) renderLoading(selectedSource);
         clearActiveRequest();
 
-        // time window
         const endDate = new Date(now);
         const startDate = new Date(now - MINUTES * 60 * 1000);
 
         _activeRequest = $.ajax({
-            url: "fetch_spots.php",      // YOUR proxy
-            dataType: "json",            // parse JSON for us
+            url: "fetch_spots.php",
+            dataType: "json",
             cache: false,
-            timeout: 20000,
+            timeout: 15000,
             data: {
                 tx_sign: callSign,
                 start: utcString(startDate),
                 end: utcString(endDate),
-                format: "JSON"          // full JSON envelope
+                format: "JSON",
+                source: selectedSource,
             }
         })
             .done((response) => {
@@ -358,43 +422,46 @@
                     return;
                 }
 
-                // response.data is the array of spot‐objects
                 const proxyError =
                     response && typeof response.error === "string"
                         ? response.error.trim()
                         : "";
                 if (proxyError) {
-                    renderError(proxyError);
+                    renderError(proxyError, selectedSource);
                     return;
                 }
 
-                let spots = normalizeSpotResponse(response);
-                if (!Array.isArray(spots)) {
-                    renderError("The spots service returned an unexpected response.");
+                const normalized = normalizeSpotResponse(response);
+                if (!normalized || !Array.isArray(normalized.data)) {
+                    renderError("The spots service returned an unexpected response.", selectedSource);
                     return;
                 }
-                // drop anything older than 2 h
+
                 const cutoff = now - 2 * 3600 * 1000;
-                spots = spots.filter(s => {
-                    const ts = Date.parse(s.time + "Z");
+                const spots = normalized.data.filter(s => {
+                    const ts = Date.parse(`${s.time || ""}Z`);
                     return !isNaN(ts) && ts >= cutoff;
                 });
 
-                _cacheData = spots;
-                _cacheKey = callSign;
+                _cacheEntry = {
+                    spots,
+                    meta: normalized.meta,
+                };
+                _cacheKey = cacheKey;
                 _cacheTS = now;
 
                 renderTable(spots);
                 refreshSpotsHeader();
+
+                const status = describeSourceStatus(normalized.meta, selectedSource);
+                setSourceStatus(status.message, status.tone);
             })
             .fail((xhr, status) => {
                 if (status === "abort" || requestId !== _requestSequence) {
                     return;
                 }
 
-                console.error("Fetch error:", status);
-                let message = resolveSpotsErrorMessage(xhr, status);
-
+                let message = resolveSpotsErrorMessage(xhr, status, selectedSource);
                 const proxyError =
                     xhr?.responseJSON && typeof xhr.responseJSON.error === "string"
                         ? xhr.responseJSON.error.trim()
@@ -403,7 +470,7 @@
                     message = proxyError;
                 }
 
-                renderError(message);
+                renderError(message, selectedSource);
             })
             .always(() => {
                 if (_activeRequest && requestId === _requestSequence) {
@@ -413,14 +480,20 @@
             });
     }
 
-    // Expose for external callers
     window.fetchSpots = fetchSpots;
     window.refreshSpotsHeader = refreshSpotsHeader;
 
     $(document).on("click", "#spotsRetryButton", fetchSpots);
+    $(document).on("change", "#spotsSource", () => {
+        _cacheEntry = null;
+        _cacheKey = "";
+        _cacheTS = 0;
+        fetchSpots();
+    });
+
     window.addEventListener("offline", () => {
         clearActiveRequest();
-        renderError("This browser went offline before the spots list could finish loading.");
+        renderError("This browser went offline before the spots list could finish loading.", getSelectedSource());
     });
     window.addEventListener("online", fetchSpots);
     window.addEventListener("beforeunload", () => {
