@@ -12,6 +12,9 @@ let operationSnapshot = {
     transmit: false,
     callsign: "",
     gridsquare: "",
+    wsprFrequencyHz: 0,
+    cwBaseFrequencyHz: 0,
+    cwOffsetHz: 0,
 };
 
 function browserOfflineOperationMessage() {
@@ -424,9 +427,48 @@ function handleOperationConfigSnapshot(snapshot = {}) {
         transmit: snapshot.transmit === true,
         callsign: typeof snapshot.callsign === "string" ? snapshot.callsign.trim() : "",
         gridsquare: typeof snapshot.gridsquare === "string" ? snapshot.gridsquare.trim() : "",
+        wsprFrequencyHz: Number.isFinite(Number(snapshot.wsprFrequencyHz))
+            ? Number(snapshot.wsprFrequencyHz)
+            : 0,
+        cwBaseFrequencyHz: Number.isFinite(Number(snapshot.cwBaseFrequencyHz))
+            ? Number(snapshot.cwBaseFrequencyHz)
+            : 0,
+        cwOffsetHz: Number.isFinite(Number(snapshot.cwOffsetHz))
+            ? Number(snapshot.cwOffsetHz)
+            : 0,
     };
 
     updateOperationStatusSummary(currentRuntimeStatus);
+}
+
+function getOperationFrequencyFallback(mode = "") {
+    const normalizedMode = typeof mode === "string" ? mode : "";
+
+    if (normalizedMode === "WSPR") {
+        return {
+            frequencyHz: operationSnapshot.wsprFrequencyHz,
+            offsetHz: 0,
+        };
+    }
+
+    if (normalizedMode === "QRSS") {
+        return {
+            frequencyHz: operationSnapshot.cwBaseFrequencyHz,
+            offsetHz: 0,
+        };
+    }
+
+    if (normalizedMode === "FSKCW" || normalizedMode === "DFCW") {
+        return {
+            frequencyHz: operationSnapshot.cwBaseFrequencyHz,
+            offsetHz: operationSnapshot.cwOffsetHz,
+        };
+    }
+
+    return {
+        frequencyHz: 0,
+        offsetHz: 0,
+    };
 }
 
 function setOperationStatePresentation(stateNode, detailNode, hintNode, {

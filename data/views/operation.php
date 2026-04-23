@@ -64,6 +64,16 @@ require __DIR__ . '/../card_header.php';
                         </div>
                     </article>
 
+                    <article class="operation-panel">
+                        <div class="operation-panel__label operation-panel__label--split">
+                            <span>Frequency</span>
+                            <span id="runtime_frequency_secondary_label" hidden>Offset</span>
+                        </div>
+                        <div class="operation-panel__stack" id="runtime_frequency_value" aria-live="polite" aria-atomic="true">
+                            <div class="operation-panel__value">Not available</div>
+                        </div>
+                    </article>
+
                     <article class="operation-panel operation-panel--wide">
                         <div class="operation-panel__label" id="runtime_plan_label">Current WSPR plan</div>
                         <div class="operation-panel__value operation-panel__value--wrap" id="runtime_wspr_plan_value" aria-live="polite" aria-atomic="true">

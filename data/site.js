@@ -1393,6 +1393,9 @@ function populateConfig(callback = null) {
                             transmitBackend,
                             callsign,
                             gridsquare,
+                            wsprFrequencyHz: parseConfiguredWsprFrequencyHz(frequencies),
+                            cwBaseFrequencyHz: cw_base_frequency,
+                            cwOffsetHz: fsk_offset,
                         });
                     }
                     if (typeof clearOfflineDefaults === "function") {
@@ -1548,6 +1551,12 @@ function normalizeRuntimeStatus(msg) {
             typeof msg.next_transmission_at === "string"
                 ? msg.next_transmission_at
                 : "",
+        frequencyHz: Number.isFinite(Number(msg.frequency_hz))
+            ? Number(msg.frequency_hz)
+            : 0,
+        offsetHz: Number.isFinite(Number(msg.offset_hz))
+            ? Number(msg.offset_hz)
+            : 0,
         planType,
         frameCount,
         currentFrame,
@@ -1563,6 +1572,93 @@ function normalizeRuntimeStatus(msg) {
         cwActiveCharIndex,
         timestamp: typeof msg.timestamp === "string" ? msg.timestamp : ""
     };
+}
+
+function parseOperationFrequencyWithOptionalUnits(rawValue) {
+    const raw = String(rawValue || "").trim();
+    if (!raw) {
+        return Number.NaN;
+    }
+
+    const numericRx = /^((?:(?:\d+(?:\.\d*)?)|(?:\.\d+)))(hz|khz|mhz|ghz)?$/i;
+    const match = raw.match(numericRx);
+    if (!match) {
+        return Number.NaN;
+    }
+
+    const numericPart = match[1];
+    const value = Number.parseFloat(numericPart);
+    if (!Number.isFinite(value)) {
+        return Number.NaN;
+    }
+
+    const unit = (match[2] || "").toLowerCase();
+    if (!unit && numericPart.includes(".")) {
+        return Number.NaN;
+    }
+
+    let normalizedValue = value;
+    if (unit === "ghz") {
+        normalizedValue = value * 1e9;
+    } else if (unit === "mhz") {
+        normalizedValue = value * 1e6;
+    } else if (unit === "khz") {
+        normalizedValue = value * 1e3;
+    }
+
+    const roundedValue = Math.round(normalizedValue);
+    if (normalizedValue <= 0 || Math.abs(normalizedValue - roundedValue) > 1e-6) {
+        return Number.NaN;
+    }
+
+    return roundedValue;
+}
+
+function parseConfiguredWsprFrequencyHz(rawValue) {
+    const bandFrequencies = {
+        lf: 136000,
+        "2200m": 136000,
+        mf: 474200,
+        "630m": 474200,
+        "160m": 1836600,
+        "80m": 3568600,
+        "60m": 5287200,
+        "40m": 7038600,
+        "30m": 10138700,
+        "22m": 14095600,
+        "20m": 14095600,
+        "17m": 18104600,
+        "15m": 21094600,
+        "12m": 24926100,
+        "10m": 28124600,
+        "6m": 50294500,
+        "4m": 70092500,
+        "2m": 144489000
+    };
+    const tokens = String(rawValue || "")
+        .replace(/,/g, " ")
+        .trim()
+        .split(/\s+/)
+        .filter((token) => token.length > 0);
+
+    for (const token of tokens) {
+        const baseToken = token.split("@", 1)[0].trim();
+        if (!baseToken || baseToken === "0") {
+            continue;
+        }
+
+        const numericFrequency = parseOperationFrequencyWithOptionalUnits(baseToken);
+        if (Number.isFinite(numericFrequency) && numericFrequency > 0) {
+            return numericFrequency;
+        }
+
+        const aliasFrequency = bandFrequencies[baseToken.toLowerCase()];
+        if (Number.isFinite(aliasFrequency) && aliasFrequency > 0) {
+            return aliasFrequency;
+        }
+    }
+
+    return 0;
 }
 
 function renderRuntimeStatus(status) {
@@ -1601,6 +1697,7 @@ function updateRuntimeControlConfigStatus(mode, transmitEnabled) {
 
 function renderRuntimeControlStatus() {
     const modeNode = document.getElementById("runtime_mode_value");
+    const frequencyNode = document.getElementById("runtime_frequency_value");
     const planLabelNode = document.getElementById("runtime_plan_label");
     const planNode = document.getElementById("runtime_wspr_plan_value");
 
@@ -1623,6 +1720,9 @@ function renderRuntimeControlStatus() {
         currentRuntimeConfigStatus.mode ||
         (currentRuntimeStatus && currentRuntimeStatus.runtimeMode) ||
         "";
+
+    renderRuntimeFrequencyPane(frequencyNode, currentMode, currentRuntimeStatus);
+
     if (currentMode === "QRSS" || currentMode === "FSKCW" || currentMode === "DFCW") {
         const configuredMessage = document.getElementById("qrss_message");
         const fallbackMessage =
@@ -1721,6 +1821,128 @@ function renderRuntimeControlStatus() {
 
     planNode.textContent = summary;
     planNode.setAttribute("title", titleParts.join(" | "));
+}
+
+function renderRuntimeFrequencyPane(node, currentMode, status) {
+    if (!node) {
+        return;
+    }
+
+    const secondaryLabelNode = document.getElementById("runtime_frequency_secondary_label");
+    const items = buildRuntimeFrequencyItems(currentMode, status);
+    node.replaceChildren();
+    node.classList.remove("operation-panel__stack--split");
+
+    if (secondaryLabelNode) {
+        secondaryLabelNode.hidden = true;
+        secondaryLabelNode.textContent = "";
+    }
+
+    if (!items.length) {
+        const fallbackNode = document.createElement("div");
+        fallbackNode.className = "operation-panel__value";
+        fallbackNode.textContent = "Not available";
+        node.appendChild(fallbackNode);
+        return;
+    }
+
+    if (items.length > 1) {
+        node.classList.add("operation-panel__stack--split");
+        if (secondaryLabelNode) {
+            secondaryLabelNode.hidden = false;
+            secondaryLabelNode.textContent = "Offset";
+        }
+    }
+
+    items.forEach((item) => {
+        const itemNode = document.createElement("div");
+        itemNode.className = "operation-panel__item";
+
+        const valueNode = document.createElement("div");
+        valueNode.className = "operation-panel__item-value";
+        valueNode.textContent = item.value;
+
+        itemNode.append(valueNode);
+        node.appendChild(itemNode);
+    });
+}
+
+function buildRuntimeFrequencyItems(currentMode, status) {
+    const normalizedMode = typeof currentMode === "string" ? currentMode : "";
+    const fallback = typeof getOperationFrequencyFallback === "function"
+        ? getOperationFrequencyFallback(normalizedMode)
+        : { frequencyHz: 0, offsetHz: 0 };
+    const frequencyValue = formatDisplayFrequency(
+        status && Number.isFinite(status.frequencyHz) && status.frequencyHz > 0
+            ? status.frequencyHz
+            : fallback.frequencyHz
+    );
+    const offsetValue = formatDisplayFrequency(
+        status && Number.isFinite(status.offsetHz) && status.offsetHz > 0
+            ? status.offsetHz
+            : fallback.offsetHz,
+        { forceUnit: "Hz" }
+    );
+
+    if (normalizedMode === "WSPR") {
+        return frequencyValue === "Not available"
+            ? []
+            : [{ label: "", value: frequencyValue }];
+    }
+    if (normalizedMode === "QRSS") {
+        return frequencyValue === "Not available"
+            ? []
+            : [{ label: "", value: frequencyValue }];
+    }
+    if (normalizedMode === "FSKCW" || normalizedMode === "DFCW") {
+        return [
+            { label: "", value: frequencyValue },
+            { label: "", value: offsetValue }
+        ];
+    }
+
+    return [];
+}
+
+function formatDisplayFrequency(valueHz, options = {}) {
+    if (!Number.isFinite(valueHz) || valueHz <= 0) {
+        return "Not available";
+    }
+
+    const forcedUnit = typeof options.forceUnit === "string"
+        ? options.forceUnit
+        : "";
+    const units = [
+        { suffix: "Hz", divisor: 1 },
+        { suffix: "kHz", divisor: 1e3 },
+        { suffix: "MHz", divisor: 1e6 },
+        { suffix: "GHz", divisor: 1e9 },
+        { suffix: "THz", divisor: 1e12 }
+    ];
+
+    let selectedUnit = units[0];
+    if (forcedUnit) {
+        const matchedUnit = units.find((unit) => unit.suffix === forcedUnit);
+        if (matchedUnit) {
+            selectedUnit = matchedUnit;
+        }
+    } else {
+        for (const unit of units) {
+            if (valueHz / unit.divisor < 1000) {
+                selectedUnit = unit;
+                break;
+            }
+            selectedUnit = unit;
+        }
+    }
+
+    const value = valueHz / selectedUnit.divisor;
+    const formatted = value.toLocaleString(undefined, {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: selectedUnit.suffix === "Hz" ? 4 : 6,
+        useGrouping: false
+    });
+    return `${formatted} ${selectedUnit.suffix}`;
 }
 
 function renderCwRuntimeMessage(node, message, activeCharIndex) {
@@ -2116,7 +2338,7 @@ function updateCallsign(forceCallsign) {
             return false;
         }
 
-        return /^(?:[A-Za-z0-9/]+|<[A-Za-z0-9/]+>)$/.test(trimmed);
+        return /^(?:[A-Za-z0-9\/]+|<[A-Za-z0-9\/]+>)$/.test(trimmed);
     };
 
     let callsign = "";
