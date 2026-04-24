@@ -4,9 +4,14 @@ let stopRequestTimeoutHandle = null;
 let operationRetryInFlight = false;
 const CONFIG_REQUEST_TIMEOUT_MS = 15000;
 const STOP_REQUEST_TIMEOUT_MS = 10000;
+const GPIO_BACKEND_UNAVAILABLE_MODAL_TITLE = "GPIO backend unavailable on Raspberry Pi 5";
+const GPIO_BACKEND_UNAVAILABLE_MODAL_MESSAGE =
+    "Transmit cannot be enabled with the GPIO backend on this Raspberry Pi. Choose a supported backend on the Setup page before enabling transmit.";
 
 let currentRuntimeTransmitBackend = "gpio";
 let operationSnapshotLoaded = false;
+let gpioBackendUnavailableModalVisible = false;
+let gpioBackendUnavailableModalDismissed = false;
 let operationSnapshot = {
     mode: "",
     transmit: false,
@@ -103,12 +108,26 @@ function currentTransmitUnavailableMessage() {
         : noBackendAvailableMessage();
 }
 
+function isGpioUnsupportedReason(reason) {
+    const normalized = String(reason || "").toLowerCase();
+    if (!normalized) {
+        return false;
+    }
+
+    return (
+        normalized.includes("gpio transmission") ||
+        normalized.includes("raspberry pi 5 and newer") ||
+        normalized.includes("supported only on raspberry pi 1 through 4") ||
+        normalized.includes("unsupported on this raspberry pi")
+    );
+}
+
 function formatTransmitFailureMessage(reason) {
     if (reason === noBackendAvailableMessage()) {
         return "Transmit cannot be enabled because no supported backend is currently available.";
     }
 
-    if (reason === "GPIO transmission is supported only on Raspberry Pi 1 through 4.") {
+    if (isGpioUnsupportedReason(reason)) {
         return "Transmit cannot be enabled with the GPIO backend on this Raspberry Pi.";
     }
 
@@ -154,6 +173,67 @@ function clearBackendStatus(source = null) {
         .removeClass("alert-warning alert-danger alert-info")
         .removeAttr("data-source")
         .text("");
+}
+
+function resetGpioBackendUnavailableModalState() {
+    gpioBackendUnavailableModalVisible = false;
+    gpioBackendUnavailableModalDismissed = false;
+}
+
+function operationSetupPageUrl() {
+    const setupButton = document.getElementById("operationSetupButton");
+    const setupTab = "#transmitter-hardware-pane";
+
+    if (setupButton && typeof setupButton.href === "string" && setupButton.href) {
+        try {
+            const url = new URL(setupButton.href, window.location.href);
+            url.searchParams.set("page", "config");
+            url.searchParams.set("setup_tab", setupTab);
+            return url.toString();
+        } catch {
+            return "index.php?page=config&setup_tab=#transmitter-hardware-pane";
+        }
+    }
+
+    return "index.php?page=config&setup_tab=#transmitter-hardware-pane";
+}
+
+function navigateToOperationSetupPage() {
+    window.location.assign(operationSetupPageUrl());
+}
+
+function showGpioBackendUnavailableModal(options = {}) {
+    const force = options.force === true;
+
+    if (!force && (gpioBackendUnavailableModalVisible || gpioBackendUnavailableModalDismissed)) {
+        return;
+    }
+
+    if (typeof showConfirmationDialog !== "function") {
+        navigateToOperationSetupPage();
+        return;
+    }
+
+    const modalEl = document.getElementById("confirmModal");
+    if (modalEl) {
+        $(modalEl)
+            .off("hidden.bs.modal.gpioUnavailable")
+            .on("hidden.bs.modal.gpioUnavailable", function () {
+                gpioBackendUnavailableModalVisible = false;
+                gpioBackendUnavailableModalDismissed = true;
+            });
+    }
+
+    gpioBackendUnavailableModalVisible = true;
+    gpioBackendUnavailableModalDismissed = false;
+    showConfirmationDialog({
+        title: GPIO_BACKEND_UNAVAILABLE_MODAL_TITLE,
+        message: GPIO_BACKEND_UNAVAILABLE_MODAL_MESSAGE,
+        confirmLabel: "Go to Setup",
+        cancelLabel: "Cancel",
+        confirmClass: "btn-primary",
+        onConfirm: navigateToOperationSetupPage
+    });
 }
 
 function setOperationRecoveryUi({
@@ -277,22 +357,30 @@ function syncTransmitAvailabilityUi() {
     }
 
     const unavailableMessage = currentTransmitUnavailableMessage();
+    const useGpioUnavailableModal = isGpioUnsupportedReason(unavailableMessage);
     const formattedMessage = unavailableMessage
         ? formatTransmitFailureMessage(unavailableMessage)
         : "";
+    const hintMessage = useGpioUnavailableModal ? "" : formattedMessage;
     const transmitEnabled = transmitField.checked;
     const shouldDisableEnable = !!unavailableMessage && !transmitEnabled;
 
     transmitField.disabled = shouldDisableEnable;
-    if (shouldDisableEnable) {
-        transmitField.setAttribute("title", formattedMessage);
+    if (shouldDisableEnable && hintMessage) {
+        transmitField.setAttribute("title", hintMessage);
     } else {
         transmitField.removeAttribute("title");
     }
 
     if (transmitHint) {
-        transmitHint.hidden = !formattedMessage;
-        transmitHint.textContent = formattedMessage;
+        transmitHint.hidden = !hintMessage;
+        transmitHint.textContent = hintMessage;
+    }
+
+    if (useGpioUnavailableModal) {
+        showGpioBackendUnavailableModal();
+    } else {
+        resetGpioBackendUnavailableModalState();
     }
 }
 
@@ -302,8 +390,14 @@ function requestTransmitEnabledChange(enabled, previousEnabled) {
     if (enabled) {
         const unavailableMessage = currentTransmitUnavailableMessage();
         if (unavailableMessage) {
-            const formattedMessage = formatTransmitFailureMessage(unavailableMessage);
             setTransmitFromBackend(previousEnabled);
+            if (isGpioUnsupportedReason(unavailableMessage)) {
+                clearBackendStatus("runtime");
+                showGpioBackendUnavailableModal({ force: true });
+                return null;
+            }
+
+            const formattedMessage = formatTransmitFailureMessage(unavailableMessage);
             showBackendStatus(formattedMessage, "danger", "runtime");
             return null;
         }
@@ -621,6 +715,18 @@ function updateOperationStatusSummary(status) {
     }
 
     if (unavailableMessage) {
+        if (isGpioUnsupportedReason(unavailableMessage)) {
+            showGpioBackendUnavailableModal();
+            setOperationStatePresentation(stateNode, detailNode, hintNode, {
+                state: "Setup required",
+                tone: "setup",
+                detail: "Runtime control is paused until transmitter hardware is reconfigured.",
+                hint: "",
+            });
+            setOperationRecoveryUi({ show: false });
+            return;
+        }
+
         setOperationStatePresentation(stateNode, detailNode, hintNode, {
             state: "Transmit unavailable",
             tone: "warning",
