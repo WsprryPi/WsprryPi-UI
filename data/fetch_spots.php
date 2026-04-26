@@ -128,12 +128,89 @@ function sanitizeDownloaderCallsign(string $value, string $fieldName): string
         respond(400, ['error' => sprintf('%s is required.', $fieldName)]);
     }
 
-    $value = preg_replace('/[^A-Z0-9\/\*\%]/', '', $value) ?? '';
+    $value = preg_replace('/[^A-Z0-9\/<>\*\%]/', '', $value) ?? '';
     if ($value === '') {
         respond(400, ['error' => sprintf('A valid %s is required.', strtolower($fieldName))]);
     }
 
     return $value;
+}
+
+function chooseLookupBaseCallsignSegment(array $segments): string
+{
+    $best = '';
+    $bestScore = [-1, -1];
+
+    foreach ($segments as $segment) {
+        $normalized = strtoupper(trim((string)$segment));
+        if ($normalized === '') {
+            continue;
+        }
+
+        $score = 0;
+        if (preg_match('/[A-Z]/', $normalized)) {
+            $score += 1;
+        }
+        if (preg_match('/[0-9]/', $normalized)) {
+            $score += 1;
+        }
+
+        $candidateScore = [$score, strlen($normalized)];
+        if ($candidateScore > $bestScore) {
+            $best = $normalized;
+            $bestScore = $candidateScore;
+        }
+    }
+
+    return $best;
+}
+
+function normalizeLookupBaseCallsign(string $value): string
+{
+    $value = strtoupper(trim($value));
+    if ($value === '') {
+        return '';
+    }
+
+    if (preg_match('/^<([A-Z0-9\/]+)>$/', $value, $matches)) {
+        $value = $matches[1];
+    }
+
+    $segments = array_values(array_filter(
+        explode('/', $value),
+        static fn(string $segment): bool => $segment !== ''
+    ));
+
+    if ($segments === []) {
+        return $value;
+    }
+
+    $best = chooseLookupBaseCallsignSegment($segments);
+    return $best !== '' ? $best : $value;
+}
+
+function buildLookupCallsignCandidates(string $value): array
+{
+    $baseCallsign = normalizeLookupBaseCallsign($value);
+    if ($baseCallsign === '') {
+        respond(400, ['error' => 'A valid transmitter callsign is required.']);
+    }
+
+    return [
+        'base' => $baseCallsign,
+        'downloader' => array_values(array_unique([
+            $baseCallsign,
+            '%/' . $baseCallsign,
+            $baseCallsign . '/%',
+            '<' . $baseCallsign . '>',
+        ])),
+        'clickhouse_regexes' => array_values(array_unique([
+            '^' . preg_quote($baseCallsign, '/') . '$',
+            '^<'. preg_quote($baseCallsign, '/') . '>$',
+            '^[A-Z0-9]+/' . preg_quote($baseCallsign, '/') . '$',
+            '^' . preg_quote($baseCallsign, '/') . '/[A-Z0-9]+$',
+        ])),
+    ];
 }
 
 function sanitizeClickhouseCallsign(string $value, string $fieldName): string
@@ -270,7 +347,31 @@ function normalizeClickhouseRows(array $rows): array
     return $normalized;
 }
 
-function fetchDownloaderData(string $txSign, string $rxSign, string $start, string $end, string $format): array
+function deduplicateSpotRows(array $rows): array
+{
+    $unique = [];
+    foreach ($rows as $row) {
+        $normalized = normalizeSpotRow($row);
+        $key = json_encode($normalized, JSON_UNESCAPED_SLASHES);
+        if ($key === false) {
+            $key = md5(serialize($normalized));
+        }
+        $unique[$key] = $normalized;
+    }
+
+    $deduplicated = array_values($unique);
+    usort(
+        $deduplicated,
+        static fn(array $lhs, array $rhs): int => strcmp(
+            (string)($rhs['time'] ?? ''),
+            (string)($lhs['time'] ?? '')
+        )
+    );
+
+    return $deduplicated;
+}
+
+function fetchDownloaderDataForCandidate(string $txSign, string $rxSign, string $start, string $end, string $format): array
 {
     $query = http_build_query([
         'start' => $start,
@@ -294,12 +395,32 @@ function fetchDownloaderData(string $txSign, string $rxSign, string $start, stri
     return $payload;
 }
 
-function fetchClickhouseData(string $txSign, ?string $rxSign, DateTimeImmutable $start, DateTimeImmutable $end): array
+function fetchDownloaderData(array $txCandidates, string $rxSign, string $start, string $end, string $format): array
 {
+    $mergedRows = [];
+    foreach ($txCandidates as $txCandidate) {
+        $payload = fetchDownloaderDataForCandidate($txCandidate, $rxSign, $start, $end, $format);
+        $mergedRows = array_merge($mergedRows, $payload['data'] ?? []);
+    }
+
+    return [
+        'data' => deduplicateSpotRows($mergedRows),
+        'source_used' => SOURCE_WSPR_LIVE_DOWNLOADER,
+        'fallback_used' => false,
+        'warning' => '',
+    ];
+}
+
+function fetchClickhouseData(array $txRegexes, ?string $rxSign, DateTimeImmutable $start, DateTimeImmutable $end): array
+{
+    $txFilters = array_map(
+        static fn(string $regex): string => sprintf("match(upper(tx_sign), '%s')", $regex),
+        $txRegexes
+    );
     $filters = [
         sprintf("time >= toDateTime('%s', 'UTC')", $start->format('Y-m-d H:i:s')),
         sprintf("time <= toDateTime('%s', 'UTC')", $end->format('Y-m-d H:i:s')),
-        sprintf("match(upper(tx_sign), '%s')", buildCallsignRegex($txSign)),
+        '(' . implode(' OR ', $txFilters) . ')',
     ];
 
     if ($rxSign !== null) {
@@ -360,14 +481,19 @@ if ($format !== 'JSON') {
     $format = 'JSON';
 }
 
-$txSignDownloader = sanitizeDownloaderCallsign($txSignRaw, 'Transmitter callsign');
-$txSignClickhouse = sanitizeClickhouseCallsign($txSignRaw, 'Transmitter callsign');
+$txLookup = buildLookupCallsignCandidates($txSignRaw);
+$txLookupBase = sanitizeClickhouseCallsign($txLookup['base'], 'Transmitter callsign');
+$txSignDownloaderCandidates = array_map(
+    static fn(string $candidate): string => sanitizeDownloaderCallsign($candidate, 'Transmitter callsign'),
+    $txLookup['downloader']
+);
+$txSignClickhouseRegexes = $txLookup['clickhouse_regexes'];
 $rxSignDownloader = sanitizeOptionalDownloaderRxSign($rxSignRaw);
 $rxSignClickhouse = sanitizeOptionalClickhouseRxSign($rxSignRaw);
 
 $cacheFile = buildCachePath(
     $source,
-    $txSignClickhouse,
+    $txLookupBase,
     $start->format('Y-m-d H:i:s'),
     $end->format('Y-m-d H:i:s'),
     $rxSignClickhouse ?? $rxSignDownloader
@@ -381,7 +507,7 @@ if ($cached !== null) {
 
 if ($source === SOURCE_WSPR_LIVE_DOWNLOADER) {
     try {
-        $payload = fetchDownloaderData($txSignDownloader, $rxSignDownloader, $startText, $endText, $format);
+        $payload = fetchDownloaderData($txSignDownloaderCandidates, $rxSignDownloader, $startText, $endText, $format);
         writeCache($cacheFile, $payload);
         echo json_encode($payload, JSON_UNESCAPED_SLASHES);
         exit;
@@ -392,7 +518,7 @@ if ($source === SOURCE_WSPR_LIVE_DOWNLOADER) {
 
 if ($source === SOURCE_WSPR_LIVE_CLICKHOUSE) {
     try {
-        $payload = fetchClickhouseData($txSignClickhouse, $rxSignClickhouse, $start, $end);
+        $payload = fetchClickhouseData($txSignClickhouseRegexes, $rxSignClickhouse, $start, $end);
         writeCache($cacheFile, $payload);
         echo json_encode($payload, JSON_UNESCAPED_SLASHES);
         exit;
@@ -402,13 +528,13 @@ if ($source === SOURCE_WSPR_LIVE_CLICKHOUSE) {
 }
 
 try {
-    $payload = fetchDownloaderData($txSignDownloader, $rxSignDownloader, $startText, $endText, $format);
+    $payload = fetchDownloaderData($txSignDownloaderCandidates, $rxSignDownloader, $startText, $endText, $format);
     writeCache($cacheFile, $payload);
     echo json_encode($payload, JSON_UNESCAPED_SLASHES);
     exit;
 } catch (UpstreamException $downloaderError) {
     try {
-        $payload = fetchClickhouseData($txSignClickhouse, $rxSignClickhouse, $start, $end);
+        $payload = fetchClickhouseData($txSignClickhouseRegexes, $rxSignClickhouse, $start, $end);
         $payload['fallback_used'] = true;
         $payload['warning'] = 'wspr.live downloader failed, using direct wspr.live data.';
         $payload['fallback_reason'] = $downloaderError->getMessage();
