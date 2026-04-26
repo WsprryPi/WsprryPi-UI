@@ -55,6 +55,7 @@ let currentRuntimeConfigStatus = {
     mode: "",
     transmitEnabled: false
 };
+let runtimeStatusRefreshTimer = null;
 let chromeOffsetSyncHandle = null;
 let lastNavbarOffset = null;
 let lastFooterOffset = null;
@@ -1541,6 +1542,7 @@ function normalizeRuntimeStatus(msg) {
         : -1;
 
     return {
+        eventState: typeof msg.state === "string" ? msg.state : "",
         txState:
             typeof msg.tx_state === "string"
                 ? msg.tx_state
@@ -1557,6 +1559,7 @@ function normalizeRuntimeStatus(msg) {
         offsetHz: Number.isFinite(Number(msg.offset_hz))
             ? Number(msg.offset_hz)
             : 0,
+        frequencyIsSkip: msg.frequency_is_skip === true,
         planType,
         frameCount,
         currentFrame,
@@ -1681,6 +1684,17 @@ function applyRuntimeStatus(msg) {
     if (typeof handleRuntimeStatusUpdate === "function") {
         handleRuntimeStatusUpdate(currentRuntimeStatus);
     }
+}
+
+function queueRuntimeStatusRefresh(delayMs = 100) {
+    if (runtimeStatusRefreshTimer !== null) {
+        window.clearTimeout(runtimeStatusRefreshTimer);
+    }
+
+    runtimeStatusRefreshTimer = window.setTimeout(() => {
+        runtimeStatusRefreshTimer = null;
+        getTxState();
+    }, delayMs);
 }
 
 function updateRuntimeControlConfigStatus(mode, transmitEnabled) {
@@ -1828,10 +1842,15 @@ function renderRuntimeFrequencyPane(node, currentMode, status) {
         return;
     }
 
+    const primaryLabelNode = document.getElementById("runtime_frequency_primary_label");
     const secondaryLabelNode = document.getElementById("runtime_frequency_secondary_label");
     const items = buildRuntimeFrequencyItems(currentMode, status);
     node.replaceChildren();
     node.classList.remove("operation-panel__stack--split");
+
+    if (primaryLabelNode) {
+        primaryLabelNode.textContent = runtimeFrequencyPrimaryLabel(currentMode, status);
+    }
 
     if (secondaryLabelNode) {
         secondaryLabelNode.hidden = true;
@@ -1867,15 +1886,43 @@ function renderRuntimeFrequencyPane(node, currentMode, status) {
     });
 }
 
+function runtimeFrequencyPrimaryLabel(currentMode, status) {
+    const normalizedMode = typeof currentMode === "string" ? currentMode : "";
+    if (normalizedMode !== "WSPR") {
+        return "Frequency";
+    }
+
+    const txState = status && typeof status.txState === "string"
+        ? status.txState
+        : "";
+    const eventState = status && typeof status.eventState === "string"
+        ? status.eventState
+        : "";
+
+    if (
+        txState === "transmitting" ||
+        eventState === "starting" ||
+        (status && status.frequencyIsSkip === true && eventState === "skipped")
+    ) {
+        return "Frequency";
+    }
+
+    return "Next Frequency";
+}
+
 function buildRuntimeFrequencyItems(currentMode, status) {
     const normalizedMode = typeof currentMode === "string" ? currentMode : "";
     const fallback = typeof getOperationFrequencyFallback === "function"
         ? getOperationFrequencyFallback(normalizedMode)
         : { frequencyHz: 0, offsetHz: 0 };
+    const isSkipWindow = status && status.frequencyIsSkip === true;
     const frequencyValue = formatDisplayFrequency(
-        status && Number.isFinite(status.frequencyHz) && status.frequencyHz > 0
+        isSkipWindow
+            ? 0
+            : (status && Number.isFinite(status.frequencyHz) && status.frequencyHz > 0
             ? status.frequencyHz
-            : fallback.frequencyHz
+            : fallback.frequencyHz),
+        { skipWindow: isSkipWindow }
     );
     const offsetValue = formatDisplayFrequency(
         status && Number.isFinite(status.offsetHz) && status.offsetHz > 0
@@ -1905,6 +1952,10 @@ function buildRuntimeFrequencyItems(currentMode, status) {
 }
 
 function formatDisplayFrequency(valueHz, options = {}) {
+    if (options.skipWindow === true) {
+        return "(Skip)";
+    }
+
     if (!Number.isFinite(valueHz) || valueHz <= 0) {
         return "Not available";
     }
@@ -2210,6 +2261,7 @@ function connectWebSocket(url, reconnectDelay = 5000) {
                 );
             } else if (msg.state === "finished") {
                 setConnectionState("connected");
+                queueRuntimeStatusRefresh();
                 debugConsole(
                     "debug",
                     "Transmit finished at:",
@@ -2221,6 +2273,7 @@ function connectWebSocket(url, reconnectDelay = 5000) {
                 msg.state === "stopped"
             ) {
                 setConnectionState("connected");
+                queueRuntimeStatusRefresh();
                 debugConsole(
                     "debug",
                     "Received transmit event:",

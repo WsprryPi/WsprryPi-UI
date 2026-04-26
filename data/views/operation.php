@@ -66,7 +66,7 @@ require __DIR__ . '/../card_header.php';
 
                     <article class="operation-panel">
                         <div class="operation-panel__label operation-panel__label--split">
-                            <span>Frequency</span>
+                            <span id="runtime_frequency_primary_label">Frequency</span>
                             <span id="runtime_frequency_secondary_label" hidden>Offset</span>
                         </div>
                         <div class="operation-panel__stack" id="runtime_frequency_value" aria-live="polite" aria-atomic="true">
