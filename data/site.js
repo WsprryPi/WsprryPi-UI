@@ -34,11 +34,13 @@ function buildWebSocketUrl(path) {
 }
 
 function buildDirectRestFallbackUrl(path) {
-    return `http://${window.location.hostname}:31415${path}`;
+    const protocol = window.location.protocol === "https:" ? "https:" : "http:";
+    return `${protocol}//${window.location.hostname}:31415${path}`;
 }
 
 function buildDirectWebSocketFallbackUrl(path) {
-    return `ws://${window.location.hostname}:31416${path}`;
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    return `${protocol}//${window.location.hostname}:31416${path}`;
 }
 
 function createEndpointDefinition(name, proxyPath, directUrl) {
@@ -97,7 +99,6 @@ const WEBSOCKET_ENDPOINT = createEndpointDefinition(
 const SETTINGS_URL = SETTINGS_ENDPOINT.proxyUrl;
 const VERSION_URL = VERSION_ENDPOINT.proxyUrl;
 const REPAIR_URL = REPAIR_ENDPOINT.proxyUrl;
-const WEBSOCKET_URL = WEBSOCKET_ENDPOINT.proxyUrl;
 const LOG_STREAM_URL = LOG_STREAM_PATH;
 const WSPRNET_URL =
     "https://www.wsprnet.org/olddb?mode=html&band=all&limit=50&findreporter=&sort=date&findcall=";
@@ -106,14 +107,63 @@ const TAB_STATE_STORAGE_PREFIX = "wsprrypi.activeTab";
 function warnRestFallback(endpoint, reason) {
     debugConsole(
         "warn",
-        `Proxy request for ${endpoint.name} failed (${reason}); falling back to direct port ${endpoint.directUrl}`
+        `Proxy request for ${endpoint.name} failed (${reason}).`
     );
 }
 
 function warnWebSocketFallback(endpoint, reason) {
     debugConsole(
         "warn",
-        `Proxy websocket for ${endpoint.name} failed (${reason}); falling back to direct port ${endpoint.directUrl}`
+        `Proxy websocket for ${endpoint.name} failed (${reason}).`
+    );
+}
+
+function warnRestFallbackAttempt(endpoint) {
+    debugConsole(
+        "warn",
+        `Attempting direct fallback for ${endpoint.name} via ${endpoint.directUrl}`
+    );
+}
+
+function warnWebSocketFallbackAttempt(endpoint) {
+    debugConsole(
+        "warn",
+        `Attempting direct websocket fallback for ${endpoint.name} via ${endpoint.directUrl}`
+    );
+}
+
+function directFallbackUsesTls(endpoint) {
+    return typeof endpoint?.directUrl === "string" &&
+        (endpoint.directUrl.startsWith("https://") || endpoint.directUrl.startsWith("wss://"));
+}
+
+function warnRestFallbackFailure(endpoint, reason) {
+    if (directFallbackUsesTls(endpoint)) {
+        debugConsole(
+            "warn",
+            `Direct TLS fallback failed; backend does not support TLS. Proxy required. (${endpoint.name}: ${reason})`
+        );
+        return;
+    }
+
+    debugConsole(
+        "warn",
+        `Direct fallback for ${endpoint.name} failed (${reason}).`
+    );
+}
+
+function warnWebSocketFallbackFailure(endpoint, reason) {
+    if (directFallbackUsesTls(endpoint)) {
+        debugConsole(
+            "warn",
+            `Direct TLS fallback failed; backend does not support TLS. Proxy required. (${endpoint.name}: ${reason})`
+        );
+        return;
+    }
+
+    debugConsole(
+        "warn",
+        `Direct websocket fallback for ${endpoint.name} failed (${reason}).`
     );
 }
 
@@ -162,10 +212,15 @@ function ajaxWithEndpointFallback(endpoint, options = {}) {
                         ? `HTTP ${jqXHR.status}`
                         : (textStatus || "network error");
                     warnRestFallback(endpoint, reason);
+                    warnRestFallbackAttempt(endpoint);
                     startRequest(fallbackOptions, true);
                     return;
                 }
 
+                const fallbackReason = jqXHR && typeof jqXHR.status === "number" && jqXHR.status > 0
+                    ? `HTTP ${jqXHR.status}`
+                    : (textStatus || "network error");
+                warnRestFallbackFailure(endpoint, fallbackReason);
                 rejectDeferred(this, [jqXHR, textStatus, errorThrown]);
             });
     }
@@ -212,15 +267,30 @@ async function fetchWithEndpointFallback(endpoint, init = {}) {
         }
 
         warnRestFallback(endpoint, `HTTP ${response.status}`);
+        warnRestFallbackAttempt(endpoint);
     } catch (error) {
         const reason =
             error && typeof error.message === "string" && error.message.trim() !== ""
                 ? error.message.trim()
                 : "network error";
         warnRestFallback(endpoint, reason);
+        warnRestFallbackAttempt(endpoint);
     }
 
-    return fetch(endpoint.directUrl, fallbackInit);
+    try {
+        const fallbackResponse = await fetch(endpoint.directUrl, fallbackInit);
+        if (!fallbackResponse.ok) {
+            warnRestFallbackFailure(endpoint, `HTTP ${fallbackResponse.status}`);
+        }
+        return fallbackResponse;
+    } catch (error) {
+        const reason =
+            error && typeof error.message === "string" && error.message.trim() !== ""
+                ? error.message.trim()
+                : "network error";
+        warnRestFallbackFailure(endpoint, reason);
+        throw error;
+    }
 }
 
 // Allow reloading data after communication interruption
@@ -2426,7 +2496,58 @@ function connectWebSocket(endpoint, reconnectDelay = 5000, attemptIndex = 0) {
     const url = usingFallback ? endpointConfig.directUrl : endpointConfig.proxyUrl;
     let opened = false;
     let fallbackStarted = false;
-    let fallbackWarningLogged = false;
+
+    function getWebSocketFailureReason(errorLike, defaultReason) {
+        if (errorLike && typeof errorLike.message === "string" && errorLike.message.trim() !== "") {
+            return errorLike.message.trim();
+        }
+
+        if (errorLike && typeof errorLike.code === "number") {
+            return `close code ${errorLike.code}`;
+        }
+
+        return defaultReason;
+    }
+
+    function beginWebSocketFallback(reason) {
+        if (usingFallback || fallbackStarted) {
+            return false;
+        }
+
+        fallbackStarted = true;
+        warnWebSocketFallback(endpointConfig, reason);
+        warnWebSocketFallbackAttempt(endpointConfig);
+        ws = null;
+        connectWebSocket(endpointConfig, reconnectDelay, 1);
+        return true;
+    }
+
+    function handleFallbackFailure(reason, errorLike) {
+        warnWebSocketFallbackFailure(endpointConfig, reason);
+
+        if (errorLike) {
+            debugConsole("error", "WebSocket ❌ error", errorLike);
+        } else {
+            debugConsole("error", `WebSocket ❌ ${reason}`);
+        }
+
+        communicationInterrupted = true;
+        reloadAfterReconnectPending = true;
+        websocketCurrentlyConnected = false;
+        setConnectionState("disconnected");
+        syncConnectionAlert();
+    }
+
+    function scheduleReconnectFromProxy() {
+        if (systemPaused || websocketReconnectTimer !== null) {
+            return;
+        }
+
+        websocketReconnectTimer = setTimeout(() => {
+            websocketReconnectTimer = null;
+            connectWebSocket(endpointConfig, reconnectDelay, 0);
+        }, reconnectDelay);
+    }
 
     // Notify the UI we’re attempting to connect
     setConnectionState("connecting");
@@ -2437,15 +2558,15 @@ function connectWebSocket(endpoint, reconnectDelay = 5000, attemptIndex = 0) {
         ws = new WebSocket(url);
     } catch (error) {
         if (!usingFallback) {
-            const reason =
-                error && typeof error.message === "string" && error.message.trim() !== ""
-                    ? error.message.trim()
-                    : "constructor error";
-            warnWebSocketFallback(endpointConfig, reason);
-            return connectWebSocket(endpointConfig, reconnectDelay, 1);
+            const reason = getWebSocketFailureReason(error, "constructor error");
+            beginWebSocketFallback(reason);
+            return ws;
         }
 
-        throw error;
+        handleFallbackFailure(getWebSocketFailureReason(error, "constructor error"), error);
+        ws = null;
+        scheduleReconnectFromProxy();
+        return ws;
     }
     // On open: update UI and log
     ws.addEventListener("open", () => {
@@ -2584,11 +2705,14 @@ function connectWebSocket(endpoint, reconnectDelay = 5000, attemptIndex = 0) {
 
     // On error: Log and treat as a disconnection
     ws.addEventListener("error", (err) => {
-        if (!opened && !usingFallback) {
-            if (!fallbackWarningLogged) {
-                fallbackWarningLogged = true;
-                warnWebSocketFallback(endpointConfig, "network error");
-            }
+        if (!opened && beginWebSocketFallback(getWebSocketFailureReason(err, "network error"))) {
+            return;
+        }
+
+        if (!opened && usingFallback) {
+            handleFallbackFailure(getWebSocketFailureReason(err, "network error"), err);
+            ws = null;
+            scheduleReconnectFromProxy();
             return;
         }
 
@@ -2602,17 +2726,16 @@ function connectWebSocket(endpoint, reconnectDelay = 5000, attemptIndex = 0) {
 
     // On close: Schedule a reconnect
     ws.addEventListener("close", (ev) => {
-        if (!opened && !usingFallback && !fallbackStarted) {
-            fallbackStarted = true;
+        const reason = getWebSocketFailureReason(ev, "close before open");
+
+        if (!opened && beginWebSocketFallback(reason)) {
+            return;
+        }
+
+        if (!opened && usingFallback) {
+            handleFallbackFailure(reason);
             ws = null;
-            const reason = ev && typeof ev.code === "number"
-                ? `close code ${ev.code}`
-                : "close before open";
-            if (!fallbackWarningLogged) {
-                fallbackWarningLogged = true;
-                warnWebSocketFallback(endpointConfig, reason);
-            }
-            connectWebSocket(endpointConfig, reconnectDelay, 1);
+            scheduleReconnectFromProxy();
             return;
         }
 
@@ -2626,12 +2749,7 @@ function connectWebSocket(endpoint, reconnectDelay = 5000, attemptIndex = 0) {
         setConnectionState("disconnected");
         syncConnectionAlert();
 
-        if (!systemPaused) {
-            websocketReconnectTimer = setTimeout(() => {
-                websocketReconnectTimer = null;
-                connectWebSocket(endpointConfig, reconnectDelay, 0);
-            }, reconnectDelay);
-        }
+        scheduleReconnectFromProxy();
     });
 
     // Return the socket in case the caller wants to send or inspect it
