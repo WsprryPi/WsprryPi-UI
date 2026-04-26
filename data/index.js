@@ -640,7 +640,7 @@ function handleStopCommandResponse(message) {
         response.transmit_disabled === true || response.stop_performed === true;
     clearStopRequestTimeout();
 
-    if (pendingModeChange && pendingModeChange.prerequisite === "stop") {
+    if (pendingModeChange && pendingModeChange.awaitingRuntimeIdle === false) {
         if (stopSucceeded) {
             pendingModeChange.awaitingRuntimeIdle = true;
         } else {
@@ -711,7 +711,79 @@ function clearPendingModeChange() {
     }
 }
 
-function applyCommittedConfigMode(mode) {
+function persistDisabledModeChange(targetMode, previousMode = currentConfigModeSelection) {
+    const normalizedTargetMode = ["WSPR", "QRSS", "FSKCW", "DFCW"].includes(targetMode)
+        ? targetMode
+        : previousMode;
+
+    if (navigator.onLine === false) {
+        const message = runtimeConnectionUnavailableMessage();
+        showBackendStatus(message, "warning", "runtime");
+        revertConfigModeSelection();
+        setTransmitFromBackend(true);
+        clearPendingModeChange();
+        return null;
+    }
+
+    setTransmitFromBackend(false);
+    updateRuntimeControlStatusFromForm(previousMode);
+
+    return $.ajax({
+        url: SETTINGS_URL,
+        type: "PATCH",
+        contentType: "application/merge-patch+json",
+        timeout: CONFIG_REQUEST_TIMEOUT_MS,
+        data: JSON.stringify({
+            Operation: {
+                "Mode": normalizedTargetMode,
+                "Transmit": false,
+            },
+        }),
+    })
+        .done(function () {
+            lastSaveTimestamp = Date.now();
+            pendingPersistedMode = "";
+            configAutosaveNeedsRuntimeRefresh = true;
+            clearBackendStatus("runtime");
+            applyCommittedConfigMode(normalizedTargetMode, { skipAutosave: true });
+            setTransmitFromBackend(false);
+            updateRuntimeControlStatusFromForm(normalizedTargetMode);
+            if (typeof syncConfigAutosaveBaseline === "function") {
+                syncConfigAutosaveBaseline();
+            }
+            if (typeof getTxState === "function") {
+                getTxState();
+            }
+            clearPendingModeChange();
+        })
+        .fail(function (xhr, textStatus) {
+            let message = "Failed to disable transmissions and change mode.";
+
+            if (isTransientNetworkFailure(xhr, textStatus)) {
+                message = transientRuntimeActionMessage(textStatus);
+            } else if (xhr.responseJSON && typeof xhr.responseJSON === "object") {
+                message = buildConfigErrorMessage(xhr.responseJSON, message);
+            } else if (typeof xhr.responseText === "string" && xhr.responseText.trim()) {
+                try {
+                    const parsedError = JSON.parse(xhr.responseText);
+                    if (parsedError && typeof parsedError === "object") {
+                        message = buildConfigErrorMessage(parsedError, message);
+                    }
+                } catch (error) {
+                    console.warn("Unable to parse guarded mode-change error response:", error);
+                }
+            }
+
+            revertConfigModeSelection();
+            showBackendStatus(message, "danger", "runtime");
+            if (typeof getTxState === "function") {
+                getTxState();
+            }
+            clearPendingModeChange();
+        });
+}
+
+function applyCommittedConfigMode(mode, options = {}) {
     suppressModeChangeGuard = true;
     applyConfigModeSelection(mode);
     suppressModeChangeGuard = false;
@@ -720,9 +792,18 @@ function applyCommittedConfigMode(mode) {
         renderRuntimeStatus(currentRuntimeStatus);
     }
     currentConfigModeSelection = selectedConfigMode();
+    validatePage();
+    if (options.skipAutosave === true) {
+        pendingPersistedMode = "";
+        configAutosaveNeedsRuntimeRefresh = false;
+        if (typeof suspendConfigAutosave === "function") {
+            suspendConfigAutosave(false);
+        }
+        return;
+    }
+
     configAutosaveNeedsRuntimeRefresh = true;
     pendingPersistedMode = currentConfigModeSelection;
-    validatePage();
     if (typeof suspendConfigAutosave === "function") {
         suspendConfigAutosave(false);
     }
@@ -777,6 +858,16 @@ function finalizePendingModeChange(targetModeOverride = null) {
         return;
     }
 
+    if (pendingModeChange && pendingModeChange.prerequisite === "disable") {
+        persistDisabledModeChange(
+            targetMode,
+            typeof pendingModeChange.previousMode === "string"
+                ? pendingModeChange.previousMode
+                : currentConfigModeSelection
+        );
+        return;
+    }
+
     applyCommittedConfigMode(targetMode);
     clearPendingModeChange();
 }
@@ -784,7 +875,6 @@ function finalizePendingModeChange(targetModeOverride = null) {
 function handleRuntimeStatusUpdate(status) {
     if (
         pendingModeChange &&
-        pendingModeChange.prerequisite === "stop" &&
         pendingModeChange.awaitingRuntimeIdle === true &&
         (!status || status.txState !== "transmitting")
     ) {
@@ -824,13 +914,14 @@ function requestConfigModeChange(targetMode) {
         revertConfigModeSelection();
         pendingModeChange = {
             targetMode: normalizedTargetMode,
-            prerequisite: "stop",
+            prerequisite: "disable",
+            previousMode,
             awaitingRuntimeIdle: false,
         };
         showModeChangeGuardModal({
-            title: "Stop transmission to change mode",
-            message: "A transmission is in progress. Stop it before switching modes.",
-            confirmLabel: "Stop transmission",
+            title: "Disable transmissions to change mode",
+            message: "Disable transmissions before switching modes.",
+            confirmLabel: "Disable & switch",
             confirmClass: "btn btn-danger",
             onConfirm() {
                 modeChangeGuardBusy = true;
@@ -838,7 +929,10 @@ function requestConfigModeChange(targetMode) {
                 if (modal) {
                     modal.hide();
                 }
+                setTransmitFromBackend(false);
+                updateRuntimeControlStatusFromForm(previousMode);
                 if (!stopTransmission({ persistTransmit: false })) {
+                    setTransmitFromBackend(true);
                     clearPendingModeChange();
                 }
             },
@@ -853,6 +947,7 @@ function requestConfigModeChange(targetMode) {
         revertConfigModeSelection();
         pendingModeChange = {
             targetMode: normalizedTargetMode,
+            previousMode,
             prerequisite: "disable",
         };
         showModeChangeGuardModal({
