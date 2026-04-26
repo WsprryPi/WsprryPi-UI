@@ -1561,6 +1561,9 @@ function normalizeRuntimeStatus(msg) {
             : 0,
         frequencyIsSkip: msg.frequency_is_skip === true,
         planType,
+        powerDbm: Number.isFinite(Number(msg.power_dbm))
+            ? Number(msg.power_dbm)
+            : 0,
         frameCount,
         currentFrame,
         callsignRaw: typeof msg.callsign_raw === "string" ? msg.callsign_raw : "",
@@ -1809,6 +1812,9 @@ function renderRuntimeControlStatus() {
         .join(" ");
     if (frameIdentity) {
         summary += ` ${frameIdentity}`;
+    }
+    if (Number.isFinite(currentRuntimeStatus.powerDbm) && currentRuntimeStatus.powerDbm > 0) {
+        summary += ` ${currentRuntimeStatus.powerDbm}dBm`;
     }
 
     const overallIdentity = [
