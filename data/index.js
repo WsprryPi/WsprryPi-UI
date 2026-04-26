@@ -1185,9 +1185,8 @@ function updateBackendPlatformSupportUi() {
 }
 
 function syncCalibrationControls() {
-    const backend = selectedTransmitBackend();
     const isWsprMode = isWsprConfigMode();
-    const useNtp = isWsprMode && backend === "gpio" && $("#use_ntp").is(":checked");
+    const useNtp = isWsprMode && $("#use_ntp").is(":checked");
     const $ppm = $("#ppm");
     const $ppmCw = $("#ppm_cw");
     const $ntpControl = $("#ntp_calibration_control");
