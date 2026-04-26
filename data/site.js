@@ -113,6 +113,42 @@ $(window).on("load", function () {
     loadPage();
 });
 
+function closeFooterMetaPanel() {
+    const footerMeta = document.querySelector("footer .footer-meta");
+    if (!footerMeta) {
+        return;
+    }
+
+    footerMeta.open = false;
+}
+
+function initFooterMetaPanelInteractions() {
+    const footerMeta = document.querySelector("footer .footer-meta");
+    if (!footerMeta) {
+        return;
+    }
+
+    document.addEventListener("click", function (event) {
+        if (!footerMeta.open) {
+            return;
+        }
+
+        if (event.target instanceof Node && footerMeta.contains(event.target)) {
+            return;
+        }
+
+        closeFooterMetaPanel();
+    });
+
+    document.addEventListener("keydown", function (event) {
+        if (event.key !== "Escape" || !footerMeta.open) {
+            return;
+        }
+
+        closeFooterMetaPanel();
+    });
+}
+
 const configSchema = {
     Operation: {
         required: false,
@@ -504,6 +540,8 @@ function pageLoaded() {
 }
 
 function bindActions() {
+    initFooterMetaPanelInteractions();
+
     // Tooltips only hover (no focus), so clicking into inputs still works
     $('[data-bs-toggle="tooltip"]').tooltip({
         trigger: "hover",

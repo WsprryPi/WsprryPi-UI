@@ -32,7 +32,7 @@
 
         // Connected state shows a manual reconnect action; otherwise start the stream.
         const isConnected = (state === "connected");
-        btn.textContent = isConnected ? "Reconnect stream" : "Start stream";
+        btn.textContent = isConnected ? "Refresh stream" : "Start stream";
 
         // Green when disconnected, blue when connected.
         btn.classList.remove("btn-outline-success", "btn-outline-primary");
