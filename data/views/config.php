@@ -250,7 +250,9 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                             </div>
                                         </div>
 
-                                        <div class="config-wspr-top-row__item config-wspr-top-row__field config-wspr-top-row__field--toggle">
+                                        <div
+                                            id="ntp_calibration_control"
+                                            class="config-wspr-top-row__item config-wspr-top-row__field config-wspr-top-row__field--toggle">
                                             <label class="form-label" for="use_ntp">
                                                 NTP calibration
                                             </label>

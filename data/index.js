@@ -672,6 +672,10 @@ function selectedConfigMode() {
     return $('input[name="qrss_type"]:checked').val() || "QRSS";
 }
 
+function isWsprConfigMode() {
+    return selectedConfigMode() === "WSPR";
+}
+
 function bindModeChangeGuardModal() {
     const modalEl = document.getElementById("modeChangeGuardModal");
     if (!modalEl) {
@@ -1182,22 +1186,45 @@ function updateBackendPlatformSupportUi() {
 
 function syncCalibrationControls() {
     const backend = selectedTransmitBackend();
-    const useNtp = backend === "gpio" && $("#use_ntp").is(":checked");
+    const isWsprMode = isWsprConfigMode();
+    const useNtp = isWsprMode && backend === "gpio" && $("#use_ntp").is(":checked");
     const $ppm = $("#ppm");
     const $ppmCw = $("#ppm_cw");
+    const $ntpControl = $("#ntp_calibration_control");
 
-    $ppm.prop("disabled", useNtp);
-    $ppmCw.prop("disabled", useNtp);
+    $ntpControl.prop("hidden", !isWsprMode);
+    $ntpControl.attr("aria-hidden", isWsprMode ? "false" : "true");
 
-    if (useNtp) {
-        clearFieldValidationState($ppm.get(0));
-        clearFieldValidationState($ppmCw.get(0));
-        $ppm.prop("required", false);
-        $ppmCw.prop("required", false);
+    $ppm.prop("disabled", !isWsprMode || useNtp);
+    $ppmCw.prop("disabled", isWsprMode);
+
+    $ppm.prop("required", isWsprMode && !useNtp);
+    $ppmCw.prop("required", !isWsprMode);
+
+    [$ppm.get(0), $ppmCw.get(0)].forEach((field) => {
+        if (field && field.disabled) {
+            field.setCustomValidity("");
+            clearFieldValidationState(field);
+        }
+    });
+}
+
+function syncConfigModeSections() {
+    const selected = $('input[name="mode_toggle"]:checked').val();
+    if (selected === "QRSS") {
+        $('#wspr_config').prop("hidden", true);
+        $('#qrss_config').prop("hidden", false);
+        if (!$('input[name="qrss_type"]:checked').length) {
+            $('input[name="qrss_type"][value="QRSS"]').prop("checked", true);
+        }
+        syncSelectedCwModeControls();
     } else {
-        $ppm.prop("required", true);
-        $ppmCw.prop("required", true);
+        $('#qrss_config').prop("hidden", true);
+        $('#wspr_config').prop("hidden", false);
     }
+
+    syncCalibrationControls();
+    updateRuntimeControlStatusFromForm(null);
 }
 
 function syncPpmFields(source = "wspr") {
@@ -1950,23 +1977,6 @@ function clearFieldValidationState(field) {
 
     field.classList.remove("is-valid", "is-invalid");
     field.removeAttribute("aria-invalid");
-}
-
-function syncConfigModeSections() {
-    const selected = $('input[name="mode_toggle"]:checked').val();
-    if (selected === "QRSS") {
-        $('#wspr_config').prop("hidden", true);
-        $('#qrss_config').prop("hidden", false);
-        if (!$('input[name="qrss_type"]:checked').length) {
-            $('input[name="qrss_type"][value="QRSS"]').prop("checked", true);
-        }
-        syncSelectedCwModeControls();
-    } else {
-        $('#qrss_config').prop("hidden", true);
-        $('#wspr_config').prop("hidden", false);
-    }
-
-    updateRuntimeControlStatusFromForm(null);
 }
 
 function applyConfigModeSelection(mode) {
