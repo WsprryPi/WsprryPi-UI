@@ -506,8 +506,7 @@ function requestTransmitEnabledChange(enabled, previousEnabled, options = {}) {
 
     $transmit.prop("disabled", true);
 
-    return $.ajax({
-        url: SETTINGS_URL,
+    return ajaxWithEndpointFallback(SETTINGS_ENDPOINT, {
         type: "PATCH",
         contentType: "application/merge-patch+json",
         timeout: CONFIG_REQUEST_TIMEOUT_MS,
@@ -728,8 +727,7 @@ function persistDisabledModeChange(targetMode, previousMode = currentConfigModeS
     setTransmitFromBackend(false);
     updateRuntimeControlStatusFromForm(previousMode);
 
-    return $.ajax({
-        url: SETTINGS_URL,
+    return ajaxWithEndpointFallback(SETTINGS_ENDPOINT, {
         type: "PATCH",
         contentType: "application/merge-patch+json",
         timeout: CONFIG_REQUEST_TIMEOUT_MS,
@@ -2671,8 +2669,7 @@ function flushAutosave() {
     configAutosavePendingAfterFlight = false;
     setConfigSaveStatus("saving", "Saving...", "");
 
-    $.ajax({
-        url: SETTINGS_URL,
+    ajaxWithEndpointFallback(SETTINGS_ENDPOINT, {
         type: "PATCH",
         contentType: "application/merge-patch+json",
         timeout: CONFIG_REQUEST_TIMEOUT_MS,

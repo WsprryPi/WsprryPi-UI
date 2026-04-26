@@ -144,7 +144,7 @@ document.addEventListener("DOMContentLoaded", () => {
      */
     async function refreshConfig() { 
         try {
-            const response = await fetch(SETTINGS_URL, {
+            const response = await fetchWithEndpointFallback(SETTINGS_ENDPOINT, {
                 method: "GET",
                 cache: "no-store"
             });
@@ -198,7 +198,7 @@ document.addEventListener("DOMContentLoaded", () => {
         setButtonsDisabled(true);
 
         try {
-            const response = await fetch(REPAIR_URL, {
+            const response = await fetchWithEndpointFallback(REPAIR_ENDPOINT, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json"

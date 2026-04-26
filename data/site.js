@@ -2,44 +2,226 @@
 CONSOLE_LOG_LEVEL = "log";
 
 // Service Components
-const PORT = window.location.port ? `:${window.location.port}` : "";
-const PROTO = window.location.protocol;
-const WS_PROTO = PROTO === "https:" ? "wss:" : "ws:";
-const HOSTNAME = window.location.hostname;
-const HTTP_ORIGIN = `${PROTO}//${HOSTNAME}${PORT}`;
-const WS_ORIGIN = `${WS_PROTO}//${HOSTNAME}${PORT}`;
 const PATHS = window.WSPRRYPI_PATHS || {};
-const APP_BASE_PATH = typeof PATHS.basePath === "string" ? PATHS.basePath : "";
-const SETTINGS_PATH =
-    typeof PATHS.configPath === "string"
-        ? PATHS.configPath
-        : `${APP_BASE_PATH}/config`;
-const VERSION_PATH =
-    typeof PATHS.versionPath === "string"
-        ? PATHS.versionPath
-        : `${APP_BASE_PATH}/version`;
-const REPAIR_PATH =
-    typeof PATHS.repairPath === "string"
-        ? PATHS.repairPath
-        : `${APP_BASE_PATH}/config/repair`;
-const WEBSOCKET_PATH =
-    typeof PATHS.socketPath === "string"
-        ? PATHS.socketPath
-        : `${APP_BASE_PATH}/socket`;
-const LOG_STREAM_PATH =
-    typeof PATHS.logStreamPath === "string"
-        ? PATHS.logStreamPath
-        : `${APP_BASE_PATH}/log_stream.php`;
+
+function normalizeAppBasePath(path) {
+    const raw = typeof path === "string" ? path.trim() : "";
+    if (!raw || raw === "/") {
+        return "";
+    }
+
+    const withLeadingSlash = raw.startsWith("/") ? raw : `/${raw}`;
+    return withLeadingSlash.replace(/\/+$/, "");
+}
+
+function normalizeSameOriginPath(path, fallback) {
+    const candidate = typeof path === "string" && path.trim() !== ""
+        ? path.trim()
+        : fallback;
+
+    try {
+        const url = new URL(candidate, window.location.origin);
+        return `${url.pathname}${url.search}${url.hash}`;
+    } catch {
+        return fallback;
+    }
+}
+
+function buildWebSocketUrl(path) {
+    const url = new URL(path, window.location.href);
+    url.protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    return url.toString();
+}
+
+function buildDirectRestFallbackUrl(path) {
+    return `http://${window.location.hostname}:31415${path}`;
+}
+
+function buildDirectWebSocketFallbackUrl(path) {
+    return `ws://${window.location.hostname}:31416${path}`;
+}
+
+function createEndpointDefinition(name, proxyPath, directUrl) {
+    return Object.freeze({
+        name,
+        proxyPath,
+        proxyUrl: proxyPath,
+        directUrl,
+    });
+}
+
+const APP_BASE_PATH = normalizeAppBasePath(PATHS.basePath);
+const SETTINGS_PATH = normalizeSameOriginPath(
+    PATHS.configPath,
+    `${APP_BASE_PATH}/config`
+);
+const VERSION_PATH = normalizeSameOriginPath(
+    PATHS.versionPath,
+    `${APP_BASE_PATH}/version`
+);
+const REPAIR_PATH = normalizeSameOriginPath(
+    PATHS.repairPath,
+    `${APP_BASE_PATH}/config/repair`
+);
+const WEBSOCKET_PATH = normalizeSameOriginPath(
+    PATHS.socketPath,
+    `${APP_BASE_PATH}/socket`
+);
+const LOG_STREAM_PATH = normalizeSameOriginPath(
+    PATHS.logStreamPath,
+    `${APP_BASE_PATH}/log_stream.php`
+);
+
+const SETTINGS_ENDPOINT = createEndpointDefinition(
+    "config",
+    SETTINGS_PATH,
+    buildDirectRestFallbackUrl("/config")
+);
+const VERSION_ENDPOINT = createEndpointDefinition(
+    "version",
+    VERSION_PATH,
+    buildDirectRestFallbackUrl("/version")
+);
+const REPAIR_ENDPOINT = createEndpointDefinition(
+    "config/repair",
+    REPAIR_PATH,
+    buildDirectRestFallbackUrl("/config/repair")
+);
+const WEBSOCKET_ENDPOINT = createEndpointDefinition(
+    "socket",
+    buildWebSocketUrl(WEBSOCKET_PATH),
+    buildDirectWebSocketFallbackUrl("/socket")
+);
 
 // Service URLs
-const SETTINGS_URL = `${HTTP_ORIGIN}${SETTINGS_PATH}`;
-const VERSION_URL = `${HTTP_ORIGIN}${VERSION_PATH}`;
-const REPAIR_URL = `${HTTP_ORIGIN}${REPAIR_PATH}`;
-const WEBSOCKET_URL = `${WS_ORIGIN}${WEBSOCKET_PATH}`;
-const LOG_STREAM_URL = `${HTTP_ORIGIN}${LOG_STREAM_PATH}`;
+const SETTINGS_URL = SETTINGS_ENDPOINT.proxyUrl;
+const VERSION_URL = VERSION_ENDPOINT.proxyUrl;
+const REPAIR_URL = REPAIR_ENDPOINT.proxyUrl;
+const WEBSOCKET_URL = WEBSOCKET_ENDPOINT.proxyUrl;
+const LOG_STREAM_URL = LOG_STREAM_PATH;
 const WSPRNET_URL =
     "https://www.wsprnet.org/olddb?mode=html&band=all&limit=50&findreporter=&sort=date&findcall=";
 const TAB_STATE_STORAGE_PREFIX = "wsprrypi.activeTab";
+
+function warnRestFallback(endpoint, reason) {
+    debugConsole(
+        "warn",
+        `Proxy request for ${endpoint.name} failed (${reason}); falling back to direct port ${endpoint.directUrl}`
+    );
+}
+
+function warnWebSocketFallback(endpoint, reason) {
+    debugConsole(
+        "warn",
+        `Proxy websocket for ${endpoint.name} failed (${reason}); falling back to direct port ${endpoint.directUrl}`
+    );
+}
+
+function cloneAjaxOptions(options) {
+    return Object.assign({}, options || {});
+}
+
+function ajaxWithEndpointFallback(endpoint, options = {}) {
+    const primaryOptions = cloneAjaxOptions(options);
+    const fallbackOptions = cloneAjaxOptions(options);
+    const deferred = $.Deferred();
+    let activeRequest = null;
+    let settled = false;
+
+    function resolveDeferred(context, args) {
+        if (settled) {
+            return;
+        }
+
+        settled = true;
+        deferred.resolveWith(context, args);
+    }
+
+    function rejectDeferred(context, args) {
+        if (settled) {
+            return;
+        }
+
+        settled = true;
+        deferred.rejectWith(context, args);
+    }
+
+    function startRequest(requestOptions, useFallback) {
+        activeRequest = $.ajax(requestOptions)
+            .done(function (...args) {
+                resolveDeferred(this, args);
+            })
+            .fail(function (jqXHR, textStatus, errorThrown) {
+                if (textStatus === "abort") {
+                    rejectDeferred(this, [jqXHR, textStatus, errorThrown]);
+                    return;
+                }
+
+                if (!useFallback) {
+                    const reason = jqXHR && typeof jqXHR.status === "number" && jqXHR.status > 0
+                        ? `HTTP ${jqXHR.status}`
+                        : (textStatus || "network error");
+                    warnRestFallback(endpoint, reason);
+                    startRequest(fallbackOptions, true);
+                    return;
+                }
+
+                rejectDeferred(this, [jqXHR, textStatus, errorThrown]);
+            });
+    }
+
+    primaryOptions.url = endpoint.proxyUrl;
+    fallbackOptions.url = endpoint.directUrl;
+    startRequest(primaryOptions, false);
+
+    const promise = deferred.promise();
+    promise.abort = function (statusText) {
+        if (activeRequest && typeof activeRequest.abort === "function") {
+            activeRequest.abort(statusText);
+        }
+
+        return promise;
+    };
+
+    return promise;
+}
+
+function getJsonWithEndpointFallback(endpoint) {
+    return ajaxWithEndpointFallback(endpoint, {
+        type: "GET",
+        dataType: "json",
+    });
+}
+
+function cloneFetchInit(init = {}) {
+    const cloned = Object.assign({}, init);
+    if (init.headers !== undefined) {
+        cloned.headers = init.headers;
+    }
+    return cloned;
+}
+
+async function fetchWithEndpointFallback(endpoint, init = {}) {
+    const primaryInit = cloneFetchInit(init);
+    const fallbackInit = cloneFetchInit(init);
+
+    try {
+        const response = await fetch(endpoint.proxyUrl, primaryInit);
+        if (response.ok) {
+            return response;
+        }
+
+        warnRestFallback(endpoint, `HTTP ${response.status}`);
+    } catch (error) {
+        const reason =
+            error && typeof error.message === "string" && error.message.trim() !== ""
+                ? error.message.trim()
+                : "network error";
+        warnRestFallback(endpoint, reason);
+    }
+
+    return fetch(endpoint.directUrl, fallbackInit);
+}
 
 // Allow reloading data after communication interruption
 let communicationInterrupted = false;
@@ -255,7 +437,7 @@ function loadPage() {
     scheduleChromeOffsetSync();
     hideConnectionAlert();
     setConnectionState("disconnected");
-    connectWebSocket(WEBSOCKET_URL, WS_RECONNECT);
+    connectWebSocket(WEBSOCKET_ENDPOINT, WS_RECONNECT);
     updateClocks();
     if (typeof initLogStream === "function") {
         initLogStream();
@@ -1085,7 +1267,7 @@ function populateConfig(callback = null) {
     if (populateConfigRunning) return;
     populateConfigRunning = true;
 
-    $.getJSON(SETTINGS_URL)
+    getJsonWithEndpointFallback(SETTINGS_ENDPOINT)
         .done(function (configJson) {
             try {
                 if (!configJson || typeof configJson !== "object") {
@@ -2217,30 +2399,57 @@ function debugConsole(method, ...args) {
 /**
  * connectWebSocket
  * ----------------
- * Opens a WebSocket to the same host on the given port, updates the UI
- * connection state via setConnectionState(), and automatically reconnects
- * if the socket closes or errors out.
+ * Opens a WebSocket to the configured same-origin proxy path, falls back to
+ * the direct backend port if the proxy socket never opens, updates the UI
+ * connection state via setConnectionState(), and automatically reconnects if
+ * the socket closes or errors out.
  *
- * @param {string} url
- *   The TCP port on which the WebSocket server is listening.
+ * @param {{proxyUrl: string, directUrl: string, name: string}|string} endpoint
+ *   The websocket endpoint definition or URL.
  * @param {number} [reconnectDelay=5000]
  *   Milliseconds to wait before trying to reconnect after a close or error.
  */
-function connectWebSocket(url, reconnectDelay = 5000) {
-    clearWebSocketReconnectTimer();
+function connectWebSocket(endpoint, reconnectDelay = 5000, attemptIndex = 0) {
+    if (attemptIndex === 0) {
+        clearWebSocketReconnectTimer();
+    }
 
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
         return ws;
     }
+
+    const endpointConfig =
+        typeof endpoint === "string"
+            ? createEndpointDefinition("socket", endpoint, endpoint)
+            : endpoint;
+    const usingFallback = attemptIndex > 0;
+    const url = usingFallback ? endpointConfig.directUrl : endpointConfig.proxyUrl;
+    let opened = false;
+    let fallbackStarted = false;
+    let fallbackWarningLogged = false;
 
     // Notify the UI we’re attempting to connect
     setConnectionState("connecting");
     debugConsole("debug", `WebSocket ▶️ connecting to ${url}`);
 
     // Create the WebSocket
-    ws = new WebSocket(url);
+    try {
+        ws = new WebSocket(url);
+    } catch (error) {
+        if (!usingFallback) {
+            const reason =
+                error && typeof error.message === "string" && error.message.trim() !== ""
+                    ? error.message.trim()
+                    : "constructor error";
+            warnWebSocketFallback(endpointConfig, reason);
+            return connectWebSocket(endpointConfig, reconnectDelay, 1);
+        }
+
+        throw error;
+    }
     // On open: update UI and log
     ws.addEventListener("open", () => {
+        opened = true;
         debugConsole("debug", "WebSocket ▶️ open");
         websocketCurrentlyConnected = true;
         websocketConnectedOnce = true;
@@ -2375,6 +2584,14 @@ function connectWebSocket(url, reconnectDelay = 5000) {
 
     // On error: Log and treat as a disconnection
     ws.addEventListener("error", (err) => {
+        if (!opened && !usingFallback) {
+            if (!fallbackWarningLogged) {
+                fallbackWarningLogged = true;
+                warnWebSocketFallback(endpointConfig, "network error");
+            }
+            return;
+        }
+
         debugConsole("error", "WebSocket ❌ error", err);
         communicationInterrupted = true;
         reloadAfterReconnectPending = true;
@@ -2385,6 +2602,20 @@ function connectWebSocket(url, reconnectDelay = 5000) {
 
     // On close: Schedule a reconnect
     ws.addEventListener("close", (ev) => {
+        if (!opened && !usingFallback && !fallbackStarted) {
+            fallbackStarted = true;
+            ws = null;
+            const reason = ev && typeof ev.code === "number"
+                ? `close code ${ev.code}`
+                : "close before open";
+            if (!fallbackWarningLogged) {
+                fallbackWarningLogged = true;
+                warnWebSocketFallback(endpointConfig, reason);
+            }
+            connectWebSocket(endpointConfig, reconnectDelay, 1);
+            return;
+        }
+
         debugConsole(
             "debug",
             `WebSocket 🔌 closed (code=${ev.code}), reconnecting in ${reconnectDelay}ms`
@@ -2398,7 +2629,7 @@ function connectWebSocket(url, reconnectDelay = 5000) {
         if (!systemPaused) {
             websocketReconnectTimer = setTimeout(() => {
                 websocketReconnectTimer = null;
-                connectWebSocket(url, reconnectDelay);
+                connectWebSocket(endpointConfig, reconnectDelay, 0);
             }, reconnectDelay);
         }
     });
@@ -2479,7 +2710,7 @@ function updateWsprryPiVersion() {
         return;
     }
 
-    $.getJSON(VERSION_URL)
+    getJsonWithEndpointFallback(VERSION_ENDPOINT)
         .done(function (response) {
             if (response && response.wspr_version) {
                 versionElement.textContent = response.wspr_version;
@@ -2659,7 +2890,7 @@ function handleSystemReload() {
 // When the system modal finishes hiding
 function handleSystemModalHidden() {
     systemPaused = false;
-    connectWebSocket(WEBSOCKET_URL, WS_RECONNECT);
+    connectWebSocket(WEBSOCKET_ENDPOINT, WS_RECONNECT);
     schedulePopulateConfigRetry(null, 10000);
 }
 
@@ -2723,7 +2954,7 @@ function showSystemModal(action, pause = true) {
                 window.close();
             } else {
                 systemPaused = false;
-                connectWebSocket(WEBSOCKET_URL, WS_RECONNECT);
+                connectWebSocket(WEBSOCKET_ENDPOINT, WS_RECONNECT);
                 schedulePopulateConfigRetry(null, 10000);
             }
         });
