@@ -110,6 +110,11 @@ function httpRequest(string $source, string $url, int $timeoutSeconds): array
     return ['body' => $body];
 }
 
+function isDownloaderRateLimitHtml(string $body): bool
+{
+    return str_contains($body, 'Please let the server cool down between requests');
+}
+
 function normalizeSource(string $value): string
 {
     $value = strtolower(trim($value));
@@ -382,6 +387,14 @@ function fetchDownloaderDataForCandidate(string $txSign, string $rxSign, string 
     ]);
 
     $response = httpRequest(SOURCE_WSPR_LIVE_DOWNLOADER, 'https://wspr.live/wspr_downloader.php?' . $query, 6);
+    if (isDownloaderRateLimitHtml($response['body'])) {
+        throw new UpstreamException(
+            SOURCE_WSPR_LIVE_DOWNLOADER,
+            'rate_limit',
+            'wspr_live_downloader rate limit reached. Please wait and try again.'
+        );
+    }
+
     $decoded = json_decode($response['body'], true);
     if (json_last_error() !== JSON_ERROR_NONE) {
         throw new UpstreamException(SOURCE_WSPR_LIVE_DOWNLOADER, 'malformed_json', 'wspr_live_downloader returned invalid JSON.');
