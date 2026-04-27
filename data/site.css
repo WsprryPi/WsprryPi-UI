@@ -332,7 +332,9 @@ legend {
 
 .navbar-brand-app {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
+    align-content: center;
     gap: 0.875rem;
     min-width: 0;
     margin-right: 1rem;
@@ -343,6 +345,7 @@ legend {
     display: grid;
     gap: 0.05rem;
     min-width: 0;
+    flex: 1 1 auto;
 }
 
 .navbar-kicker {
@@ -421,15 +424,17 @@ legend {
 .navbar-signal-status {
     display: inline-flex;
     align-items: center;
-    flex-wrap: wrap;
+    flex: 0 0 auto;
     gap: 0.45rem;
     padding: 0.45rem 0.75rem;
     min-width: 0;
+    max-width: 100%;
     color: rgba(var(--wspr-accent-text-rgb), 0.82);
     background-color: rgba(var(--wspr-accent-text-rgb), 0.06);
     border: 1px solid rgba(var(--wspr-accent-text-rgb), 0.12);
     border-radius: 999px;
     line-height: 1;
+    white-space: nowrap;
 }
 
 .navbar-signal-status__label {
@@ -444,12 +449,23 @@ legend {
     font-size: var(--text-caption);
     font-weight: var(--weight-medium);
     line-height: 1.2;
-    overflow-wrap: anywhere;
+    overflow-wrap: normal;
+    white-space: nowrap;
 }
 
 #mainNavbar .container {
     align-items: center;
     gap: 0.75rem 1rem;
+}
+
+@media (min-width: 992px) and (max-width: 1399.98px) {
+    .navbar-brand-app {
+        align-items: flex-start;
+    }
+
+    .navbar-signal-status {
+        margin-top: 0.15rem;
+    }
 }
 
 @media (max-width: 991.98px) {
