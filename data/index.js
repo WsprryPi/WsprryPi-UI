@@ -1099,11 +1099,19 @@ function selectedBackendUnavailableMessage() {
     return "";
 }
 
+function si5351UiSupported() {
+    return $('#transmit_backend option[value="si5351"]').length > 0;
+}
+
+function getSi5351OptionLabel(detected) {
+    return detected === false ? "Si5351 (Not detected)" : "Si5351";
+}
+
 function resolveSupportedTransmitBackend(preferredBackend = null) {
     const platform = window.WSPRRYPI_PLATFORM || {};
     const preferred = preferredBackend === "si5351" ? "si5351" : "gpio";
     const gpioSupported = platform.gpioClockTransmissionSupported !== false;
-    const si5351Supported = platform.si5351Detected !== false;
+    const si5351Supported = si5351UiSupported();
 
     if (preferred === "si5351") {
         if (si5351Supported) {
@@ -1128,7 +1136,7 @@ function hasAnySupportedTransmitBackend() {
     const platform = window.WSPRRYPI_PLATFORM || {};
     return (
         platform.gpioClockTransmissionSupported !== false ||
-        platform.si5351Detected !== false
+        si5351UiSupported()
     );
 }
 
@@ -1233,7 +1241,8 @@ function formatBackendRecoveryMessage(fromBackend, toBackend) {
 function updateBackendPlatformSupportUi() {
     const platform = window.WSPRRYPI_PLATFORM || {};
     const gpioSupported = platform.gpioClockTransmissionSupported !== false;
-    const si5351Supported = platform.si5351Detected !== false;
+    const si5351Supported = si5351UiSupported();
+    const si5351Detected = platform.si5351Detected !== false;
     const anyBackendSupported = hasAnySupportedTransmitBackend();
     const currentBackend = selectedTransmitBackend();
     const resolvedBackend = resolveSupportedTransmitBackend(currentBackend);
@@ -1259,7 +1268,7 @@ function updateBackendPlatformSupportUi() {
 
     $gpioOption.text(gpioSupported ? "GPIO" : "GPIO (Unsupported on this Pi)");
     $gpioOption.prop("disabled", !gpioSupported);
-    $si5351Option.text(si5351Supported ? "Si5351" : "Si5351 (Not detected)");
+    $si5351Option.text(getSi5351OptionLabel(si5351Detected));
     $si5351Option.prop("disabled", !si5351Supported);
     $backend.prop("disabled", !anyBackendSupported);
     $hint
