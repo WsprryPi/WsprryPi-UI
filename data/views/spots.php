@@ -1,6 +1,7 @@
 <?php
 $cardTitleId = 'spotsFor';
-$cardTitleText = 'Recent spots';
+$isDemoMode = isset($_GET['demo']) && $_GET['demo'] === '1';
+$cardTitleText = $isDemoMode ? 'Recent demo spots for: AA0NT' : 'Recent spots';
 require __DIR__ . '/../card_header.php';
 ?>
 

@@ -48,9 +48,11 @@
 
     const SOURCE_LABELS = {
         auto: "Automatic failover",
-        wspr_live_downloader: "wspr.live downloader",
-        wspr_live_clickhouse: "wspr.live direct",
+        wspr_live_downloader: "wspr.live Downloader API",
+        wspr_live_clickhouse: "wspr.live ClickHouse direct",
     };
+
+    const DEMO_CALLSIGN = "AA0NT";
 
     let _cacheEntry = null,
         _cacheKey = "",
@@ -87,6 +89,10 @@
 
     function getSelectedSource() {
         return getSourceSelect()?.value || "auto";
+    }
+
+    function isDemoMode() {
+        return new URLSearchParams(window.location.search).get("demo") === "1";
     }
 
     function sourceLabel(source) {
@@ -288,8 +294,100 @@
         return d.toISOString().slice(0, 19).replace("T", " ");
     }
 
+    function buildDemoSpotsFixture() {
+        const now = new Date();
+        const minutesAgo = [8, 18, 28, 38, 48, 58];
+
+        return [
+            {
+                tx_sign: DEMO_CALLSIGN,
+                frequency: 7040219,
+                tx_loc: "EM18ig",
+                power: 20,
+                rx_sign: "AE5AU",
+                rx_loc: "EM13qc",
+                distance: 512,
+                code: 1,
+                version: "SparkSDR",
+                snr: -9,
+                drift: 0,
+            },
+            {
+                tx_sign: DEMO_CALLSIGN,
+                frequency: 7040218,
+                tx_loc: "EM18ig",
+                power: 20,
+                rx_sign: "K6VZK",
+                rx_loc: "CM98pi",
+                distance: 2328,
+                code: 1,
+                version: "WD_3.1.7",
+                snr: -24,
+                drift: -1,
+            },
+            {
+                tx_sign: DEMO_CALLSIGN,
+                frequency: 7040220,
+                tx_loc: "EM18ig",
+                power: 20,
+                rx_sign: "KD7EFG-1",
+                rx_loc: "CN87tl",
+                distance: 2671,
+                code: 1,
+                version: "WD_3.2.3-1",
+                snr: -21,
+                drift: 1,
+            },
+            {
+                tx_sign: DEMO_CALLSIGN,
+                frequency: 7040219,
+                tx_loc: "EM18ig",
+                power: 20,
+                rx_sign: "W3MLM",
+                rx_loc: "FM18lw",
+                distance: 1936,
+                code: 1,
+                version: "1.3 Kiwi",
+                snr: -17,
+                drift: 0,
+            },
+            {
+                tx_sign: DEMO_CALLSIGN,
+                frequency: 7040219,
+                tx_loc: "EM18ig",
+                power: 20,
+                rx_sign: "KC0KVR",
+                rx_loc: "EN26oi",
+                distance: 1087,
+                code: 1,
+                version: "WD_3.2.3-1",
+                snr: -12,
+                drift: 0,
+            },
+            {
+                tx_sign: DEMO_CALLSIGN,
+                frequency: 7040218,
+                tx_loc: "EM18ig",
+                power: 20,
+                rx_sign: "KA7OEI-9",
+                rx_loc: "DN40xa",
+                distance: 1598,
+                code: 1,
+                version: "SparkSDR",
+                snr: -19,
+                drift: -2,
+            },
+        ].map((spot, index) => {
+            const timestamp = new Date(now.getTime() - minutesAgo[index] * 60 * 1000);
+            return {
+                time: utcString(timestamp),
+                ...spot,
+            };
+        });
+    }
+
     function refreshSpotsHeader() {
-        const cs = $("#callsign").val() || "";
+        const cs = isDemoMode() ? DEMO_CALLSIGN : ($("#callsign").val() || "");
         const now = new Date();
         const header = document.getElementById("spotsFor");
         if (!header) return;
@@ -304,7 +402,11 @@
 
         const title = document.createElement("span");
         title.className = "spots-header-text";
-        title.textContent = cs ? `Recent spots for ${cs}` : "Recent spots";
+        if (isDemoMode()) {
+            title.textContent = `Recent demo spots for: ${cs}`;
+        } else {
+            title.textContent = cs ? `Recent spots for ${cs}` : "Recent spots";
+        }
 
         const stamp = document.createElement("small");
         stamp.className = "spots-header-stamp text-body-secondary";
@@ -367,10 +469,13 @@
         const now = Date.now();
         const requestId = ++_requestSequence;
         const selectedSource = getSelectedSource();
+        const demoMode = isDemoMode();
         const rawCallSign = $("#callsign").val();
-        const callSign = typeof rawCallSign === "string"
+        const callSign = demoMode
+            ? DEMO_CALLSIGN
+            : (typeof rawCallSign === "string"
             ? rawCallSign.toUpperCase().trim()
-            : "";
+            : "");
 
         if (!callSign) {
             renderState(
@@ -393,8 +498,30 @@
         if (_cacheEntry && (now - _cacheTS) < TTL_MS) {
             renderTable(_cacheEntry.spots);
             refreshSpotsHeader();
-            const status = describeSourceStatus(_cacheEntry.meta, selectedSource);
-            setSourceStatus(status.message, status.tone);
+            if (demoMode) {
+                setSourceStatus("Demo data is active. Live spot lookup is bypassed.", "warning");
+            } else {
+                const status = describeSourceStatus(_cacheEntry.meta, selectedSource);
+                setSourceStatus(status.message, status.tone);
+            }
+            return scheduleNext();
+        }
+
+        if (demoMode) {
+            const spots = buildDemoSpotsFixture();
+            _cacheEntry = {
+                spots,
+                meta: {
+                    source_used: "demo",
+                    fallback_used: false,
+                },
+            };
+            _cacheKey = cacheKey;
+            _cacheTS = now;
+            clearActiveRequest();
+            renderTable(spots);
+            refreshSpotsHeader();
+            setSourceStatus("Demo data is active. Live spot lookup is bypassed.", "warning");
             return scheduleNext();
         }
 
