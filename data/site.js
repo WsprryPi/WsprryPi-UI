@@ -2456,12 +2456,35 @@ function debugConsole(method, ...args) {
     const callerField = formatCallerLocation(location);
     const prefix = callerField ? `${callerField} ` : "";
     const style = LOG_LEVEL_STYLES[validMethod] || "";
+    const normalizedArgs = args.map((arg) => {
+        if (typeof arg === "string") {
+            return arg;
+        }
+
+        if (arg instanceof Error) {
+            return arg.stack || arg.message || String(arg);
+        }
+
+        if (arg === null || arg === undefined) {
+            return String(arg);
+        }
+
+        if (typeof arg === "object") {
+            try {
+                return JSON.stringify(arg);
+            } catch {
+                return Object.prototype.toString.call(arg);
+            }
+        }
+
+        return String(arg);
+    });
 
     try {
-        consoleMethod(`%c${tag}%c ${prefix}`, style, "", ...args);
+        consoleMethod(`%c${tag}%c ${prefix}`, style, "", ...normalizedArgs);
     } catch {
         const fallbackArgs =
-            prefix ? [tag, callerField, ...args] : [tag, ...args];
+            prefix ? [tag, callerField, ...normalizedArgs] : [tag, ...normalizedArgs];
         consoleMethod(...fallbackArgs);
     }
 }
@@ -2935,33 +2958,69 @@ function bindTestToneControls() {
 }
 
 function isTestToneRuntimeActive() {
-    return Boolean(
-        currentRuntimeStatus &&
-        currentRuntimeStatus.txState === "transmitting" &&
-        currentRuntimeStatus.runtimeMode === "TONE"
-    );
+    const startDisabled = $("#testToneStart").prop("disabled") === true;
+    const endDisabled = $("#testToneEnd").prop("disabled") === true;
+    return startDisabled && !endDisabled;
 }
 
 function hasActiveManagedTransmissionForTestTone() {
-    return Boolean(
-        currentRuntimeStatus &&
-        currentRuntimeStatus.txState === "transmitting" &&
-        currentRuntimeStatus.runtimeMode !== "TONE"
-    );
+    if (!currentRuntimeStatus || typeof currentRuntimeStatus !== "object") {
+        return false;
+    }
+
+    const txState =
+        typeof currentRuntimeStatus.txState === "string"
+            ? currentRuntimeStatus.txState
+            : "";
+    const eventState =
+        typeof currentRuntimeStatus.eventState === "string"
+            ? currentRuntimeStatus.eventState
+            : "";
+
+    if (isTestToneRuntimeActive()) {
+        return false;
+    }
+
+    return txState === "transmitting" || eventState === "starting";
 }
 
 function syncTestToneControlState(toneActive) {
-    $("#testToneStart").prop("disabled", toneActive);
-    $("#testToneEnd").prop("disabled", !toneActive);
+    $("#testToneStart").prop("disabled", toneActive === true);
+    $("#testToneEnd").prop("disabled", toneActive !== true);
     $("#testToneClose").prop("disabled", false);
 }
 
 function showTestToneBlockedModal() {
+    const title = "Disable transmissions to start test tone";
+    const message =
+        "You have to stop and disable transmissions before starting a test tone.";
+
+    if (typeof showModeChangeGuardModal === "function") {
+        showModeChangeGuardModal({
+            title,
+            message,
+            confirmLabel: "Close",
+            confirmClass: "btn btn-danger",
+            cancelLabel: "Close",
+            onConfirm() {
+                const modal = typeof modeChangeGuardModalInstance === "function"
+                    ? modeChangeGuardModalInstance()
+                    : null;
+                if (modal) {
+                    modal.hide();
+                }
+            },
+            onCancel() {
+            },
+        });
+        return;
+    }
+
     if (typeof showMessageDialog === "function") {
         showMessageDialog({
-            title: "Stop and disable transmissions first",
-            message: "You have to stop and disable transmissions before starting a test tone.",
-            acknowledgeLabel: "OK"
+            title,
+            message,
+            acknowledgeLabel: "Close",
         });
     }
 }
@@ -2973,7 +3032,7 @@ function clickTestTone(e) {
     setTimeout(() => {
         toggleButtonLoading(btn, false);
     }, 500);
-    syncTestToneControlState(isTestToneRuntimeActive());
+    syncTestToneControlState(false);
     const modalEl = document.getElementById("testToneModal");
     const modal = new bootstrap.Modal(modalEl);
     modal.show();
@@ -2982,24 +3041,34 @@ function clickTestTone(e) {
 function onTestToneStart(e) {
     e.preventDefault();
     if (hasActiveManagedTransmissionForTestTone()) {
-        syncTestToneControlState(false);
         showTestToneBlockedModal();
+        syncTestToneControlState(false);
         return;
     }
 
     const btn = this;
     toggleButtonLoading(btn, true);
+    syncTestToneControlState(false);
     $("#testToneStart").prop("disabled", true);
     $("#testToneEnd").prop("disabled", true);
     debugConsole("debug", "Test tone start.");
     if (!sendCommand("tone_start")) {
         toggleButtonLoading(btn, false);
-        syncTestToneControlState(isTestToneRuntimeActive());
+        syncTestToneControlState(false);
+        return;
     }
+    setTimeout(() => {
+        toggleButtonLoading(btn, false);
+    }, 500);
 }
 
 function onTestToneEnd(e) {
     e.preventDefault();
+    if (!isTestToneRuntimeActive()) {
+        syncTestToneControlState(false);
+        return;
+    }
+
     const btn = this;
     toggleButtonLoading(btn, true);
     $("#testToneStart").prop("disabled", true);
@@ -3007,36 +3076,38 @@ function onTestToneEnd(e) {
     debugConsole("debug", "Test tone end.");
     if (!sendCommand("tone_end")) {
         toggleButtonLoading(btn, false);
-        syncTestToneControlState(isTestToneRuntimeActive());
+        syncTestToneControlState(true);
+        return;
     }
+    setTimeout(() => {
+        toggleButtonLoading(btn, false);
+    }, 500);
 }
 
 function handleTestToneCommandResponse(message) {
     const response = message && typeof message === "object" ? message : {};
-    const startButton = document.getElementById("testToneStart");
-    const endButton = document.getElementById("testToneEnd");
+    const command = typeof response.command === "string" ? response.command : "";
 
-    if (startButton) {
-        toggleButtonLoading(startButton, false);
-    }
-    if (endButton) {
-        toggleButtonLoading(endButton, false);
-    }
-
-    if (response.command === "tone_start") {
+    if (command === "tone_start") {
         if (response.started === true) {
             syncTestToneControlState(true);
         } else {
-            syncTestToneControlState(isTestToneRuntimeActive());
+            syncTestToneControlState(false);
             if (response.blocked_by_active_transmission === true) {
                 showTestToneBlockedModal();
+            } else {
+                debugConsole("error", "Test tone start rejected:", response);
             }
         }
-        return;
+    } else if (command === "tone_end") {
+        syncTestToneControlState(false);
+        if (response.stopped !== true) {
+            debugConsole("error", "Test tone stop rejected:", response);
+        }
     }
 
-    if (response.command === "tone_end") {
-        syncTestToneControlState(false);
+    if (typeof getTxState === "function") {
+        getTxState();
     }
 }
 
