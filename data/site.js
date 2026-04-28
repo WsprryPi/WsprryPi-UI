@@ -3057,9 +3057,6 @@ function onTestToneStart(e) {
         syncTestToneControlState(false);
         return;
     }
-    setTimeout(() => {
-        toggleButtonLoading(btn, false);
-    }, 500);
 }
 
 function onTestToneEnd(e) {
@@ -3079,14 +3076,20 @@ function onTestToneEnd(e) {
         syncTestToneControlState(true);
         return;
     }
-    setTimeout(() => {
-        toggleButtonLoading(btn, false);
-    }, 500);
 }
 
 function handleTestToneCommandResponse(message) {
     const response = message && typeof message === "object" ? message : {};
     const command = typeof response.command === "string" ? response.command : "";
+    const startButton = document.getElementById("testToneStart");
+    const endButton = document.getElementById("testToneEnd");
+
+    if (startButton) {
+        toggleButtonLoading(startButton, false);
+    }
+    if (endButton) {
+        toggleButtonLoading(endButton, false);
+    }
 
     if (command === "tone_start") {
         if (response.started === true) {
