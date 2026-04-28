@@ -2991,9 +2991,9 @@ function syncTestToneControlState(toneActive) {
 }
 
 function showTestToneBlockedModal() {
-    const title = "Disable transmissions to start test tone";
+    const title = "Stop the active transmission first";
     const message =
-        "You have to stop and disable transmissions before starting a test tone.";
+        "You have to stop and disable the active scheduled transmission before starting a test tone.";
 
     if (typeof showModeChangeGuardModal === "function") {
         showModeChangeGuardModal({
