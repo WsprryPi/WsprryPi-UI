@@ -2984,16 +2984,27 @@ function hasActiveManagedTransmissionForTestTone() {
     return txState === "transmitting" || eventState === "starting";
 }
 
+function hasEnabledManagedTransmissionForTestTone() {
+    return !!(
+        currentRuntimeConfigStatus &&
+        currentRuntimeConfigStatus.transmitEnabled === true
+    );
+}
+
 function syncTestToneControlState(toneActive) {
     $("#testToneStart").prop("disabled", toneActive === true);
     $("#testToneEnd").prop("disabled", toneActive !== true);
     $("#testToneClose").prop("disabled", false);
 }
 
-function showTestToneBlockedModal() {
-    const title = "Stop the active transmission first";
-    const message =
-        "You have to stop and disable the active scheduled transmission before starting a test tone.";
+function showTestToneBlockedModal(reason = "active") {
+    const blockedByActive = reason === "active";
+    const title = blockedByActive
+        ? "Stop the active transmission first"
+        : "Disable transmissions first";
+    const message = blockedByActive
+        ? "Stop transmissions before starting a test tone. Disable transmissions after the active transmission stops."
+        : "Disable transmissions before starting a test tone.";
 
     if (typeof showModeChangeGuardModal === "function") {
         showModeChangeGuardModal({
@@ -3041,7 +3052,12 @@ function clickTestTone(e) {
 function onTestToneStart(e) {
     e.preventDefault();
     if (hasActiveManagedTransmissionForTestTone()) {
-        showTestToneBlockedModal();
+        showTestToneBlockedModal("active");
+        syncTestToneControlState(false);
+        return;
+    }
+    if (hasEnabledManagedTransmissionForTestTone()) {
+        showTestToneBlockedModal("enabled");
         syncTestToneControlState(false);
         return;
     }
@@ -3097,7 +3113,9 @@ function handleTestToneCommandResponse(message) {
         } else {
             syncTestToneControlState(false);
             if (response.blocked_by_active_transmission === true) {
-                showTestToneBlockedModal();
+                showTestToneBlockedModal("active");
+            } else if (response.blocked_by_enabled_transmission === true) {
+                showTestToneBlockedModal("enabled");
             } else {
                 debugConsole("error", "Test tone start rejected:", response);
             }
