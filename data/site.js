@@ -103,6 +103,7 @@ const LOG_STREAM_URL = LOG_STREAM_PATH;
 const WSPRNET_URL =
     "https://www.wsprnet.org/olddb?mode=html&band=all&limit=50&findreporter=&sort=date&findcall=";
 const TAB_STATE_STORAGE_PREFIX = "wsprrypi.activeTab";
+const TEST_TONE_COMMAND_TIMEOUT_MS = 15000;
 
 function warnRestFallback(endpoint, reason) {
     debugConsole(
@@ -303,6 +304,9 @@ let websocketCurrentlyConnected = false;
 let outageBannerArmed = false;
 let pageUnloading = false;
 let dismissedUiRefreshVersion = null;
+let pendingTestToneStopDisableAction = null;
+let pendingTestToneStartRequest = false;
+let pendingTestToneStartTimeoutHandle = null;
 let currentRuntimeStatus = null;
 let currentRuntimeConfigStatus = {
     mode: "",
@@ -2639,6 +2643,7 @@ function connectWebSocket(endpoint, reconnectDelay = 5000, attemptIndex = 0) {
             if (typeof handleStopCommandResponse === "function") {
                 handleStopCommandResponse(msg);
             }
+            handleTestToneStopDisableResponse(msg);
             return;
         }
 
@@ -2748,6 +2753,7 @@ function connectWebSocket(endpoint, reconnectDelay = 5000, attemptIndex = 0) {
         }
 
         debugConsole("error", "WebSocket ❌ error", err);
+        clearPendingTestToneStartRequest();
         communicationInterrupted = true;
         reloadAfterReconnectPending = true;
         websocketCurrentlyConnected = false;
@@ -2774,6 +2780,7 @@ function connectWebSocket(endpoint, reconnectDelay = 5000, attemptIndex = 0) {
             "debug",
             `WebSocket 🔌 closed (code=${ev.code}), reconnecting in ${reconnectDelay}ms`
         );
+        clearPendingTestToneStartRequest();
         communicationInterrupted = true;
         reloadAfterReconnectPending = true;
         websocketCurrentlyConnected = false;
@@ -3037,6 +3044,190 @@ function hasEnabledManagedTransmissionForTestTone() {
     );
 }
 
+function clearPendingTestToneStartRequest() {
+    pendingTestToneStartRequest = false;
+    if (pendingTestToneStartTimeoutHandle) {
+        window.clearTimeout(pendingTestToneStartTimeoutHandle);
+        pendingTestToneStartTimeoutHandle = null;
+    }
+}
+
+function markPendingTestToneStartRequest() {
+    clearPendingTestToneStartRequest();
+    pendingTestToneStartRequest = true;
+    pendingTestToneStartTimeoutHandle = window.setTimeout(() => {
+        clearPendingTestToneStartRequest();
+    }, TEST_TONE_COMMAND_TIMEOUT_MS);
+}
+
+function setTestToneModalActionBusy(busy) {
+    const action = pendingTestToneStopDisableAction;
+    const button = action && action.button;
+    if (!button) {
+        return;
+    }
+
+    if (busy) {
+        toggleButtonLoading(button, true);
+    } else {
+        toggleButtonLoading(button, false);
+    }
+}
+
+function finishTestToneStopDisableAction(success, message = "") {
+    setTestToneModalActionBusy(false);
+    if (pendingTestToneStopDisableAction &&
+        pendingTestToneStopDisableAction.timeoutHandle) {
+        window.clearTimeout(pendingTestToneStopDisableAction.timeoutHandle);
+    }
+    pendingTestToneStopDisableAction = null;
+
+    if (success) {
+        if (typeof setTransmitFromBackend === "function") {
+            setTransmitFromBackend(false);
+        } else {
+            $("#transmit").prop("checked", false);
+        }
+        updateRuntimeControlConfigStatus(null, false);
+        if (typeof getTxState === "function") {
+            getTxState();
+        }
+        return;
+    }
+
+    const failureMessage = message || "The controller could not stop or disable scheduled transmissions.";
+    if (typeof showMessageDialog === "function") {
+        showMessageDialog({
+            title: "Unable to disable transmissions",
+            message: failureMessage,
+            acknowledgeLabel: "Close",
+            confirmClass: "btn-danger",
+        });
+    } else {
+        debugConsole("error", failureMessage);
+    }
+}
+
+function testToneRuntimeConnectionUnavailableMessage() {
+    if (navigator.onLine === false) {
+        return "This browser is offline, so runtime controls cannot reach the controller.";
+    }
+
+    return "The controller connection is unavailable right now, so the action could not be completed.";
+}
+
+function testToneTransientRuntimeActionMessage(textStatus = "") {
+    const normalizedStatus = typeof textStatus === "string"
+        ? textStatus.trim().toLowerCase()
+        : "";
+
+    if (navigator.onLine === false) {
+        return testToneRuntimeConnectionUnavailableMessage();
+    }
+
+    if (normalizedStatus === "timeout") {
+        return "The controller did not respond before the action timed out. Check connectivity and try again.";
+    }
+
+    return testToneRuntimeConnectionUnavailableMessage();
+}
+
+function isTestToneTransientNetworkFailure(xhr, textStatus = "") {
+    if (navigator.onLine === false) {
+        return true;
+    }
+
+    const normalizedStatus = typeof textStatus === "string"
+        ? textStatus.trim().toLowerCase()
+        : "";
+
+    if ((normalizedStatus === "timeout" || normalizedStatus === "error") &&
+        (!xhr || typeof xhr.status !== "number" || xhr.status === 0)) {
+        return true;
+    }
+
+    return !!xhr && typeof xhr.status === "number" && xhr.status === 0;
+}
+
+function handleTestToneStopDisableResponse(message) {
+    if (!pendingTestToneStopDisableAction ||
+        pendingTestToneStopDisableAction.reason !== "active") {
+        return;
+    }
+
+    const response = message && typeof message === "object" ? message : {};
+    const stopSucceeded =
+        response.transmit_disabled === true || response.stop_performed === true;
+    const responseMessage =
+        typeof response.message === "string" && response.message.trim()
+            ? response.message.trim()
+            : "";
+
+    finishTestToneStopDisableAction(stopSucceeded, responseMessage);
+}
+
+function requestTestToneTransmitDisable() {
+    return ajaxWithEndpointFallback(SETTINGS_ENDPOINT, {
+        type: "PATCH",
+        contentType: "application/merge-patch+json",
+        timeout: TEST_TONE_COMMAND_TIMEOUT_MS,
+        data: JSON.stringify({
+            Operation: {
+                "Transmit": false,
+            },
+        }),
+    });
+}
+
+function disableScheduledTransmissionsForTestTone(reason, actionButton = null) {
+    if (pendingTestToneStopDisableAction) {
+        return;
+    }
+
+    pendingTestToneStopDisableAction = {
+        reason,
+        button: actionButton,
+    };
+    setTestToneModalActionBusy(true);
+
+    if (reason === "active") {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            finishTestToneStopDisableAction(false, testToneRuntimeConnectionUnavailableMessage());
+            return;
+        }
+
+        pendingTestToneStopDisableAction.timeoutHandle = window.setTimeout(() => {
+            finishTestToneStopDisableAction(
+                false,
+                "Stop command timed out before the controller confirmed it. Check controller connectivity and runtime state, then try again."
+            );
+        }, TEST_TONE_COMMAND_TIMEOUT_MS);
+        ws.send(
+            JSON.stringify({
+                command: "stop",
+                persist_transmit: true,
+            })
+        );
+        return;
+    }
+
+    requestTestToneTransmitDisable()
+        .done(function () {
+            finishTestToneStopDisableAction(true);
+        })
+        .fail(function (xhr, textStatus) {
+            let message = "Failed to disable scheduled transmissions.";
+
+            if (isTestToneTransientNetworkFailure(xhr, textStatus)) {
+                message = testToneTransientRuntimeActionMessage(textStatus);
+            } else if (xhr && xhr.responseJSON && typeof xhr.responseJSON.message === "string") {
+                message = xhr.responseJSON.message.trim() || message;
+            }
+
+            finishTestToneStopDisableAction(false, message);
+        });
+}
+
 function syncTestToneControlState(toneActive) {
     $("#testToneStart").prop("disabled", toneActive === true);
     $("#testToneEnd").prop("disabled", toneActive !== true);
@@ -3046,19 +3237,19 @@ function syncTestToneControlState(toneActive) {
 function showTestToneBlockedModal(reason = "active") {
     const blockedByActive = reason === "active";
     const title = blockedByActive
-        ? "Stop the active transmission first"
-        : "Disable transmissions first";
-    const message = blockedByActive
-        ? "Stop transmissions before starting a test tone. Disable transmissions after the active transmission stops."
-        : "Disable transmissions before starting a test tone.";
+        ? "Stop and disable transmissions"
+        : "Disable transmissions";
+    const message =
+        "Test tones require scheduled transmissions to be stopped and disabled first.";
+    const confirmLabel = blockedByActive ? "Stop and Disable" : "Disable";
 
     if (typeof showModeChangeGuardModal === "function") {
         showModeChangeGuardModal({
             title,
             message,
-            confirmLabel: "Close",
-            confirmClass: "btn btn-danger",
-            cancelLabel: "Close",
+            confirmLabel,
+            confirmClass: "btn btn-primary",
+            cancelLabel: "Cancel",
             onConfirm() {
                 const modal = typeof modeChangeGuardModalInstance === "function"
                     ? modeChangeGuardModalInstance()
@@ -3066,6 +3257,10 @@ function showTestToneBlockedModal(reason = "active") {
                 if (modal) {
                     modal.hide();
                 }
+                disableScheduledTransmissionsForTestTone(
+                    reason,
+                    null
+                );
             },
             onCancel() {
             },
@@ -3074,10 +3269,22 @@ function showTestToneBlockedModal(reason = "active") {
     }
 
     if (typeof showMessageDialog === "function") {
-        showMessageDialog({
+        showConfirmationDialog({
             title,
             message,
-            acknowledgeLabel: "Close",
+            confirmLabel,
+            confirmClass: "btn-primary",
+            cancelLabel: "Cancel",
+            onConfirm(event) {
+                disableScheduledTransmissionsForTestTone(
+                    reason,
+                    event && event.currentTarget instanceof HTMLElement
+                        ? event.currentTarget
+                        : null
+                );
+            },
+            onCancel() {
+            },
         });
     }
 }
@@ -3097,6 +3304,7 @@ function clickTestTone(e) {
 
 function onTestToneStart(e) {
     e.preventDefault();
+    clearPendingTestToneStartRequest();
     if (hasActiveManagedTransmissionForTestTone()) {
         showTestToneBlockedModal("active");
         syncTestToneControlState(false);
@@ -3114,7 +3322,9 @@ function onTestToneStart(e) {
     $("#testToneStart").prop("disabled", true);
     $("#testToneEnd").prop("disabled", true);
     debugConsole("debug", "Test tone start.");
+    markPendingTestToneStartRequest();
     if (!sendCommand("tone_start")) {
+        clearPendingTestToneStartRequest();
         toggleButtonLoading(btn, false);
         syncTestToneControlState(false);
         return;
@@ -3123,6 +3333,7 @@ function onTestToneStart(e) {
 
 function onTestToneEnd(e) {
     e.preventDefault();
+    clearPendingTestToneStartRequest();
     if (!isTestToneRuntimeActive()) {
         syncTestToneControlState(false);
         return;
@@ -3154,14 +3365,24 @@ function handleTestToneCommandResponse(message) {
     }
 
     if (command === "tone_start") {
+        const locallyRequested = pendingTestToneStartRequest === true;
+        clearPendingTestToneStartRequest();
         if (response.started === true) {
             syncTestToneControlState(true);
         } else {
             syncTestToneControlState(false);
-            if (response.blocked_by_active_transmission === true) {
+            if (locallyRequested && response.blocked_by_active_transmission === true) {
                 showTestToneBlockedModal("active");
-            } else if (response.blocked_by_enabled_transmission === true) {
+            } else if (locallyRequested && response.blocked_by_enabled_transmission === true) {
                 showTestToneBlockedModal("enabled");
+            } else if (
+                !locallyRequested &&
+                (
+                    response.blocked_by_active_transmission === true ||
+                    response.blocked_by_enabled_transmission === true
+                )
+            ) {
+                debugConsole("debug", "Passive test tone start rejection received:", response);
             } else {
                 debugConsole("error", "Test tone start rejected:", response);
             }
