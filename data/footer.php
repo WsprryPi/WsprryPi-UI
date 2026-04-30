@@ -22,4 +22,4 @@
     <?php require_once 'site.js.includes.php'; ?>
 
     <!-- Main JavaScript -->
-    <script src="site.js"></script>
+    <script src="<?= htmlspecialchars(wsprrypiAssetUrl('site.js')) ?>"></script>

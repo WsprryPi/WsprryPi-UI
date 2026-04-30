@@ -302,6 +302,7 @@ let backendCurrentlyConnected = false;
 let websocketCurrentlyConnected = false;
 let outageBannerArmed = false;
 let pageUnloading = false;
+let dismissedUiRefreshVersion = null;
 let currentRuntimeStatus = null;
 let currentRuntimeConfigStatus = {
     mode: "",
@@ -2863,6 +2864,7 @@ function updateWsprryPiVersion() {
             if (response && response.wspr_version) {
                 versionElement.textContent = response.wspr_version;
                 versionElement.title = response.wspr_version;
+                maybePromptForUiRefresh(response.ui_version);
             } else {
                 versionElement.textContent = "Service unavailable";
                 versionElement.removeAttribute("title");
@@ -2882,6 +2884,50 @@ function updateWsprryPiVersion() {
             );
             syncFixedChromeOffsets();
         });
+}
+
+function normalizeUiVersion(value) {
+    return typeof value === "string" ? value.trim() : "";
+}
+
+function maybePromptForUiRefresh(serverVersion) {
+    const loadedVersion = normalizeUiVersion(window.WSPRRYPI_UI_VERSION);
+    const normalizedServerVersion = normalizeUiVersion(serverVersion);
+
+    if (
+        !loadedVersion ||
+        !normalizedServerVersion ||
+        normalizedServerVersion === loadedVersion ||
+        normalizedServerVersion === dismissedUiRefreshVersion
+    ) {
+        return;
+    }
+
+    showConfirmationDialog({
+        title: "UI refresh required",
+        message: "The WsprryPi web interface has been updated. Refresh this page to load the new web pages, CSS, and JavaScript.",
+        confirmLabel: "Refresh",
+        confirmClass: "btn-primary",
+        cancelLabel: "Cancel",
+        onConfirm: () => {
+            refreshUiForVersion(normalizedServerVersion);
+        },
+        onCancel: () => {
+            dismissedUiRefreshVersion = normalizedServerVersion;
+        }
+    });
+}
+
+function refreshUiForVersion(serverVersion) {
+    const url = new URL(window.location.href);
+    const normalizedVersion = normalizeUiVersion(serverVersion);
+
+    url.searchParams.set(
+        "ui_refresh",
+        normalizedVersion || Date.now().toString()
+    );
+
+    window.location.replace(url.toString());
 }
 
 function updateClocks() {
@@ -3302,7 +3348,15 @@ function showConfirmationDialog(options = {}, modalInstance = null) {
 
     const $cancelBtn = $("#confirmCancelBtn");
     const $confirmBtn = $("#confirmActionBtn");
-    $cancelBtn.text(cancelLabel).toggleClass("d-none", !showCancel);
+    $cancelBtn
+        .text(cancelLabel)
+        .toggleClass("d-none", !showCancel)
+        .off("click")
+        .on("click", () => {
+            if (typeof options.onCancel === "function") {
+                options.onCancel();
+            }
+        });
     $confirmBtn
         .attr("class", `btn ${confirmClass}`)
         .text(confirmLabel)

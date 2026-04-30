@@ -1,3 +1,4 @@
+<?php require_once __DIR__ . '/html_cache_headers.php'; ?>
 <!DOCTYPE html>
 <html lang="en" data-bs-theme="auto">
 

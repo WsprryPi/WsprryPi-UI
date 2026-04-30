@@ -27,6 +27,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/html_cache_headers.php';
+
 $scriptName = $_SERVER['SCRIPT_NAME'] ?? '/';
 $basePath = rtrim(str_replace('\\', '/', dirname($scriptName)), '/');
 if ($basePath === '/' || $basePath === '.') {

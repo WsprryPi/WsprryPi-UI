@@ -1,4 +1,6 @@
+<?php require_once __DIR__ . '/html_cache_headers.php'; ?>
 <?php require_once 'app_state.php'; ?>
+<?php require_once __DIR__ . '/ui_version.php'; ?>
 <!DOCTYPE html>
 <html lang="en"<?= $activeViewMetadata['htmlTheme'] !== null ? ' data-bs-theme="' . htmlspecialchars($activeViewMetadata['htmlTheme']) . '"' : '' ?>>
 
@@ -6,7 +8,7 @@
     <?php require_once 'header.php'; ?>
 
     <?php foreach ($activeViewMetadata['css'] as $stylesheet): ?>
-        <link rel="stylesheet" href="<?= htmlspecialchars($stylesheet) ?>" />
+        <link rel="stylesheet" href="<?= htmlspecialchars(wsprrypiAssetUrl($stylesheet)) ?>" />
     <?php endforeach; ?>
 </head>
 
@@ -21,7 +23,7 @@ require_once 'page_shell_end.php';
     <?php require_once 'footer.php'; ?>
 
     <?php foreach ($activeViewMetadata['js'] as $script): ?>
-        <script src="<?= htmlspecialchars($script) ?>"></script>
+        <script src="<?= htmlspecialchars(wsprrypiAssetUrl($script)) ?>"></script>
     <?php endforeach; ?>
 </body>
 
