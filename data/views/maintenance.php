@@ -123,7 +123,10 @@ require __DIR__ . '/../card_header.php';
                                 aria-label="Close"></button>
                         </div>
                         <div class="modal-body">
-                            Use the controls below to start or stop the test tone.
+                            <p class="mb-2">Use the controls below to start or stop the test tone.</p>
+                            <p id="testToneFrequencyContext" class="mb-0">
+                                Configured frequency: unavailable.
+                            </p>
                         </div>
                         <div class="modal-footer">
                             <button

@@ -312,6 +312,10 @@ let currentRuntimeConfigStatus = {
     mode: "",
     transmitEnabled: false
 };
+let currentTestToneConfigContext = {
+    mode: "",
+    configuredFrequencyHz: 0
+};
 let runtimeStatusRefreshTimer = null;
 let chromeOffsetSyncHandle = null;
 let lastNavbarOffset = null;
@@ -1558,6 +1562,12 @@ function populateConfig(callback = null) {
                 let tx_start_minute = getConfigIntValue(cw, "CW", "Start Minute", 0);
                 let tx_repeat_every = getConfigIntValue(cw, "CW", "Repeat Minutes", 10);
                 let cw_message = String(getConfigValue(cw, "CW", "Message", "") || "").trim();
+                const wsprFrequencyHz = parseConfiguredWsprFrequencyHz(frequencies);
+                const cwBaseFrequencyHz = Number.isFinite(cw_base_frequency)
+                    ? cw_base_frequency
+                    : 0;
+                updateTestToneConfigContext(mode, wsprFrequencyHz, cwBaseFrequencyHz);
+                updateTestToneFrequencyContext();
 
                 // Operation.Web Port and Operation.Socket Port remain
                 // backend-managed settings without visible controls on this
@@ -1689,8 +1699,8 @@ function populateConfig(callback = null) {
                             transmitBackend,
                             callsign,
                             gridsquare,
-                            wsprFrequencyHz: parseConfiguredWsprFrequencyHz(frequencies),
-                            cwBaseFrequencyHz: cw_base_frequency,
+                            wsprFrequencyHz,
+                            cwBaseFrequencyHz,
                             cwOffsetHz: fsk_offset,
                         });
                     }
@@ -1960,6 +1970,71 @@ function parseConfiguredWsprFrequencyHz(rawValue) {
     }
 
     return 0;
+}
+
+function normalizeTestToneMode(mode) {
+    return ["WSPR", "QRSS", "FSKCW", "DFCW"].includes(mode) ? mode : "";
+}
+
+function configuredTestToneFrequencyForMode(mode, wsprFrequencyHz, cwBaseFrequencyHz) {
+    const normalizedMode = normalizeTestToneMode(mode);
+    const frequencyHz = normalizedMode === "WSPR"
+        ? Number(wsprFrequencyHz)
+        : Number(cwBaseFrequencyHz);
+
+    return Number.isFinite(frequencyHz) && frequencyHz > 0 ? frequencyHz : 0;
+}
+
+function updateTestToneConfigContext(mode, wsprFrequencyHz, cwBaseFrequencyHz) {
+    currentTestToneConfigContext = {
+        mode: normalizeTestToneMode(mode),
+        configuredFrequencyHz: configuredTestToneFrequencyForMode(
+            mode,
+            wsprFrequencyHz,
+            cwBaseFrequencyHz
+        )
+    };
+}
+
+function formatTestToneFrequencyMhz(frequencyHz) {
+    const numericFrequencyHz = Number(frequencyHz);
+    if (!Number.isFinite(numericFrequencyHz) || numericFrequencyHz <= 0) {
+        return "";
+    }
+
+    const fixedMhz = (numericFrequencyHz / 1e6).toFixed(6);
+    const parts = fixedMhz.split(".");
+    const whole = parts[0];
+    return `${whole}.${parts[1]} MHz`;
+}
+
+function testToneFrequencyContextText() {
+    const configured = formatTestToneFrequencyMhz(
+        currentTestToneConfigContext.configuredFrequencyHz
+    );
+    if (!configured) {
+        return "Configured frequency: unavailable.";
+    }
+
+    if (currentTestToneConfigContext.mode === "WSPR") {
+        const detected = formatTestToneFrequencyMhz(
+            currentTestToneConfigContext.configuredFrequencyHz + 1500
+        );
+        if (detected) {
+            return `Configured frequency: ${configured}. WSPR uses USB dial-frequency semantics, so the test tone should be detected 1500 Hz higher at ${detected}.`;
+        }
+    }
+
+    return `Configured frequency: ${configured}.`;
+}
+
+function updateTestToneFrequencyContext() {
+    const node = document.getElementById("testToneFrequencyContext");
+    if (!node) {
+        return;
+    }
+
+    node.textContent = testToneFrequencyContextText();
 }
 
 function renderRuntimeStatus(status) {
@@ -3297,6 +3372,7 @@ function clickTestTone(e) {
         toggleButtonLoading(btn, false);
     }, 500);
     syncTestToneControlState(false);
+    updateTestToneFrequencyContext();
     const modalEl = document.getElementById("testToneModal");
     const modal = new bootstrap.Modal(modalEl);
     modal.show();
