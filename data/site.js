@@ -106,6 +106,7 @@ const TAB_STATE_STORAGE_PREFIX = "wsprrypi.activeTab";
 const TEST_TONE_COMMAND_TIMEOUT_MS = 15000;
 const UPDATE_CHECK_CACHE_PREFIX = "wsprrypi.updateCheck";
 const UPDATE_CHECK_DISMISS_PREFIX = "wsprrypi.updateDismissed";
+const UPDATE_CHECK_CACHE_SCHEMA_VERSION = 5;
 const UPDATE_CHECK_CACHE_TTL_MS = 60 * 60 * 1000;
 const UPDATE_CHECK_RELEASES_URL = "https://github.com/WsprryPi/WsprryPi/releases";
 const UPDATE_CHECK_API_BASE = "https://api.github.com/repos/WsprryPi/WsprryPi";
@@ -3065,14 +3066,25 @@ function parseWsprryPiVersionResponse(response) {
     const rawUiVersion = typeof response?.ui_version === "string"
         ? response.ui_version.trim()
         : "";
-    const currentDisplayVersion = rawUiVersion || rawDisplayVersion;
-    const versionForParsing = rawUiVersion || rawDisplayVersion;
-    const branchMatch = versionForParsing.match(/\(([^()]+)\)/);
-    const currentBranch = branchMatch ? branchMatch[1].trim() : "";
+    const rawBackendBranch = typeof response?.wspr_branch === "string"
+        ? response.wspr_branch.trim()
+        : "";
+    const rawBackendCommit = typeof response?.wspr_commit === "string"
+        ? response.wspr_commit.trim()
+        : "";
+    const backendCommit = /^[0-9a-f]{7,40}$/i.test(rawBackendCommit)
+        ? rawBackendCommit
+        : "";
+    const currentDisplayVersion = rawDisplayVersion || rawUiVersion;
+    const displayVersionForParsing = rawDisplayVersion || rawUiVersion;
+    const versionForShaParsing = rawUiVersion || rawDisplayVersion;
+    const branchMatch = displayVersionForParsing.match(/\(([^()]+)\)/);
+    const displayBranch = branchMatch ? branchMatch[1].trim() : "";
+    const currentBranch = rawBackendBranch || displayBranch;
     const fullSha = findFullShaInValue(response);
-    const shortShaMatch = versionForParsing.match(/[+.:-]([0-9a-f]{7,40})(?:\b|[^0-9a-f])/i) ||
-        versionForParsing.match(/\b([0-9a-f]{7,40})\b/i);
-    const currentSha = fullSha || (shortShaMatch ? shortShaMatch[1] : "");
+    const shortShaMatch = versionForShaParsing.match(/[+.:-]([0-9a-f]{7,40})(?:\b|[^0-9a-f])/i) ||
+        versionForShaParsing.match(/\b([0-9a-f]{7,40})\b/i);
+    const currentSha = backendCommit || fullSha || (shortShaMatch ? shortShaMatch[1] : "");
 
     if (!currentDisplayVersion || !currentBranch || !currentSha) {
         return null;
@@ -3082,7 +3094,34 @@ function parseWsprryPiVersionResponse(response) {
         currentDisplayVersion,
         currentSha,
         currentBranch,
+        displayBranch,
         currentShaIsFull: currentSha.length === 40
+    };
+}
+
+function updateCheckShaMatches(currentSha, targetHeadSha) {
+    if (typeof currentSha !== "string" || typeof targetHeadSha !== "string") {
+        return false;
+    }
+
+    const normalizedCurrent = currentSha.trim().toLowerCase();
+    const normalizedHead = targetHeadSha.trim().toLowerCase();
+
+    if (!normalizedCurrent || !normalizedHead) {
+        return false;
+    }
+
+    if (normalizedCurrent.length >= 40) {
+        return normalizedCurrent === normalizedHead;
+    }
+
+    return normalizedHead.startsWith(normalizedCurrent);
+}
+
+function updateCheckNoUpdateComparison() {
+    return {
+        completed: false,
+        updateAvailable: false
     };
 }
 
@@ -3104,6 +3143,7 @@ function readUpdateCheckCache(versionInfo) {
         const cached = JSON.parse(raw);
         if (
             !cached ||
+            cached.schemaVersion !== UPDATE_CHECK_CACHE_SCHEMA_VERSION ||
             cached.currentSha !== versionInfo.currentSha ||
             cached.currentBranch !== versionInfo.currentBranch ||
             Date.now() - Number(cached.checkedAt || 0) >= UPDATE_CHECK_CACHE_TTL_MS
@@ -3121,7 +3161,10 @@ function writeUpdateCheckCache(versionInfo, result) {
     try {
         window.localStorage.setItem(
             updateCheckCacheKey(versionInfo),
-            JSON.stringify(result)
+            JSON.stringify(Object.assign(
+                { schemaVersion: UPDATE_CHECK_CACHE_SCHEMA_VERSION },
+                result
+            ))
         );
     } catch {
     }
@@ -3159,14 +3202,25 @@ async function fetchGithubJson(url, options = {}) {
 }
 
 async function lookupGithubBranch(branch) {
-    const data = await fetchGithubJson(
-        `${UPDATE_CHECK_API_BASE}/branches/${encodeURIComponent(branch)}`
-    );
+    const branchUrl = `${UPDATE_CHECK_API_BASE}/branches/${encodeURIComponent(branch)}`;
+    debugConsole("debug", `Update check branch lookup: ${branchUrl}`);
+
+    let data;
+    try {
+        data = await fetchGithubJson(branchUrl);
+    } catch (error) {
+        const status = typeof error?.status === "number" ? `HTTP ${error.status}` : "network error";
+        debugConsole("debug", `Update check branch lookup failed for ${branch}: ${status}`);
+        throw error;
+    }
+
     const sha = typeof data?.commit?.sha === "string" ? data.commit.sha : "";
 
     if (!sha) {
         throw new Error(`GitHub branch ${branch} did not include a HEAD SHA`);
     }
+
+    debugConsole("debug", `Update check branch lookup result for ${branch}: ${sha}`);
 
     return {
         branch,
@@ -3174,21 +3228,55 @@ async function lookupGithubBranch(branch) {
     };
 }
 
-async function selectGithubUpdateBranch(currentBranch) {
+async function isCurrentShaInBranch(currentSha, branchInfo) {
+    if (updateCheckShaMatches(currentSha, branchInfo?.headSha)) {
+        return true;
+    }
+
+    try {
+        const data = await fetchGithubJson(
+            `${UPDATE_CHECK_API_BASE}/compare/${encodeURIComponent(currentSha)}...${encodeURIComponent(branchInfo.headSha)}`
+        );
+        const status = typeof data?.status === "string" ? data.status : "";
+        return status === "identical" || status === "behind";
+    } catch {
+        return false;
+    }
+}
+
+async function selectGithubUpdateBranch(versionInfo) {
+    const currentBranch = versionInfo.currentBranch;
+
     if (currentBranch === "main") {
         return Object.assign(await lookupGithubBranch("main"), { fallbackUsed: false });
     }
 
     if (currentBranch === "devel") {
+        let develBranch;
         try {
-            return Object.assign(await lookupGithubBranch("devel"), { fallbackUsed: false });
+            develBranch = await lookupGithubBranch("devel");
         } catch (error) {
             if (error.status !== 404) {
                 throw error;
             }
 
+            debugConsole("debug", "Update check local devel falling back to upstream main because upstream devel returned HTTP 404.");
             return Object.assign(await lookupGithubBranch("main"), { fallbackUsed: true });
         }
+
+        try {
+            const mainBranch = await lookupGithubBranch("main");
+            if (await isCurrentShaInBranch(versionInfo.currentSha, mainBranch)) {
+                debugConsole("debug", "Update check local devel resolved to upstream main because the current SHA is part of main.");
+                return Object.assign(mainBranch, { fallbackUsed: false });
+            }
+        } catch (error) {
+            const status = typeof error?.status === "number" ? `HTTP ${error.status}` : "network error";
+            debugConsole("debug", `Update check local devel staying on upstream devel because main membership probe failed (${status}).`);
+        }
+
+        debugConsole("debug", "Update check local devel staying on upstream devel because the current SHA is not part of main.");
+        return Object.assign(develBranch, { fallbackUsed: false });
     }
 
     try {
@@ -3203,6 +3291,10 @@ async function selectGithubUpdateBranch(currentBranch) {
 }
 
 async function compareGithubCommits(currentSha, headSha) {
+    if (updateCheckShaMatches(currentSha, headSha)) {
+        return updateCheckNoUpdateComparison();
+    }
+
     try {
         const data = await fetchGithubJson(
             `${UPDATE_CHECK_API_BASE}/compare/${encodeURIComponent(currentSha)}...${encodeURIComponent(headSha)}`
@@ -3213,10 +3305,10 @@ async function compareGithubCommits(currentSha, headSha) {
             updateAvailable: status === "behind" || status === "diverged"
         };
     } catch (error) {
-        if (currentSha.length < 40) {
+        if (error.status === 404) {
             return {
                 completed: false,
-                updateAvailable: !headSha.startsWith(currentSha)
+                updateAvailable: !updateCheckShaMatches(currentSha, headSha)
             };
         }
 
@@ -3224,7 +3316,7 @@ async function compareGithubCommits(currentSha, headSha) {
     }
 }
 
-async function resolveReleaseTargetSha(targetCommitish) {
+async function resolveReleaseTargetSha(targetCommitish, memo = null) {
     const target = typeof targetCommitish === "string" ? targetCommitish.trim() : "";
     if (!target) {
         return "";
@@ -3234,6 +3326,26 @@ async function resolveReleaseTargetSha(targetCommitish) {
         return target;
     }
 
+    if (memo instanceof Map && memo.has(target)) {
+        return memo.get(target);
+    }
+
+    function rememberResolvedTarget(resolvedSha) {
+        if (memo instanceof Map) {
+            memo.set(target, resolvedSha);
+        }
+
+        return resolvedSha;
+    }
+
+    try {
+        return rememberResolvedTarget((await lookupGithubBranch(target)).headSha);
+    } catch (error) {
+        if (error.status !== 404) {
+            throw error;
+        }
+    }
+
     try {
         const tagRef = await fetchGithubJson(
             `${UPDATE_CHECK_API_BASE}/git/ref/tags/${encodeURIComponent(target)}`
@@ -3241,13 +3353,13 @@ async function resolveReleaseTargetSha(targetCommitish) {
         const tagObject = tagRef?.object || {};
 
         if (tagObject.type === "commit" && typeof tagObject.sha === "string") {
-            return tagObject.sha;
+            return rememberResolvedTarget(tagObject.sha);
         }
 
         if (tagObject.type === "tag" && typeof tagObject.url === "string") {
             const tagData = await fetchGithubJson(tagObject.url);
             if (tagData?.object?.type === "commit" && typeof tagData.object.sha === "string") {
-                return tagData.object.sha;
+                return rememberResolvedTarget(tagData.object.sha);
             }
         }
     } catch (error) {
@@ -3256,15 +3368,7 @@ async function resolveReleaseTargetSha(targetCommitish) {
         }
     }
 
-    try {
-        return (await lookupGithubBranch(target)).headSha;
-    } catch (error) {
-        if (error.status !== 404) {
-            throw error;
-        }
-    }
-
-    return "";
+    return rememberResolvedTarget("");
 }
 
 async function findReleaseForHead(headSha) {
@@ -3273,6 +3377,8 @@ async function findReleaseForHead(headSha) {
         return null;
     }
 
+    const resolvedTargets = new Map();
+
     for (const release of releases) {
         const target = typeof release?.target_commitish === "string"
             ? release.target_commitish.trim()
@@ -3280,7 +3386,7 @@ async function findReleaseForHead(headSha) {
         let resolvedSha = target === headSha ? target : "";
 
         if (!resolvedSha) {
-            resolvedSha = await resolveReleaseTargetSha(target);
+            resolvedSha = await resolveReleaseTargetSha(target, resolvedTargets);
         }
 
         if (resolvedSha === headSha) {
@@ -3297,10 +3403,12 @@ async function findReleaseForHead(headSha) {
 }
 
 async function buildWsprryPiUpdateResult(versionInfo) {
-    const selectedBranch = await selectGithubUpdateBranch(versionInfo.currentBranch);
+    const selectedBranch = await selectGithubUpdateBranch(versionInfo);
     const comparison = selectedBranch.fallbackUsed
         ? { completed: false, updateAvailable: true }
-        : await compareGithubCommits(versionInfo.currentSha, selectedBranch.headSha);
+        : updateCheckShaMatches(versionInfo.currentSha, selectedBranch.headSha)
+            ? updateCheckNoUpdateComparison()
+            : await compareGithubCommits(versionInfo.currentSha, selectedBranch.headSha);
     let releaseUrl = UPDATE_CHECK_RELEASES_URL;
     let releaseTitle = "";
 
@@ -3489,6 +3597,13 @@ function showWsprryPiUpdateModal(versionInfo, result) {
 }
 
 function applyWsprryPiUpdateResult(versionInfo, result) {
+    if (result) {
+        debugConsole(
+            "debug",
+            `Update check selected targetBranch=${result.targetBranch}, fallbackUsed=${result.fallbackUsed === true}, targetHeadSha=${result.targetHeadSha}`
+        );
+    }
+
     if (!result || result.updateAvailable !== true) {
         clearWsprryPiUpdateFooter();
         return;
@@ -3504,6 +3619,11 @@ function checkForWsprryPiUpdate(response) {
         clearWsprryPiUpdateFooter();
         return;
     }
+
+    debugConsole(
+        "debug",
+        `Update check parsed displayBranch=${versionInfo.displayBranch || "(none)"}, rawBranch=${versionInfo.currentBranch}, currentSha=${versionInfo.currentSha}`
+    );
 
     const cached = readUpdateCheckCache(versionInfo);
     if (cached) {
