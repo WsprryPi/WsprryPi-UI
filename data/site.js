@@ -3234,7 +3234,10 @@ async function lookupGithubBranch(branch) {
 
 async function isCurrentShaInBranch(currentSha, branchInfo) {
     if (updateCheckShaMatches(currentSha, branchInfo?.headSha)) {
-        return true;
+        return {
+            isInBranch: true,
+            status: "identical"
+        };
     }
 
     try {
@@ -3242,9 +3245,22 @@ async function isCurrentShaInBranch(currentSha, branchInfo) {
             `${UPDATE_CHECK_API_BASE}/compare/${encodeURIComponent(currentSha)}...${encodeURIComponent(branchInfo.headSha)}`
         );
         const status = typeof data?.status === "string" ? data.status : "";
-        return status === "identical" || status === "behind";
+        if (status === "ahead" || status === "diverged") {
+            return {
+                isInBranch: false,
+                status
+            };
+        }
+
+        return {
+            isInBranch: status === "identical" || status === "behind",
+            status
+        };
     } catch {
-        return false;
+        return {
+            isInBranch: false,
+            status: "unavailable"
+        };
     }
 }
 
@@ -3270,10 +3286,12 @@ async function selectGithubUpdateBranch(versionInfo) {
 
         try {
             const mainBranch = await lookupGithubBranch("main");
-            if (await isCurrentShaInBranch(versionInfo.currentSha, mainBranch)) {
+            const mainMembership = await isCurrentShaInBranch(versionInfo.currentSha, mainBranch);
+            if (mainMembership.isInBranch) {
                 debugConsole("debug", "Update check local devel resolved to upstream main because the current SHA is part of main.");
                 return Object.assign(mainBranch, { fallbackUsed: false });
             }
+            debugConsole("debug", `Update check local devel staying on upstream devel because main compare status is ${mainMembership.status || "unknown"}.`);
         } catch (error) {
             const status = typeof error?.status === "number" ? `HTTP ${error.status}` : "network error";
             debugConsole("debug", `Update check local devel staying on upstream devel because main membership probe failed (${status}).`);
