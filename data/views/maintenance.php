@@ -127,6 +127,18 @@ require __DIR__ . '/../card_header.php';
                             <p id="testToneFrequencyContext" class="mb-0">
                                 Configured frequency: unavailable.
                             </p>
+                            <div class="mt-3">
+                                <label for="testToneFrequencyHz" class="form-label">
+                                    Test tone transmit frequency, Hz
+                                </label>
+                                <input
+                                    type="number"
+                                    id="testToneFrequencyHz"
+                                    class="form-control"
+                                    inputmode="numeric"
+                                    min="1"
+                                    step="1">
+                            </div>
                         </div>
                         <div class="modal-footer">
                             <button

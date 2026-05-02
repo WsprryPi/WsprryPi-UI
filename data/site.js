@@ -1568,6 +1568,7 @@ function populateConfig(callback = null) {
                     : 0;
                 updateTestToneConfigContext(mode, wsprFrequencyHz, cwBaseFrequencyHz);
                 updateTestToneFrequencyContext();
+                updateTestToneFrequencyInputDefault();
 
                 // Operation.Web Port and Operation.Socket Port remain
                 // backend-managed settings without visible controls on this
@@ -1996,6 +1997,33 @@ function updateTestToneConfigContext(mode, wsprFrequencyHz, cwBaseFrequencyHz) {
     };
 }
 
+function testToneDefaultTransmitFrequencyHz() {
+    const configuredFrequencyHz = Number(
+        currentTestToneConfigContext.configuredFrequencyHz
+    );
+    if (!Number.isFinite(configuredFrequencyHz) || configuredFrequencyHz <= 0) {
+        return 0;
+    }
+
+    const transmitFrequencyHz = currentTestToneConfigContext.mode === "WSPR"
+        ? configuredFrequencyHz + 1500
+        : configuredFrequencyHz;
+
+    return Number.isFinite(transmitFrequencyHz) && transmitFrequencyHz > 0
+        ? Math.round(transmitFrequencyHz)
+        : 0;
+}
+
+function updateTestToneFrequencyInputDefault() {
+    const input = document.getElementById("testToneFrequencyHz");
+    if (!input) {
+        return;
+    }
+
+    const frequencyHz = testToneDefaultTransmitFrequencyHz();
+    input.value = frequencyHz > 0 ? String(frequencyHz) : "";
+}
+
 function formatTestToneFrequencyMhz(frequencyHz) {
     const numericFrequencyHz = Number(frequencyHz);
     if (!Number.isFinite(numericFrequencyHz) || numericFrequencyHz <= 0) {
@@ -2035,6 +2063,28 @@ function updateTestToneFrequencyContext() {
     }
 
     node.textContent = testToneFrequencyContextText();
+}
+
+function testToneFrequencyOverridePayload() {
+    const input = document.getElementById("testToneFrequencyHz");
+    if (!input) {
+        return {};
+    }
+
+    const rawValue = String(input.value || "").trim();
+    if (!/^\d+$/.test(rawValue)) {
+        return {};
+    }
+
+    const frequencyHz = Number(rawValue);
+    if (
+        !Number.isSafeInteger(frequencyHz) ||
+        frequencyHz <= 0
+    ) {
+        return {};
+    }
+
+    return { frequency_hz: frequencyHz };
 }
 
 function renderRuntimeStatus(status) {
@@ -3373,6 +3423,7 @@ function clickTestTone(e) {
     }, 500);
     syncTestToneControlState(false);
     updateTestToneFrequencyContext();
+    updateTestToneFrequencyInputDefault();
     const modalEl = document.getElementById("testToneModal");
     const modal = new bootstrap.Modal(modalEl);
     modal.show();
@@ -3399,7 +3450,11 @@ function onTestToneStart(e) {
     $("#testToneEnd").prop("disabled", true);
     debugConsole("debug", "Test tone start.");
     markPendingTestToneStartRequest();
-    if (!sendCommand("tone_start")) {
+    const toneStartPayload = {
+        command: "tone_start",
+        ...testToneFrequencyOverridePayload()
+    };
+    if (!sendCommand(toneStartPayload)) {
         clearPendingTestToneStartRequest();
         toggleButtonLoading(btn, false);
         syncTestToneControlState(false);
@@ -3484,7 +3539,10 @@ function handleTestToneCommandResponse(message) {
  */
 function sendCommand(payload) {
     if (ws && ws.readyState === WebSocket.OPEN) {
-        const msg = { command: payload };
+        const msg =
+            payload && typeof payload === "object" && !Array.isArray(payload)
+                ? payload
+                : { command: payload };
         const json = JSON.stringify(msg);
         ws.send(json);
         debugConsole("debug", "WebSocket ▶️ command sent:", json);
