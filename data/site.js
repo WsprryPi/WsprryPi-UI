@@ -3066,6 +3066,9 @@ function parseWsprryPiVersionResponse(response) {
     const rawUiVersion = typeof response?.ui_version === "string"
         ? response.ui_version.trim()
         : "";
+    const rawExeVersion = typeof response?.wspr_exe_version === "string"
+        ? response.wspr_exe_version.trim()
+        : "";
     const rawBackendBranch = typeof response?.wspr_branch === "string"
         ? response.wspr_branch.trim()
         : "";
@@ -3092,6 +3095,7 @@ function parseWsprryPiVersionResponse(response) {
 
     return {
         currentDisplayVersion,
+        currentModalVersion: rawExeVersion || rawUiVersion || rawDisplayVersion,
         currentSha,
         currentBranch,
         displayBranch,
@@ -3540,7 +3544,10 @@ function showWsprryPiUpdateModal(versionInfo, result) {
     });
     const currentShaLabel = shortSha(versionInfo.currentSha);
     const targetShaLabel = shortSha(result.targetHeadSha);
-    const exactRelease = Boolean(result.releaseTitle);
+    const exactRelease = result.fallbackUsed !== true && Boolean(result.releaseTitle);
+    const releaseMessage = exactRelease
+        ? "A release is available for this update. "
+        : "Review the latest releases. ";
 
     markUpdateCheckModalActive(modalEl);
     document.getElementById("confirmModalLabel").textContent = "Update available";
@@ -3550,16 +3557,18 @@ function showWsprryPiUpdateModal(versionInfo, result) {
     body.textContent = "";
 
     body.appendChild(document.createTextNode(
-        `${versionInfo.currentDisplayVersion} is behind ${result.targetBranch} ${targetShaLabel}.`
+        `${versionInfo.currentModalVersion} is behind ${result.targetBranch} ${targetShaLabel}.`
     ));
     body.appendChild(document.createElement("br"));
+    if (result.fallbackUsed === true) {
+        body.appendChild(document.createTextNode(
+            `The current branch is not available upstream. Updates are being checked against ${result.targetBranch}.`
+        ));
+        body.appendChild(document.createElement("br"));
+    }
     body.appendChild(document.createTextNode(`Current SHA: ${currentShaLabel}`));
     body.appendChild(document.createElement("br"));
-    body.appendChild(document.createTextNode(
-        exactRelease
-            ? "A release is available for this update. "
-            : "Review the latest WsprryPi releases before updating. "
-    ));
+    body.appendChild(document.createTextNode(releaseMessage));
     appendUpdateModalBodyLink(body, result, exactRelease);
 
     const $cancelBtn = $("#confirmCancelBtn");
