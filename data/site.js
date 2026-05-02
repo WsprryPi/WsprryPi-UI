@@ -104,6 +104,11 @@ const WSPRNET_URL =
     "https://www.wsprnet.org/olddb?mode=html&band=all&limit=50&findreporter=&sort=date&findcall=";
 const TAB_STATE_STORAGE_PREFIX = "wsprrypi.activeTab";
 const TEST_TONE_COMMAND_TIMEOUT_MS = 15000;
+const UPDATE_CHECK_CACHE_PREFIX = "wsprrypi.updateCheck";
+const UPDATE_CHECK_DISMISS_PREFIX = "wsprrypi.updateDismissed";
+const UPDATE_CHECK_CACHE_TTL_MS = 60 * 60 * 1000;
+const UPDATE_CHECK_RELEASES_URL = "https://github.com/WsprryPi/WsprryPi/releases";
+const UPDATE_CHECK_API_BASE = "https://api.github.com/repos/WsprryPi/WsprryPi";
 
 function warnRestFallback(endpoint, reason) {
     debugConsole(
@@ -2997,9 +3002,11 @@ function updateWsprryPiVersion() {
                 versionElement.textContent = response.wspr_version;
                 versionElement.title = response.wspr_version;
                 maybePromptForUiRefresh(response.ui_version);
+                checkForWsprryPiUpdate(response);
             } else {
                 versionElement.textContent = "Service unavailable";
                 versionElement.removeAttribute("title");
+                clearWsprryPiUpdateFooter();
                 debugConsole("error", "Invalid JSON format from version.");
             }
             syncFixedChromeOffsets();
@@ -3007,6 +3014,7 @@ function updateWsprryPiVersion() {
         .fail(function (jqXHR, textStatus, errorThrown) {
             versionElement.textContent = "Service unavailable";
             versionElement.removeAttribute("title");
+            clearWsprryPiUpdateFooter();
 
             debugConsole(
                 "error",
@@ -3015,6 +3023,503 @@ function updateWsprryPiVersion() {
                 + (errorThrown ? " (" + errorThrown + ")" : "")
             );
             syncFixedChromeOffsets();
+        });
+}
+
+function shortSha(value) {
+    return typeof value === "string" ? value.substring(0, 7) : "";
+}
+
+function findFullShaInValue(value) {
+    if (typeof value === "string") {
+        const match = value.match(/\b[0-9a-f]{40}\b/i);
+        return match ? match[0] : "";
+    }
+
+    if (Array.isArray(value)) {
+        for (const item of value) {
+            const match = findFullShaInValue(item);
+            if (match) {
+                return match;
+            }
+        }
+        return "";
+    }
+
+    if (value && typeof value === "object") {
+        for (const key of Object.keys(value)) {
+            const match = findFullShaInValue(value[key]);
+            if (match) {
+                return match;
+            }
+        }
+    }
+
+    return "";
+}
+
+function parseWsprryPiVersionResponse(response) {
+    const rawDisplayVersion = typeof response?.wspr_version === "string"
+        ? response.wspr_version.trim()
+        : "";
+    const rawUiVersion = typeof response?.ui_version === "string"
+        ? response.ui_version.trim()
+        : "";
+    const currentDisplayVersion = rawUiVersion || rawDisplayVersion;
+    const versionForParsing = rawUiVersion || rawDisplayVersion;
+    const branchMatch = versionForParsing.match(/\(([^()]+)\)/);
+    const currentBranch = branchMatch ? branchMatch[1].trim() : "";
+    const fullSha = findFullShaInValue(response);
+    const shortShaMatch = versionForParsing.match(/[+.:-]([0-9a-f]{7,40})(?:\b|[^0-9a-f])/i) ||
+        versionForParsing.match(/\b([0-9a-f]{7,40})\b/i);
+    const currentSha = fullSha || (shortShaMatch ? shortShaMatch[1] : "");
+
+    if (!currentDisplayVersion || !currentBranch || !currentSha) {
+        return null;
+    }
+
+    return {
+        currentDisplayVersion,
+        currentSha,
+        currentBranch,
+        currentShaIsFull: currentSha.length === 40
+    };
+}
+
+function updateCheckCacheKey(versionInfo) {
+    return `${UPDATE_CHECK_CACHE_PREFIX}:${versionInfo.currentBranch}:${versionInfo.currentSha}`;
+}
+
+function updateDismissalKey(result) {
+    return `${UPDATE_CHECK_DISMISS_PREFIX}:${result.currentSha}:${result.targetBranch}:${result.targetHeadSha}`;
+}
+
+function readUpdateCheckCache(versionInfo) {
+    try {
+        const raw = window.localStorage.getItem(updateCheckCacheKey(versionInfo));
+        if (!raw) {
+            return null;
+        }
+
+        const cached = JSON.parse(raw);
+        if (
+            !cached ||
+            cached.currentSha !== versionInfo.currentSha ||
+            cached.currentBranch !== versionInfo.currentBranch ||
+            Date.now() - Number(cached.checkedAt || 0) >= UPDATE_CHECK_CACHE_TTL_MS
+        ) {
+            return null;
+        }
+
+        return cached;
+    } catch {
+        return null;
+    }
+}
+
+function writeUpdateCheckCache(versionInfo, result) {
+    try {
+        window.localStorage.setItem(
+            updateCheckCacheKey(versionInfo),
+            JSON.stringify(result)
+        );
+    } catch {
+    }
+}
+
+function writeFailedUpdateCheckCache(versionInfo) {
+    writeUpdateCheckCache(versionInfo, {
+        checkedAt: Date.now(),
+        currentSha: versionInfo.currentSha,
+        currentBranch: versionInfo.currentBranch,
+        targetBranch: "",
+        targetHeadSha: "",
+        updateAvailable: false,
+        releaseUrl: "",
+        releaseTitle: "",
+        fallbackUsed: false
+    });
+}
+
+async function fetchGithubJson(url, options = {}) {
+    const response = await fetch(url, {
+        headers: {
+            Accept: "application/vnd.github+json"
+        },
+        cache: options.cache || "no-store"
+    });
+
+    if (!response.ok) {
+        const error = new Error(`GitHub returned HTTP ${response.status}`);
+        error.status = response.status;
+        throw error;
+    }
+
+    return response.json();
+}
+
+async function lookupGithubBranch(branch) {
+    const data = await fetchGithubJson(
+        `${UPDATE_CHECK_API_BASE}/branches/${encodeURIComponent(branch)}`
+    );
+    const sha = typeof data?.commit?.sha === "string" ? data.commit.sha : "";
+
+    if (!sha) {
+        throw new Error(`GitHub branch ${branch} did not include a HEAD SHA`);
+    }
+
+    return {
+        branch,
+        headSha: sha
+    };
+}
+
+async function selectGithubUpdateBranch(currentBranch) {
+    if (currentBranch === "main") {
+        return Object.assign(await lookupGithubBranch("main"), { fallbackUsed: false });
+    }
+
+    if (currentBranch === "devel") {
+        try {
+            return Object.assign(await lookupGithubBranch("devel"), { fallbackUsed: false });
+        } catch (error) {
+            if (error.status !== 404) {
+                throw error;
+            }
+
+            return Object.assign(await lookupGithubBranch("main"), { fallbackUsed: true });
+        }
+    }
+
+    try {
+        return Object.assign(await lookupGithubBranch(currentBranch), { fallbackUsed: false });
+    } catch (error) {
+        if (error.status !== 404) {
+            throw error;
+        }
+
+        return Object.assign(await lookupGithubBranch("devel"), { fallbackUsed: true });
+    }
+}
+
+async function compareGithubCommits(currentSha, headSha) {
+    try {
+        const data = await fetchGithubJson(
+            `${UPDATE_CHECK_API_BASE}/compare/${encodeURIComponent(currentSha)}...${encodeURIComponent(headSha)}`
+        );
+        const status = typeof data?.status === "string" ? data.status : "";
+        return {
+            completed: true,
+            updateAvailable: status === "behind" || status === "diverged"
+        };
+    } catch (error) {
+        if (currentSha.length < 40) {
+            return {
+                completed: false,
+                updateAvailable: !headSha.startsWith(currentSha)
+            };
+        }
+
+        throw error;
+    }
+}
+
+async function resolveReleaseTargetSha(targetCommitish) {
+    const target = typeof targetCommitish === "string" ? targetCommitish.trim() : "";
+    if (!target) {
+        return "";
+    }
+
+    if (/^[0-9a-f]{40}$/i.test(target)) {
+        return target;
+    }
+
+    try {
+        const tagRef = await fetchGithubJson(
+            `${UPDATE_CHECK_API_BASE}/git/ref/tags/${encodeURIComponent(target)}`
+        );
+        const tagObject = tagRef?.object || {};
+
+        if (tagObject.type === "commit" && typeof tagObject.sha === "string") {
+            return tagObject.sha;
+        }
+
+        if (tagObject.type === "tag" && typeof tagObject.url === "string") {
+            const tagData = await fetchGithubJson(tagObject.url);
+            if (tagData?.object?.type === "commit" && typeof tagData.object.sha === "string") {
+                return tagData.object.sha;
+            }
+        }
+    } catch (error) {
+        if (error.status !== 404) {
+            throw error;
+        }
+    }
+
+    try {
+        return (await lookupGithubBranch(target)).headSha;
+    } catch (error) {
+        if (error.status !== 404) {
+            throw error;
+        }
+    }
+
+    return "";
+}
+
+async function findReleaseForHead(headSha) {
+    const releases = await fetchGithubJson(`${UPDATE_CHECK_API_BASE}/releases?per_page=100`);
+    if (!Array.isArray(releases)) {
+        return null;
+    }
+
+    for (const release of releases) {
+        const target = typeof release?.target_commitish === "string"
+            ? release.target_commitish.trim()
+            : "";
+        let resolvedSha = target === headSha ? target : "";
+
+        if (!resolvedSha) {
+            resolvedSha = await resolveReleaseTargetSha(target);
+        }
+
+        if (resolvedSha === headSha) {
+            return {
+                releaseUrl: typeof release.html_url === "string" && release.html_url
+                    ? release.html_url
+                    : UPDATE_CHECK_RELEASES_URL,
+                releaseTitle: release.name || release.tag_name || ""
+            };
+        }
+    }
+
+    return null;
+}
+
+async function buildWsprryPiUpdateResult(versionInfo) {
+    const selectedBranch = await selectGithubUpdateBranch(versionInfo.currentBranch);
+    const comparison = selectedBranch.fallbackUsed
+        ? { completed: false, updateAvailable: true }
+        : await compareGithubCommits(versionInfo.currentSha, selectedBranch.headSha);
+    let releaseUrl = UPDATE_CHECK_RELEASES_URL;
+    let releaseTitle = "";
+
+    if (comparison.updateAvailable) {
+        try {
+            const release = await findReleaseForHead(selectedBranch.headSha);
+            if (release) {
+                releaseUrl = release.releaseUrl;
+                releaseTitle = release.releaseTitle;
+            }
+        } catch (error) {
+            logUpdateCheckWarning(error);
+        }
+    }
+
+    return {
+        checkedAt: Date.now(),
+        currentSha: versionInfo.currentSha,
+        currentBranch: versionInfo.currentBranch,
+        targetBranch: selectedBranch.branch,
+        targetHeadSha: selectedBranch.headSha,
+        updateAvailable: comparison.updateAvailable,
+        releaseUrl,
+        releaseTitle,
+        fallbackUsed: selectedBranch.fallbackUsed === true
+    };
+}
+
+function logUpdateCheckWarning(error) {
+    const message = error && typeof error.message === "string" && error.message
+        ? error.message
+        : "GitHub update check failed";
+    debugConsole("warn", `WsprryPi update check skipped: ${message}`);
+}
+
+function clearWsprryPiUpdateFooter() {
+    const versionElement = document.getElementById("versionText");
+    const updateLink = document.getElementById("versionUpdateLink");
+
+    if (versionElement) {
+        versionElement.classList.remove("update-available");
+        if (versionElement.textContent && versionElement.textContent !== "---") {
+            versionElement.title = versionElement.textContent;
+        } else {
+            versionElement.removeAttribute("title");
+        }
+    }
+
+    if (updateLink) {
+        updateLink.classList.add("d-none");
+        updateLink.href = UPDATE_CHECK_RELEASES_URL;
+    }
+}
+
+function markWsprryPiUpdateFooter(result) {
+    const versionElement = document.getElementById("versionText");
+    const updateLink = document.getElementById("versionUpdateLink");
+    const releaseUrl = result.releaseUrl || UPDATE_CHECK_RELEASES_URL;
+
+    if (versionElement) {
+        versionElement.classList.add("update-available");
+        versionElement.title = "An update is available";
+    }
+
+    if (updateLink) {
+        updateLink.href = releaseUrl;
+        updateLink.title = "An update is available";
+        updateLink.classList.remove("d-none");
+    }
+}
+
+function isUpdateDismissed(result) {
+    try {
+        return window.localStorage.getItem(updateDismissalKey(result)) === "1";
+    } catch {
+        return false;
+    }
+}
+
+function dismissUpdateTarget(result) {
+    try {
+        window.localStorage.setItem(updateDismissalKey(result), "1");
+    } catch {
+    }
+}
+
+function appendUpdateModalBodyLink(body, result, exactRelease) {
+    const link = document.createElement("a");
+    link.href = result.releaseUrl || UPDATE_CHECK_RELEASES_URL;
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.textContent = exactRelease && result.releaseTitle
+        ? result.releaseTitle
+        : "GitHub releases";
+
+    body.appendChild(link);
+}
+
+function markUpdateCheckModalActive(modalEl) {
+    if (modalEl) {
+        modalEl.dataset.updateCheckActive = "true";
+    }
+}
+
+function clearUpdateCheckModalActive(modalEl) {
+    if (modalEl) {
+        delete modalEl.dataset.updateCheckActive;
+    }
+}
+
+function releaseUpdateCheckModalOwnership(modalEl) {
+    if (!modalEl) {
+        return;
+    }
+
+    clearUpdateCheckModalActive(modalEl);
+    $(modalEl).off("hidden.bs.modal.updateCheck");
+}
+
+function showWsprryPiUpdateModal(versionInfo, result) {
+    const modalEl = document.getElementById("confirmModal");
+    if (!modalEl || isUpdateDismissed(result)) {
+        return;
+    }
+
+    const confirmModal = bootstrap.Modal.getOrCreateInstance(modalEl, {
+        backdrop: "static",
+        keyboard: false
+    });
+    const currentShaLabel = shortSha(versionInfo.currentSha);
+    const targetShaLabel = shortSha(result.targetHeadSha);
+    const exactRelease = Boolean(result.releaseTitle);
+
+    markUpdateCheckModalActive(modalEl);
+    document.getElementById("confirmModalLabel").textContent = "Update available";
+
+    const body = document.getElementById("confirmModalBody");
+    body.classList.remove("confirm-modal-body--preformatted");
+    body.textContent = "";
+
+    body.appendChild(document.createTextNode(
+        `${versionInfo.currentDisplayVersion} is behind ${result.targetBranch} ${targetShaLabel}.`
+    ));
+    body.appendChild(document.createElement("br"));
+    body.appendChild(document.createTextNode(`Current SHA: ${currentShaLabel}`));
+    body.appendChild(document.createElement("br"));
+    body.appendChild(document.createTextNode(
+        exactRelease
+            ? "A release is available for this update. "
+            : "Review the latest WsprryPi releases before updating. "
+    ));
+    appendUpdateModalBodyLink(body, result, exactRelease);
+
+    const $cancelBtn = $("#confirmCancelBtn");
+    const $confirmBtn = $("#confirmActionBtn");
+    $cancelBtn
+        .text("Dismiss")
+        .removeClass("d-none")
+        .off("click")
+        .on("click", () => {
+            dismissUpdateTarget(result);
+        });
+    $confirmBtn
+        .attr("class", "btn btn-primary")
+        .text(exactRelease ? "View release" : "View releases")
+        .off("click")
+        .on("click", () => {
+            dismissUpdateTarget(result);
+            confirmModal.hide();
+            window.open(result.releaseUrl || UPDATE_CHECK_RELEASES_URL, "_blank", "noopener");
+        });
+
+    $(modalEl)
+        .off("hidden.bs.modal.updateCheck")
+        .one("hidden.bs.modal.updateCheck", () => {
+            if (modalEl.dataset.updateCheckActive !== "true") {
+                return;
+            }
+
+            dismissUpdateTarget(result);
+            clearUpdateCheckModalActive(modalEl);
+            resetConfirmationDialogState();
+        });
+
+    confirmModal.show();
+}
+
+function applyWsprryPiUpdateResult(versionInfo, result) {
+    if (!result || result.updateAvailable !== true) {
+        clearWsprryPiUpdateFooter();
+        return;
+    }
+
+    markWsprryPiUpdateFooter(result);
+    showWsprryPiUpdateModal(versionInfo, result);
+}
+
+function checkForWsprryPiUpdate(response) {
+    const versionInfo = parseWsprryPiVersionResponse(response);
+    if (!versionInfo) {
+        clearWsprryPiUpdateFooter();
+        return;
+    }
+
+    const cached = readUpdateCheckCache(versionInfo);
+    if (cached) {
+        applyWsprryPiUpdateResult(versionInfo, cached);
+        return;
+    }
+
+    buildWsprryPiUpdateResult(versionInfo)
+        .then((result) => {
+            writeUpdateCheckCache(versionInfo, result);
+            applyWsprryPiUpdateResult(versionInfo, result);
+        })
+        .catch((error) => {
+            writeFailedUpdateCheckCache(versionInfo);
+            clearWsprryPiUpdateFooter();
+            logUpdateCheckWarning(error);
         });
 }
 
@@ -3664,6 +4169,31 @@ function openConfirmModal(action, confirmModal) {
     }, confirmModal);
 }
 
+function resetConfirmationDialogState() {
+    const label = document.getElementById("confirmModalLabel");
+    const body = document.getElementById("confirmModalBody");
+    const $cancelBtn = $("#confirmCancelBtn");
+    const $confirmBtn = $("#confirmActionBtn");
+
+    if (label) {
+        label.textContent = "Please Confirm";
+    }
+
+    if (body) {
+        body.textContent = "";
+        body.classList.remove("confirm-modal-body--preformatted");
+    }
+
+    $cancelBtn
+        .text("Cancel")
+        .removeClass("d-none")
+        .off("click");
+    $confirmBtn
+        .attr("class", "btn btn-danger")
+        .text("Yes, proceed")
+        .off("click");
+}
+
 function showConfirmationDialog(options = {}, modalInstance = null) {
     const modalEl = document.getElementById("confirmModal");
     if (!modalEl) {
@@ -3693,6 +4223,7 @@ function showConfirmationDialog(options = {}, modalInstance = null) {
         : "btn-primary";
     const showCancel = options.showCancel !== false;
 
+    releaseUpdateCheckModalOwnership(modalEl);
     document.getElementById("confirmModalLabel").textContent = title;
     const confirmModalBody = document.getElementById("confirmModalBody");
     confirmModalBody.textContent = message;

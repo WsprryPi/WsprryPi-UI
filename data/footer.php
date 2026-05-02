@@ -7,6 +7,16 @@
             <div class="footer-line footer-version-line">
                 <span class="footer-version-label">Build</span>
                 <span id="versionText" class="footer-version-value">---</span>
+                <a
+                    id="versionUpdateLink"
+                    class="footer-version-update-link d-none"
+                    href="https://github.com/WsprryPi/WsprryPi/releases"
+                    target="_blank"
+                    rel="noopener"
+                    title="An update is available"
+                    aria-label="An update is available">
+                    <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
+                </a>
             </div>
             <details class="footer-meta">
                 <summary>About</summary>

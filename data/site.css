@@ -794,6 +794,26 @@ footer .container {
     font-variant-numeric: tabular-nums;
 }
 
+.footer-version-value.update-available {
+    color: var(--wspr-state-warning);
+    font-weight: var(--weight-semibold);
+    opacity: 1;
+}
+
+.footer-version-update-link {
+    display: inline-flex;
+    align-items: center;
+    color: var(--wspr-state-warning);
+    font-size: 0.9em;
+    line-height: 1;
+    text-decoration: none;
+}
+
+.footer-version-update-link:hover,
+.footer-version-update-link:focus {
+    color: color-mix(in srgb, var(--wspr-state-warning) 82%, rgb(var(--wspr-accent-text-rgb)) 18%);
+}
+
 .footer-meta {
     position: relative;
     color: rgba(var(--wspr-accent-text-rgb), 0.78);
