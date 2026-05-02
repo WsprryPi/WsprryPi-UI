@@ -3883,8 +3883,7 @@ async function selectGithubUpdateBranch(versionInfo) {
                     `local devel commit reachable from upstream main (${certainty}, status ${mainContainment.status || "unknown"})`
                 );
             }
-            debugConsole("debug", `Update check local devel staying on upstream devel because current SHA is not reachable from main (compare status ${mainContainment.status || "unknown"}).`);
-        } catch (error) {
+            debugConsole("debug", `Update check local devel staying on upstream devel because current SHA is not reachable from main (compare status ${mainContainment.status || "unknown"}).`);        } catch (error) {
             const status = typeof error?.status === "number" ? `HTTP ${error.status}` : "network error";
             debugConsole("debug", `Update check local devel staying on upstream devel because main containment probe failed (${status}).`);
         }
