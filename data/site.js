@@ -3087,6 +3087,22 @@ function buildUpdateCheckFailure(code, detail = "") {
 // when this binary was built. It is local build metadata, not evidence that a
 // remote update exists.
 function parseBuildDirtyState(response, rawDisplayVersion, rawUiVersion, rawExeVersion) {
+    const structuredDirtyState = response?.wspr_build_dirty_state;
+    if (structuredDirtyState && typeof structuredDirtyState === "object") {
+        if (structuredDirtyState.known === true) {
+            return {
+                known: true,
+                dirty: structuredDirtyState.dirty === true,
+                source: "structured"
+            };
+        }
+        return {
+            known: false,
+            dirty: false,
+            source: "structured"
+        };
+    }
+
     const structuredDirty = response?.wspr_build_dirty ?? response?.wspr_dirty;
     if (typeof structuredDirty === "boolean") {
         return {
@@ -3152,6 +3168,36 @@ function parseBranchState(response, currentBranch) {
     return "branch";
 }
 
+function parseStructuredSemanticVersion(value) {
+    if (!value || typeof value !== "object" || value.valid !== true) {
+        return null;
+    }
+
+    const major = Number(value.major);
+    const minor = Number(value.minor);
+    const patch = Number(value.patch);
+    if (![major, minor, patch].every(Number.isInteger)) {
+        return null;
+    }
+
+    const prerelease = Array.isArray(value.prerelease)
+        ? value.prerelease.map((identifier) => String(identifier).toLowerCase())
+        : [];
+    const build = Array.isArray(value.build)
+        ? value.build.map((identifier) => String(identifier).toLowerCase())
+        : [];
+
+    return {
+        major,
+        minor,
+        patch,
+        prerelease,
+        build,
+        raw: typeof value.raw === "string" ? value.raw : `${major}.${minor}.${patch}`,
+        normalized: `${major}.${minor}.${patch}${prerelease.length ? `-${prerelease.join(".")}` : ""}`
+    };
+}
+
 function parseWsprryPiVersionResponse(response) {
     const rawDisplayVersion = typeof response?.wspr_version === "string"
         ? response.wspr_version.trim()
@@ -3159,11 +3205,20 @@ function parseWsprryPiVersionResponse(response) {
     const rawUiVersion = typeof response?.ui_version === "string"
         ? response.ui_version.trim()
         : "";
-    const rawExeVersion = typeof response?.wspr_exe_version === "string"
-        ? response.wspr_exe_version.trim()
+    const rawVersion = typeof response?.wspr_version_raw === "string"
+        ? response.wspr_version_raw.trim()
         : "";
+    const rawExeVersion = rawVersion || (typeof response?.wspr_exe_version === "string"
+        ? response.wspr_exe_version.trim()
+        : "");
+    const branchFieldPresent = Object.prototype.hasOwnProperty.call(response || {}, "wspr_branch");
+    const commitFieldPresent = Object.prototype.hasOwnProperty.call(response || {}, "wspr_commit");
+    const branchStateFieldPresent = Object.prototype.hasOwnProperty.call(response || {}, "wspr_branch_state");
     const rawBackendBranch = typeof response?.wspr_branch === "string"
         ? response.wspr_branch.trim()
+        : "";
+    const rawBranchState = typeof response?.wspr_branch_state === "string"
+        ? response.wspr_branch_state.trim().toLowerCase()
         : "";
     const rawBackendCommit = typeof response?.wspr_commit === "string"
         ? response.wspr_commit.trim()
@@ -3172,6 +3227,9 @@ function parseWsprryPiVersionResponse(response) {
         ? rawBackendCommit
         : "";
     const currentDisplayVersion = rawDisplayVersion || rawUiVersion;
+    // Update-check precedence is structured backend metadata first. Display
+    // strings are legacy fallback only when the matching structured field is
+    // absent, because display copy is allowed to change for users.
     const displayVersionForParsing = rawDisplayVersion || rawUiVersion;
     const versionForShaParsing = rawUiVersion || rawDisplayVersion;
     const branchMatch = displayVersionForParsing.match(/\(([^()]+)\)/);
@@ -3183,13 +3241,31 @@ function parseWsprryPiVersionResponse(response) {
         versionForShaParsing.match(/\b([0-9a-f]{7,40})\b/i);
     const currentSha = backendCommit || fullSha || (shortShaMatch ? shortShaMatch[1] : "");
     const dirtyState = parseBuildDirtyState(response, rawDisplayVersion, rawUiVersion, rawExeVersion);
+    const localVersionParsedObject = parseStructuredSemanticVersion(response?.wspr_version_parsed);
 
     if (!currentDisplayVersion) {
         return buildUpdateCheckFailure("missing_version_data", "The /version response did not include wspr_version or ui_version.");
     }
 
+    if (branchFieldPresent && !rawBackendBranch) {
+        return buildUpdateCheckFailure("missing_branch", "The /version response included wspr_branch, but it was empty or malformed.");
+    }
+
+    if (
+        branchStateFieldPresent &&
+        rawBranchState !== "branch" &&
+        rawBranchState !== "detached" &&
+        rawBranchState !== "unknown"
+    ) {
+        return buildUpdateCheckFailure("missing_branch", "The /version response included wspr_branch_state, but it was not branch, detached, or unknown.");
+    }
+
     if (!currentBranch) {
         return buildUpdateCheckFailure("missing_branch", "The /version response did not include wspr_branch or a parseable display branch.");
+    }
+
+    if (commitFieldPresent && !backendCommit) {
+        return buildUpdateCheckFailure("missing_commit", "The /version response included wspr_commit, but it was not a valid SHA.");
     }
 
     if (!currentSha) {
@@ -3205,6 +3281,7 @@ function parseWsprryPiVersionResponse(response) {
         branchState,
         displayBranch,
         currentShaIsFull: currentSha.length === 40,
+        localVersionParsedObject,
         buildDirtyKnown: dirtyState.known,
         buildDirty: dirtyState.dirty,
         buildDirtySource: dirtyState.source
@@ -3936,7 +4013,8 @@ async function semanticUpdateResultFromCandidate(versionInfo, localVersion, cand
 }
 
 async function buildSemanticVersionUpdateResult(versionInfo) {
-    const localVersion = parseSemanticVersion(versionInfo.currentModalVersion) ||
+    const localVersion = versionInfo.localVersionParsedObject ||
+        parseSemanticVersion(versionInfo.currentModalVersion) ||
         parseSemanticVersion(versionInfo.currentDisplayVersion);
     if (!localVersion) {
         return semanticComparisonFallback("local semantic version could not be parsed");
