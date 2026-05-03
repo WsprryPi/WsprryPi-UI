@@ -3158,6 +3158,146 @@ function updateCheckNoUpdateResult() {
     };
 }
 
+function formatSemanticVersion(version) {
+    if (!version) {
+        return "";
+    }
+
+    const prerelease = version.prerelease.length ? `-${version.prerelease.join(".")}` : "";
+    return `${version.major}.${version.minor}.${version.patch}${prerelease}`;
+}
+
+function parseSemanticVersion(value) {
+    const source = typeof value === "string" ? value.trim() : "";
+    const match = source.match(/(?:^|[^0-9A-Za-z])v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+([0-9A-Za-z.-]+))?(?=$|[^0-9A-Za-z.-])/);
+    if (!match) {
+        return null;
+    }
+
+    const prerelease = match[4] ? match[4].split(".") : [];
+    const build = match[5] ? match[5].split(".") : [];
+    return {
+        major: Number(match[1]),
+        minor: Number(match[2]),
+        patch: Number(match[3]),
+        prerelease,
+        build,
+        raw: match[0].replace(/^[^v0-9]*/, ""),
+        normalized: `${match[1]}.${match[2]}.${match[3]}${prerelease.length ? `-${prerelease.join(".")}` : ""}`
+    };
+}
+
+function comparePrereleaseIdentifier(left, right) {
+    const leftNumeric = /^\d+$/.test(left);
+    const rightNumeric = /^\d+$/.test(right);
+
+    if (leftNumeric && rightNumeric) {
+        return Number(left) - Number(right);
+    }
+
+    if (leftNumeric !== rightNumeric) {
+        return leftNumeric ? -1 : 1;
+    }
+
+    return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function compareSemanticVersions(left, right) {
+    for (const key of ["major", "minor", "patch"]) {
+        if (left[key] !== right[key]) {
+            return left[key] - right[key];
+        }
+    }
+
+    if (!left.prerelease.length && !right.prerelease.length) {
+        return 0;
+    }
+
+    if (!left.prerelease.length) {
+        return 1;
+    }
+
+    if (!right.prerelease.length) {
+        return -1;
+    }
+
+    const length = Math.max(left.prerelease.length, right.prerelease.length);
+    for (let index = 0; index < length; index += 1) {
+        if (left.prerelease[index] === undefined) {
+            return -1;
+        }
+        if (right.prerelease[index] === undefined) {
+            return 1;
+        }
+
+        const result = comparePrereleaseIdentifier(left.prerelease[index], right.prerelease[index]);
+        if (result !== 0) {
+            return result;
+        }
+    }
+
+    return 0;
+}
+
+function newerSemanticRelease(left, right) {
+    if (!left) {
+        return right;
+    }
+    if (!right) {
+        return left;
+    }
+
+    return compareSemanticVersions(left.version, right.version) < 0 ? right : left;
+}
+
+async function fetchGithubReleases() {
+    const releases = await fetchGithubJson(`${UPDATE_CHECK_API_BASE}/releases?per_page=100`);
+    if (!Array.isArray(releases)) {
+        const error = new Error("GitHub releases response was not an array");
+        error.code = "malformed_response";
+        throw error;
+    }
+
+    return releases;
+}
+
+function summarizeSemanticReleases(releases) {
+    let latestStable = null;
+    let latestPrerelease = null;
+    const prereleasesByChannel = new Map();
+
+    for (const release of releases) {
+        const tag = typeof release?.tag_name === "string" ? release.tag_name.trim() : "";
+        const version = parseSemanticVersion(tag);
+        if (!version) {
+            continue;
+        }
+
+        const candidate = {
+            version,
+            release,
+            releaseUrl: typeof release.html_url === "string" && release.html_url
+                ? release.html_url
+                : UPDATE_CHECK_RELEASES_URL,
+            releaseTitle: release.name || release.tag_name || "",
+            normalized: formatSemanticVersion(version)
+        };
+
+        if (version.prerelease.length) {
+            latestPrerelease = newerSemanticRelease(latestPrerelease, candidate);
+            const channel = version.prerelease[0];
+            prereleasesByChannel.set(
+                channel,
+                newerSemanticRelease(prereleasesByChannel.get(channel), candidate)
+            );
+        } else {
+            latestStable = newerSemanticRelease(latestStable, candidate);
+        }
+    }
+
+    return { latestStable, latestPrerelease, prereleasesByChannel };
+}
+
 function updateCheckCacheKey(versionInfo) {
     return `${UPDATE_CHECK_CACHE_PREFIX}:${versionInfo.currentBranch}:${versionInfo.currentSha}`;
 }
@@ -3496,11 +3636,7 @@ async function resolveReleaseTargetSha(targetCommitish, memo = null) {
 }
 
 async function findReleaseForHead(headSha) {
-    const releases = await fetchGithubJson(`${UPDATE_CHECK_API_BASE}/releases?per_page=100`);
-    if (!Array.isArray(releases)) {
-        return null;
-    }
-
+    const releases = await fetchGithubReleases();
     const resolvedTargets = new Map();
 
     for (const release of releases) {
@@ -3526,11 +3662,152 @@ async function findReleaseForHead(headSha) {
     return null;
 }
 
-async function buildWsprryPiUpdateResult(versionInfo) {
+function semanticComparisonFallback(reason, localVersion = null) {
+    return {
+        useCommitFallback: true,
+        reason,
+        localVersionParsed: localVersion ? formatSemanticVersion(localVersion) : "",
+        remoteVersionSelected: ""
+    };
+}
+
+async function semanticUpdateResultFromCandidate(versionInfo, localVersion, candidate, status) {
+    let targetHeadSha = "";
+    try {
+        targetHeadSha = await resolveReleaseTargetSha(candidate.release?.target_commitish);
+    } catch (error) {
+        logUpdateCheckWarning(error);
+    }
+
+    return {
+        useCommitFallback: false,
+        checkedAt: Date.now(),
+        currentSha: versionInfo.currentSha,
+        currentBranch: versionInfo.currentBranch,
+        targetBranch: "release",
+        targetHeadSha,
+        updateAvailable: compareSemanticVersions(localVersion, candidate.version) < 0,
+        releaseUrl: candidate.releaseUrl,
+        releaseTitle: candidate.releaseTitle,
+        fallbackUsed: false,
+        selectionReason: `semantic version compared against GitHub release ${candidate.normalized}`,
+        versionComparisonUsed: "semver",
+        versionComparisonStatus: status,
+        localVersionParsed: formatSemanticVersion(localVersion),
+        remoteVersionSelected: candidate.normalized
+    };
+}
+
+async function buildSemanticVersionUpdateResult(versionInfo) {
+    const localVersion = parseSemanticVersion(versionInfo.currentModalVersion) ||
+        parseSemanticVersion(versionInfo.currentDisplayVersion);
+    if (!localVersion) {
+        return semanticComparisonFallback("local semantic version could not be parsed");
+    }
+
+    if (localVersion.build.length) {
+        return semanticComparisonFallback("local semantic version has build metadata/commits past tag", localVersion);
+    }
+
+    let releases;
+    try {
+        releases = await fetchGithubReleases();
+    } catch (error) {
+        logUpdateCheckWarning(error);
+        return semanticComparisonFallback("GitHub release data unavailable", localVersion);
+    }
+
+    const summary = summarizeSemanticReleases(releases);
+    const localIsPrerelease = localVersion.prerelease.length > 0;
+    const localVersionParsed = formatSemanticVersion(localVersion);
+
+    // Semantic version flow is primary when the local build is at a parseable
+    // tag. Stable builds compare only with latest stable release. Prerelease
+    // builds compare with newer stable releases first, then newer prereleases
+    // from the same prerelease channel. Commit/branch comparison is fallback
+    // only and must not override a valid semantic decision.
+    if (!localIsPrerelease) {
+        if (!summary.latestStable) {
+            return semanticComparisonFallback("no stable semantic GitHub release was available", localVersion);
+        }
+
+        const comparison = compareSemanticVersions(localVersion, summary.latestStable.version);
+        if (comparison < 0) {
+            return semanticUpdateResultFromCandidate(versionInfo, localVersion, summary.latestStable, "update_available");
+        }
+
+        return {
+            useCommitFallback: false,
+            checkedAt: Date.now(),
+            currentSha: versionInfo.currentSha,
+            currentBranch: versionInfo.currentBranch,
+            targetBranch: "release",
+            targetHeadSha: "",
+            updateAvailable: false,
+            releaseUrl: summary.latestStable.releaseUrl,
+            releaseTitle: summary.latestStable.releaseTitle,
+            fallbackUsed: false,
+            selectionReason: "semantic stable version compared against latest stable GitHub release",
+            versionComparisonUsed: "semver",
+            versionComparisonStatus: comparison === 0 ? "equal" : "local_ahead",
+            localVersionParsed,
+            remoteVersionSelected: summary.latestStable.normalized
+        };
+    }
+
+    if (summary.latestStable && compareSemanticVersions(localVersion, summary.latestStable.version) < 0) {
+        return semanticUpdateResultFromCandidate(versionInfo, localVersion, summary.latestStable, "update_available");
+    }
+
+    const channel = localVersion.prerelease[0];
+    const latestSameChannelPrerelease = summary.prereleasesByChannel.get(channel);
+    if (latestSameChannelPrerelease) {
+        const comparison = compareSemanticVersions(localVersion, latestSameChannelPrerelease.version);
+        if (comparison < 0) {
+            return semanticUpdateResultFromCandidate(versionInfo, localVersion, latestSameChannelPrerelease, "update_available");
+        }
+
+        return {
+            useCommitFallback: false,
+            checkedAt: Date.now(),
+            currentSha: versionInfo.currentSha,
+            currentBranch: versionInfo.currentBranch,
+            targetBranch: "release",
+            targetHeadSha: "",
+            updateAvailable: false,
+            releaseUrl: latestSameChannelPrerelease.releaseUrl,
+            releaseTitle: latestSameChannelPrerelease.releaseTitle,
+            fallbackUsed: false,
+            selectionReason: "semantic prerelease version compared against same-channel GitHub prerelease",
+            versionComparisonUsed: "semver",
+            versionComparisonStatus: comparison === 0 ? "equal" : "local_ahead",
+            localVersionParsed,
+            remoteVersionSelected: latestSameChannelPrerelease.normalized
+        };
+    }
+
+    const bestRemote = summary.latestStable || summary.latestPrerelease;
+    return {
+        useCommitFallback: false,
+        checkedAt: Date.now(),
+        currentSha: versionInfo.currentSha,
+        currentBranch: versionInfo.currentBranch,
+        targetBranch: "release",
+        targetHeadSha: "",
+        updateAvailable: false,
+        releaseUrl: bestRemote?.releaseUrl || UPDATE_CHECK_RELEASES_URL,
+        releaseTitle: bestRemote?.releaseTitle || "",
+        fallbackUsed: false,
+        selectionReason: "semantic prerelease version has no newer same-channel prerelease or stable release",
+        versionComparisonUsed: "semver",
+        versionComparisonStatus: "local_ahead",
+        localVersionParsed,
+        remoteVersionSelected: bestRemote?.normalized || ""
+    };
+}
+
+async function buildCommitBasedWsprryPiUpdateResult(versionInfo, semanticFallback = null) {
     const selectedBranch = await selectGithubUpdateBranch(versionInfo);
-    // Update detection is intentionally branch/commit based. Semantic versions,
-    // release tags, prerelease labels, and dirty-tree markers are displayed as
-    // metadata only and are not used to decide whether an update exists.
     const comparison = updateCheckShaMatches(versionInfo.currentSha, selectedBranch.headSha)
             ? updateCheckNoUpdateResult()
             : await compareGithubCommits(versionInfo.currentSha, selectedBranch.headSha);
@@ -3559,8 +3836,22 @@ async function buildWsprryPiUpdateResult(versionInfo) {
         releaseUrl,
         releaseTitle,
         fallbackUsed: selectedBranch.fallbackUsed === true,
-        selectionReason: selectedBranch.selectionReason || ""
+        selectionReason: selectedBranch.selectionReason || "",
+        versionComparisonUsed: "commit",
+        versionComparisonStatus: semanticFallback?.reason || "commit_fallback",
+        localVersionParsed: semanticFallback?.localVersionParsed || "",
+        remoteVersionSelected: semanticFallback?.remoteVersionSelected || ""
     };
+}
+
+async function buildWsprryPiUpdateResult(versionInfo) {
+    const semanticResult = await buildSemanticVersionUpdateResult(versionInfo);
+    if (!semanticResult.useCommitFallback) {
+        return semanticResult;
+    }
+
+    debugConsole("debug", `Update check using commit fallback: ${semanticResult.reason}`);
+    return buildCommitBasedWsprryPiUpdateResult(versionInfo, semanticResult);
 }
 
 function logUpdateCheckWarning(error) {
@@ -3662,7 +3953,7 @@ function updateModalIdentity(versionInfo, result) {
     return {
         branch: result.targetBranch || "",
         currentSha: versionInfo.currentSha || result.currentSha || "",
-        targetSha: result.targetHeadSha || "",
+        targetSha: result.targetHeadSha || result.remoteVersionSelected || "",
         updateUrl: result.releaseUrl || UPDATE_CHECK_RELEASES_URL
     };
 }
@@ -3773,9 +4064,10 @@ function showWsprryPiUpdateModal(versionInfo, result) {
     body.classList.remove("confirm-modal-body--preformatted");
     body.textContent = "";
 
-    body.appendChild(document.createTextNode(
-        `${versionInfo.currentModalVersion} is behind ${result.targetBranch} ${targetShaLabel}.`
-    ));
+    const summaryText = result.versionComparisonUsed === "semver" && result.remoteVersionSelected
+        ? `${result.localVersionParsed || versionInfo.currentModalVersion} is behind release ${result.remoteVersionSelected}.`
+        : `${versionInfo.currentModalVersion} is behind ${result.targetBranch} ${targetShaLabel}.`;
+    body.appendChild(document.createTextNode(summaryText));
     body.appendChild(document.createElement("br"));
     if (result.fallbackUsed === true) {
         debugConsole("DEBUG", "The current branch is not available upstream. Updates are being checked against " + result.targetBranch + ".");
