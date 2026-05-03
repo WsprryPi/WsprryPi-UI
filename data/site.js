@@ -4428,8 +4428,6 @@ function updateCheckPanelElements() {
     return {
         panel,
         status: document.getElementById("updateCheckStatus"),
-        current: document.getElementById("updateCheckCurrent"),
-        target: document.getElementById("updateCheckTarget"),
         technical: document.getElementById("updateCheckTechnical"),
         technicalSummary: document.getElementById("updateCheckTechnicalSummary"),
         technicalList: document.getElementById("updateCheckTechnicalList"),
@@ -4447,51 +4445,35 @@ function updateCheckPanelCurrentText(versionInfo = null) {
     return `${versionInfo.currentModalVersion || versionInfo.currentDisplayVersion || "Unknown"}${branch}`;
 }
 
-function updateCheckPanelTargetText(result = null) {
-    if (!result) {
-        return "Not checked";
-    }
-    if (result.remoteVersionSelected) {
-        return result.remoteVersionSelected;
-    }
-    if (result.targetBranch || result.targetHeadSha) {
-        return `${result.targetBranch || "target"} ${shortSha(result.targetHeadSha) || ""}`.trim();
-    }
-    return "No remote target selected";
-}
-
 function appendUpdateCheckCodeText(parent, value) {
     const code = document.createElement("code");
     code.textContent = value;
     parent.appendChild(code);
 }
 
-function renderUpdateCheckPanelTarget(elements, result = null) {
-    if (!elements?.target) {
-        return;
-    }
-
-    elements.target.textContent = "";
-    if (!result || result.remoteVersionSelected || (!result.targetBranch && !result.targetHeadSha)) {
-        elements.target.textContent = updateCheckPanelTargetText(result);
-        return;
-    }
-
+function buildUpdateCheckTargetParts(result = null) {
     const parts = [];
-    if (result.targetBranch) {
+    if (result?.targetBranch) {
         parts.push({ label: "Branch", value: result.targetBranch });
     }
-    if (result.targetHeadSha) {
+    if (result?.targetHeadSha) {
         parts.push({ label: "Commit", value: shortSha(result.targetHeadSha) });
     }
+    return parts;
+}
 
-    parts.forEach((part, index) => {
-        if (index > 0) {
-            elements.target.appendChild(document.createTextNode(" - "));
-        }
-        elements.target.appendChild(document.createTextNode(`${part.label}: `));
-        appendUpdateCheckCodeText(elements.target, part.value);
-    });
+function updateCheckPanelTargetText(result = null) {
+    const parts = buildUpdateCheckTargetParts(result);
+    if (parts.length) {
+        return parts.map((part) => `${part.label}: ${part.value}`).join(" - ");
+    }
+    if (!result) {
+        return "Not checked";
+    }
+    if (result.remoteVersionSelected) {
+        return result.remoteVersionSelected;
+    }
+    return "No remote target selected";
 }
 
 function updateCheckPanelStatus(result = null) {
@@ -4541,7 +4523,7 @@ function getUserFacingUpdateSummary(result = null) {
     return "You are running the latest version.";
 }
 
-function appendUpdateCheckTechnicalDetail(details, label, value) {
+function appendUpdateCheckTechnicalDetail(details, label, value, options = {}) {
     if (value === null || value === undefined || value === "") {
         return;
     }
@@ -4549,7 +4531,15 @@ function appendUpdateCheckTechnicalDetail(details, label, value) {
     if (!text) {
         return;
     }
-    details.push({ label, value: text });
+    details.push(Object.assign({ label, value: text }, options));
+}
+
+function appendUpdateCheckTechnicalParts(details, label, parts) {
+    if (!Array.isArray(parts) || !parts.length) {
+        return;
+    }
+    const value = parts.map((part) => `${part.label}: ${part.value}`).join(" - ");
+    details.push({ label, value, parts });
 }
 
 function dedupeUpdateCheckTechnicalDetails(details) {
@@ -4581,6 +4571,22 @@ function buildTechnicalDetails(versionInfo = null, result = null, failure = null
     const details = [];
     const normalizedFailure = failure ? normalizeUpdateCheckFailure(failure) : null;
 
+    appendUpdateCheckTechnicalDetail(
+        details,
+        "Current",
+        updateCheckPanelCurrentText(versionInfo),
+        { code: true }
+    );
+    const targetParts = buildUpdateCheckTargetParts(result);
+    appendUpdateCheckTechnicalParts(details, "Target", targetParts);
+    if (!targetParts.length) {
+        appendUpdateCheckTechnicalDetail(
+            details,
+            "Target",
+            normalizedFailure ? "Unknown" : updateCheckPanelTargetText(result),
+            { code: true }
+        );
+    }
     appendUpdateCheckTechnicalDetail(
         details,
         "Summary",
@@ -4647,7 +4653,19 @@ function renderUpdateCheckTechnicalDetails(elements, details) {
         row.appendChild(term);
 
         const description = document.createElement("dd");
-        description.textContent = detail.value;
+        if (Array.isArray(detail.parts) && detail.parts.length) {
+            detail.parts.forEach((part, index) => {
+                if (index > 0) {
+                    description.appendChild(document.createTextNode(" - "));
+                }
+                description.appendChild(document.createTextNode(`${part.label}: `));
+                appendUpdateCheckCodeText(description, part.value);
+            });
+        } else if (detail.code === true) {
+            appendUpdateCheckCodeText(description, detail.value);
+        } else {
+            description.textContent = detail.value;
+        }
         row.appendChild(description);
 
         elements.technicalList.appendChild(row);
@@ -4689,8 +4707,6 @@ function renderUpdateCheckPanel(versionInfo = null, result = null) {
     const status = updateCheckPanelStatus(result);
     elements.status.textContent = status.label;
     elements.status.dataset.state = status.state;
-    elements.current.textContent = updateCheckPanelCurrentText(versionInfo);
-    renderUpdateCheckPanelTarget(elements, result);
     renderUpdateCheckTechnicalDetails(elements, buildTechnicalDetails(versionInfo, result));
     setUpdateCheckPanelAction(result);
     syncUpdateCheckToggle();
@@ -4705,8 +4721,6 @@ function renderUpdateCheckPanelFailure(error, versionInfo = null) {
     const failure = normalizeUpdateCheckFailure(error);
     elements.status.textContent = "Check failed";
     elements.status.dataset.state = "failed";
-    elements.current.textContent = updateCheckPanelCurrentText(versionInfo);
-    elements.target.textContent = "Unknown";
     renderUpdateCheckTechnicalDetails(elements, buildTechnicalDetails(versionInfo, null, failure));
     setUpdateCheckPanelAction(null);
     syncUpdateCheckToggle();
@@ -4720,9 +4734,17 @@ function renderUpdateCheckPanelDisabled() {
 
     elements.status.textContent = "Update checks disabled";
     elements.status.dataset.state = "disabled";
-    elements.current.textContent = "Not checked";
-    elements.target.textContent = "Disabled";
     renderUpdateCheckTechnicalDetails(elements, [
+        {
+            label: "Current",
+            value: "Not checked",
+            code: true
+        },
+        {
+            label: "Target",
+            value: "Disabled",
+            code: true
+        },
         {
             label: "Summary",
             value: "Update checks are disabled."

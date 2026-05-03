@@ -109,22 +109,12 @@ require __DIR__ . '/../card_header.php';
                             <h2 id="updateCheckPanelTitle" class="maintenance-section-title h5 mb-0">Review web UI update status.</h2>
                             <div
                                 id="updateCheckStatus"
-                                class="maintenance-update-status"
+                                class="maintenance-update-status visually-hidden"
                                 role="status"
                                 aria-live="polite"
                                 aria-atomic="true">
                                 Waiting for version data.
                             </div>
-                            <dl class="maintenance-update-list">
-                                <div class="maintenance-fact">
-                                    <dt>Current</dt>
-                                    <dd id="updateCheckCurrent">Unavailable</dd>
-                                </div>
-                                <div class="maintenance-fact">
-                                    <dt>Target</dt>
-                                    <dd id="updateCheckTarget">Not checked</dd>
-                                </div>
-                            </dl>
                             <details id="updateCheckTechnical" class="maintenance-update-technical d-none">
                                 <summary id="updateCheckTechnicalSummary">Technical details ▼</summary>
                                 <dl id="updateCheckTechnicalList" class="maintenance-update-technical-list"></dl>
