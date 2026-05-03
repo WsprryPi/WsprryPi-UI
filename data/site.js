@@ -105,9 +105,10 @@ const WSPRNET_URL =
 const TAB_STATE_STORAGE_PREFIX = "wsprrypi.activeTab";
 const TEST_TONE_COMMAND_TIMEOUT_MS = 15000;
 const UPDATE_CHECK_CACHE_PREFIX = "wsprrypi.updateCheck";
-const UPDATE_CHECK_DISMISS_PREFIX = "wsprrypi.updateDismissed";
+const UPDATE_MODAL_STATE_KEY = "wsprrypi.updateModalState";
 const UPDATE_CHECK_CACHE_SCHEMA_VERSION = 5;
 const UPDATE_CHECK_CACHE_TTL_MS = 60 * 60 * 1000;
+const UPDATE_MODAL_RATE_LIMIT_MS = 2 * 60 * 60 * 1000;
 const UPDATE_CHECK_RELEASES_URL = "https://github.com/WsprryPi/WsprryPi/releases";
 const UPDATE_CHECK_API_BASE = "https://api.github.com/repos/WsprryPi/WsprryPi";
 const UPDATE_CHECK_ERROR_MESSAGES = Object.freeze({
@@ -3161,10 +3162,6 @@ function updateCheckCacheKey(versionInfo) {
     return `${UPDATE_CHECK_CACHE_PREFIX}:${versionInfo.currentBranch}:${versionInfo.currentSha}`;
 }
 
-function updateDismissalKey(result) {
-    return `${UPDATE_CHECK_DISMISS_PREFIX}:${result.currentSha}:${result.targetBranch}:${result.targetHeadSha}`;
-}
-
 function readUpdateCheckCache(versionInfo) {
     try {
         const raw = window.localStorage.getItem(updateCheckCacheKey(versionInfo));
@@ -3612,19 +3609,64 @@ function markWsprryPiUpdateCheckFailed(error) {
     }
 }
 
-function isUpdateDismissed(result) {
+let fallbackUpdateModalState = null;
+
+function updateModalIdentity(versionInfo, result) {
+    return {
+        branch: result.targetBranch || "",
+        currentSha: versionInfo.currentSha || result.currentSha || "",
+        targetSha: result.targetHeadSha || "",
+        updateUrl: result.releaseUrl || UPDATE_CHECK_RELEASES_URL
+    };
+}
+
+function updateModalStateMatches(state, identity) {
+    return Boolean(
+        state &&
+        state.branch === identity.branch &&
+        state.currentSha === identity.currentSha &&
+        state.targetSha === identity.targetSha &&
+        state.updateUrl === identity.updateUrl
+    );
+}
+
+function readUpdateModalState() {
     try {
-        return window.localStorage.getItem(updateDismissalKey(result)) === "1";
+        const raw = window.localStorage.getItem(UPDATE_MODAL_STATE_KEY);
+        if (!raw) {
+            return fallbackUpdateModalState;
+        }
+
+        return JSON.parse(raw);
     } catch {
-        return false;
+        return fallbackUpdateModalState;
     }
 }
 
-function dismissUpdateTarget(result) {
+function writeUpdateModalState(versionInfo, result, reason) {
+    const state = Object.assign(updateModalIdentity(versionInfo, result), {
+        schemaVersion: UPDATE_CHECK_CACHE_SCHEMA_VERSION,
+        lastSeenAt: Date.now(),
+        reason: reason || "shown"
+    });
+
+    fallbackUpdateModalState = state;
+
     try {
-        window.localStorage.setItem(updateDismissalKey(result), "1");
+        window.localStorage.setItem(UPDATE_MODAL_STATE_KEY, JSON.stringify(state));
     } catch {
     }
+}
+
+function shouldShowUpdateModal(versionInfo, result) {
+    const identity = updateModalIdentity(versionInfo, result);
+    const state = readUpdateModalState();
+
+    if (!updateModalStateMatches(state, identity)) {
+        return true;
+    }
+
+    return Date.now() - Number(state.lastSeenAt || 0) >= UPDATE_MODAL_RATE_LIMIT_MS;
 }
 
 function appendUpdateModalBodyLink(body, result, exactRelease) {
@@ -3662,7 +3704,7 @@ function releaseUpdateCheckModalOwnership(modalEl) {
 
 function showWsprryPiUpdateModal(versionInfo, result) {
     const modalEl = document.getElementById("confirmModal");
-    if (!modalEl || isUpdateDismissed(result)) {
+    if (!modalEl || !shouldShowUpdateModal(versionInfo, result)) {
         return;
     }
 
@@ -3676,6 +3718,7 @@ function showWsprryPiUpdateModal(versionInfo, result) {
         ? "A release is available for this update: "
         : "Review the latest releases: ";
 
+    writeUpdateModalState(versionInfo, result, "shown");
     markUpdateCheckModalActive(modalEl);
     document.getElementById("confirmModalLabel").textContent = "Update available";
 
@@ -3700,14 +3743,14 @@ function showWsprryPiUpdateModal(versionInfo, result) {
         .removeClass("d-none")
         .off("click")
         .on("click", () => {
-            dismissUpdateTarget(result);
+            writeUpdateModalState(versionInfo, result, "dismissed");
         });
     $confirmBtn
         .attr("class", "btn btn-primary")
         .text(exactRelease ? "View release" : "View releases")
         .off("click")
         .on("click", () => {
-            dismissUpdateTarget(result);
+            writeUpdateModalState(versionInfo, result, "opened");
             confirmModal.hide();
             window.open(result.releaseUrl || UPDATE_CHECK_RELEASES_URL, "_blank", "noopener");
         });
@@ -3719,7 +3762,7 @@ function showWsprryPiUpdateModal(versionInfo, result) {
                 return;
             }
 
-            dismissUpdateTarget(result);
+            writeUpdateModalState(versionInfo, result, "dismissed");
             clearUpdateCheckModalActive(modalEl);
             resetConfirmationDialogState();
         });
