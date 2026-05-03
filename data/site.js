@@ -110,6 +110,17 @@ const UPDATE_CHECK_CACHE_SCHEMA_VERSION = 5;
 const UPDATE_CHECK_CACHE_TTL_MS = 60 * 60 * 1000;
 const UPDATE_CHECK_RELEASES_URL = "https://github.com/WsprryPi/WsprryPi/releases";
 const UPDATE_CHECK_API_BASE = "https://api.github.com/repos/WsprryPi/WsprryPi";
+const UPDATE_CHECK_ERROR_MESSAGES = Object.freeze({
+    missing_version_data: "Update check failed: local version metadata is incomplete.",
+    missing_commit: "Update check failed: local commit metadata is missing.",
+    missing_branch: "Update check failed: local branch metadata is missing.",
+    branch_missing: "Update check failed: the update branch could not be found on GitHub.",
+    rate_limited: "Update check failed: GitHub API rate limit reached.",
+    network: "Update check failed: GitHub could not be reached.",
+    malformed_response: "Update check failed: GitHub returned malformed update data.",
+    github_http: "Update check failed: GitHub returned an error.",
+    unknown: "Update check failed."
+});
 
 function warnRestFallback(endpoint, reason) {
     debugConsole(
@@ -3059,6 +3070,15 @@ function findFullShaInValue(value) {
     return "";
 }
 
+function buildUpdateCheckFailure(code, detail = "") {
+    return {
+        updateCheckFailed: true,
+        code,
+        message: UPDATE_CHECK_ERROR_MESSAGES[code] || UPDATE_CHECK_ERROR_MESSAGES.unknown,
+        detail
+    };
+}
+
 function parseWsprryPiVersionResponse(response) {
     const rawDisplayVersion = typeof response?.wspr_version === "string"
         ? response.wspr_version.trim()
@@ -3089,11 +3109,20 @@ function parseWsprryPiVersionResponse(response) {
         versionForShaParsing.match(/\b([0-9a-f]{7,40})\b/i);
     const currentSha = backendCommit || fullSha || (shortShaMatch ? shortShaMatch[1] : "");
 
-    if (!currentDisplayVersion || !currentBranch || !currentSha) {
-        return null;
+    if (!currentDisplayVersion) {
+        return buildUpdateCheckFailure("missing_version_data", "The /version response did not include wspr_version or ui_version.");
+    }
+
+    if (!currentBranch) {
+        return buildUpdateCheckFailure("missing_branch", "The /version response did not include wspr_branch or a parseable display branch.");
+    }
+
+    if (!currentSha) {
+        return buildUpdateCheckFailure("missing_commit", "The /version response did not include wspr_commit or a parseable commit SHA.");
     }
 
     return {
+        ok: true,
         currentDisplayVersion,
         currentModalVersion: rawExeVersion || rawUiVersion || rawDisplayVersion,
         currentSha,
@@ -3122,9 +3151,8 @@ function updateCheckShaMatches(currentSha, targetHeadSha) {
     return normalizedHead.startsWith(normalizedCurrent);
 }
 
-function updateCheckNoUpdateComparison() {
+function updateCheckNoUpdateResult() {
     return {
-        completed: false,
         updateAvailable: false
     };
 }
@@ -3174,35 +3202,44 @@ function writeUpdateCheckCache(versionInfo, result) {
     }
 }
 
-function writeFailedUpdateCheckCache(versionInfo) {
-    writeUpdateCheckCache(versionInfo, {
-        checkedAt: Date.now(),
-        currentSha: versionInfo.currentSha,
-        currentBranch: versionInfo.currentBranch,
-        targetBranch: "",
-        targetHeadSha: "",
-        updateAvailable: false,
-        releaseUrl: "",
-        releaseTitle: "",
-        fallbackUsed: false
-    });
-}
-
 async function fetchGithubJson(url, options = {}) {
-    const response = await fetch(url, {
-        headers: {
-            Accept: "application/vnd.github+json"
-        },
-        cache: options.cache || "no-store"
-    });
+    let response;
+    try {
+        response = await fetch(url, {
+            headers: {
+                Accept: "application/vnd.github+json"
+            },
+            cache: options.cache || "no-store"
+        });
+    } catch (error) {
+        const networkError = new Error("GitHub network request failed");
+        networkError.code = "network";
+        networkError.cause = error;
+        throw networkError;
+    }
 
     if (!response.ok) {
         const error = new Error(`GitHub returned HTTP ${response.status}`);
         error.status = response.status;
+        error.code = response.status === 403 &&
+            response.headers.get("x-ratelimit-remaining") === "0"
+            ? "rate_limited"
+            : "github_http";
+        const reset = response.headers.get("x-ratelimit-reset");
+        if (reset) {
+            error.rateLimitReset = reset;
+        }
         throw error;
     }
 
-    return response.json();
+    try {
+        return await response.json();
+    } catch (error) {
+        const parseError = new Error("GitHub returned malformed JSON");
+        parseError.code = "malformed_response";
+        parseError.cause = error;
+        throw parseError;
+    }
 }
 
 async function lookupGithubBranch(branch) {
@@ -3215,13 +3252,18 @@ async function lookupGithubBranch(branch) {
     } catch (error) {
         const status = typeof error?.status === "number" ? `HTTP ${error.status}` : "network error";
         debugConsole("debug", `Update check branch lookup failed for ${branch}: ${status}`);
+        if (error?.status === 404) {
+            error.code = "branch_missing";
+        }
         throw error;
     }
 
     const sha = typeof data?.commit?.sha === "string" ? data.commit.sha : "";
 
     if (!sha) {
-        throw new Error(`GitHub branch ${branch} did not include a HEAD SHA`);
+        const error = new Error(`GitHub branch ${branch} did not include a HEAD SHA`);
+        error.code = "malformed_response";
+        throw error;
     }
 
     debugConsole("debug", `Update check branch lookup result for ${branch}: ${sha}`);
@@ -3245,6 +3287,11 @@ async function isCurrentShaInBranch(currentSha, branchInfo) {
             `${UPDATE_CHECK_API_BASE}/compare/${encodeURIComponent(currentSha)}...${encodeURIComponent(branchInfo.headSha)}`
         );
         const status = typeof data?.status === "string" ? data.status : "";
+        if (!status) {
+            const error = new Error("GitHub compare response did not include a status");
+            error.code = "malformed_response";
+            throw error;
+        }
         if (status === "ahead" || status === "diverged") {
             return {
                 isInBranch: false,
@@ -3308,13 +3355,20 @@ async function selectGithubUpdateBranch(versionInfo) {
             throw error;
         }
 
-        return Object.assign(await lookupGithubBranch("devel"), { fallbackUsed: true });
+        try {
+            return Object.assign(await lookupGithubBranch("devel"), { fallbackUsed: true });
+        } catch (fallbackError) {
+            if (fallbackError.status === 404) {
+                fallbackError.code = "branch_missing";
+            }
+            throw fallbackError;
+        }
     }
 }
 
 async function compareGithubCommits(currentSha, headSha) {
     if (updateCheckShaMatches(currentSha, headSha)) {
-        return updateCheckNoUpdateComparison();
+        return updateCheckNoUpdateResult();
     }
 
     try {
@@ -3322,14 +3376,17 @@ async function compareGithubCommits(currentSha, headSha) {
             `${UPDATE_CHECK_API_BASE}/compare/${encodeURIComponent(currentSha)}...${encodeURIComponent(headSha)}`
         );
         const status = typeof data?.status === "string" ? data.status : "";
+        if (!status) {
+            const error = new Error("GitHub compare response did not include a status");
+            error.code = "malformed_response";
+            throw error;
+        }
         return {
-            completed: true,
             updateAvailable: status === "behind" || status === "diverged"
         };
     } catch (error) {
         if (error.status === 404) {
             return {
-                completed: false,
                 updateAvailable: !updateCheckShaMatches(currentSha, headSha)
             };
         }
@@ -3426,10 +3483,13 @@ async function findReleaseForHead(headSha) {
 
 async function buildWsprryPiUpdateResult(versionInfo) {
     const selectedBranch = await selectGithubUpdateBranch(versionInfo);
+    // Update detection is intentionally branch/commit based. Semantic versions,
+    // release tags, prerelease labels, and dirty-tree markers are displayed as
+    // metadata only and are not used to decide whether an update exists.
     const comparison = selectedBranch.fallbackUsed
-        ? { completed: false, updateAvailable: true }
+        ? { updateAvailable: true }
         : updateCheckShaMatches(versionInfo.currentSha, selectedBranch.headSha)
-            ? updateCheckNoUpdateComparison()
+            ? updateCheckNoUpdateResult()
             : await compareGithubCommits(versionInfo.currentSha, selectedBranch.headSha);
     let releaseUrl = UPDATE_CHECK_RELEASES_URL;
     let releaseTitle = "";
@@ -3460,10 +3520,35 @@ async function buildWsprryPiUpdateResult(versionInfo) {
 }
 
 function logUpdateCheckWarning(error) {
-    const message = error && typeof error.message === "string" && error.message
-        ? error.message
-        : "GitHub update check failed";
-    debugConsole("warn", `WsprryPi update check skipped: ${message}`);
+    const failure = normalizeUpdateCheckFailure(error);
+    const detail = failure.detail ? ` ${failure.detail}` : "";
+    debugConsole("warn", `${failure.message}${detail}`);
+}
+
+function normalizeUpdateCheckFailure(error) {
+    if (error?.updateCheckFailed === true) {
+        return error;
+    }
+
+    const code = typeof error?.code === "string" && error.code
+        ? error.code
+        : typeof error?.status === "number"
+            ? "github_http"
+            : "unknown";
+    let detail = error && typeof error.message === "string" ? error.message : "";
+
+    if (code === "rate_limited" && error?.rateLimitReset) {
+        const resetSeconds = Number(error.rateLimitReset);
+        if (Number.isFinite(resetSeconds)) {
+            detail += ` Resets at ${new Date(resetSeconds * 1000).toLocaleString()}.`;
+        }
+    }
+
+    if (error?.status === 404 && code === "github_http") {
+        detail = detail || "GitHub returned HTTP 404.";
+    }
+
+    return buildUpdateCheckFailure(code, detail);
 }
 
 function clearWsprryPiUpdateFooter() {
@@ -3472,6 +3557,7 @@ function clearWsprryPiUpdateFooter() {
 
     if (versionElement) {
         versionElement.classList.remove("update-available");
+        versionElement.classList.remove("update-check-failed");
         if (versionElement.textContent && versionElement.textContent !== "---") {
             versionElement.title = versionElement.textContent;
         } else {
@@ -3482,6 +3568,8 @@ function clearWsprryPiUpdateFooter() {
     if (updateLink) {
         updateLink.classList.add("d-none");
         updateLink.href = UPDATE_CHECK_RELEASES_URL;
+        updateLink.title = "An update is available";
+        updateLink.setAttribute("aria-label", "An update is available");
     }
 }
 
@@ -3491,6 +3579,7 @@ function markWsprryPiUpdateFooter(result) {
     const releaseUrl = result.releaseUrl || UPDATE_CHECK_RELEASES_URL;
 
     if (versionElement) {
+        versionElement.classList.remove("update-check-failed");
         versionElement.classList.add("update-available");
         versionElement.title = "An update is available";
     }
@@ -3498,6 +3587,27 @@ function markWsprryPiUpdateFooter(result) {
     if (updateLink) {
         updateLink.href = releaseUrl;
         updateLink.title = "An update is available";
+        updateLink.setAttribute("aria-label", "An update is available");
+        updateLink.classList.remove("d-none");
+    }
+}
+
+function markWsprryPiUpdateCheckFailed(error) {
+    const versionElement = document.getElementById("versionText");
+    const updateLink = document.getElementById("versionUpdateLink");
+    const failure = normalizeUpdateCheckFailure(error);
+    const title = failure.detail ? `${failure.message} ${failure.detail}` : failure.message;
+
+    if (versionElement) {
+        versionElement.classList.remove("update-available");
+        versionElement.classList.add("update-check-failed");
+        versionElement.title = title;
+    }
+
+    if (updateLink) {
+        updateLink.href = UPDATE_CHECK_RELEASES_URL;
+        updateLink.title = title;
+        updateLink.setAttribute("aria-label", failure.message);
         updateLink.classList.remove("d-none");
     }
 }
@@ -3560,7 +3670,6 @@ function showWsprryPiUpdateModal(versionInfo, result) {
         backdrop: "static",
         keyboard: false
     });
-    const currentShaLabel = shortSha(versionInfo.currentSha);
     const targetShaLabel = shortSha(result.targetHeadSha);
     const exactRelease = result.fallbackUsed !== true && Boolean(result.releaseTitle);
     const releaseMessage = exactRelease
@@ -3637,8 +3746,9 @@ function applyWsprryPiUpdateResult(versionInfo, result) {
 
 function checkForWsprryPiUpdate(response) {
     const versionInfo = parseWsprryPiVersionResponse(response);
-    if (!versionInfo) {
-        clearWsprryPiUpdateFooter();
+    if (!versionInfo?.ok) {
+        markWsprryPiUpdateCheckFailed(versionInfo || buildUpdateCheckFailure("malformed_response", "The /version response was not usable."));
+        logUpdateCheckWarning(versionInfo || buildUpdateCheckFailure("malformed_response", "The /version response was not usable."));
         return;
     }
 
@@ -3659,8 +3769,7 @@ function checkForWsprryPiUpdate(response) {
             applyWsprryPiUpdateResult(versionInfo, result);
         })
         .catch((error) => {
-            writeFailedUpdateCheckCache(versionInfo);
-            clearWsprryPiUpdateFooter();
+            markWsprryPiUpdateCheckFailed(error);
             logUpdateCheckWarning(error);
         });
 }
