@@ -4289,6 +4289,8 @@ function isUpdateCheckDisabled() {
 }
 
 function setUpdateCheckDisabled(disabled) {
+    // Site-global localStorage preference. When enabled, checkForWsprryPiUpdate()
+    // returns before any GitHub update-check API calls are made.
     fallbackUpdateCheckDisabled = disabled === true;
     try {
         if (fallbackUpdateCheckDisabled) {
@@ -4308,6 +4310,7 @@ function syncUpdateCheckToggle() {
     }
 
     const disabled = isUpdateCheckDisabled();
+    // Footer About is the user-facing re-enable path after "Never check again".
     toggle.textContent = disabled ? "Enable update checks" : "Disable update checks";
     toggle.setAttribute("aria-pressed", disabled ? "true" : "false");
 }
@@ -4593,7 +4596,7 @@ function showWsprryPiUpdateModal(versionInfo, result) {
     const disableLink = document.createElement("button");
     disableLink.type = "button";
     disableLink.className = "btn btn-link btn-sm p-0 mt-2";
-    disableLink.textContent = "Never check again";
+    disableLink.textContent = "Never check again (re-enable in About)";
     disableLink.addEventListener("click", () => {
         writeUpdateModalState(versionInfo, result, "dismissed");
         setUpdateCheckDisabled(true);
@@ -4655,6 +4658,8 @@ function applyWsprryPiUpdateResult(versionInfo, result) {
 }
 
 function checkForWsprryPiUpdate(response) {
+    // Disabled update checks are site-global and persisted in localStorage.
+    // The footer About toggle can remove this state and re-enable checks.
     if (isUpdateCheckDisabled()) {
         markWsprryPiUpdateChecksDisabled();
         debugConsole("debug", "Update checks disabled by user preference.");
