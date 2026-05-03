@@ -106,7 +106,7 @@ const TAB_STATE_STORAGE_PREFIX = "wsprrypi.activeTab";
 const TEST_TONE_COMMAND_TIMEOUT_MS = 15000;
 const UPDATE_CHECK_CACHE_PREFIX = "wsprrypi.updateCheck";
 const UPDATE_MODAL_STATE_KEY = "wsprrypi.updateModalState";
-const UPDATE_CHECK_CACHE_SCHEMA_VERSION = 5;
+const UPDATE_CHECK_CACHE_SCHEMA_VERSION = 6;
 const UPDATE_CHECK_CACHE_TTL_MS = 60 * 60 * 1000;
 const UPDATE_MODAL_RATE_LIMIT_MS = 2 * 60 * 60 * 1000;
 const UPDATE_CHECK_RELEASES_URL = "https://github.com/WsprryPi/WsprryPi/releases";
@@ -3080,6 +3080,55 @@ function buildUpdateCheckFailure(code, detail = "") {
     };
 }
 
+// Dirty means the local source tree had uncommitted or staged modifications
+// when this binary was built. It is local build metadata, not evidence that a
+// remote update exists.
+function parseBuildDirtyState(response, rawDisplayVersion, rawUiVersion, rawExeVersion) {
+    const structuredDirty = response?.wspr_build_dirty ?? response?.wspr_dirty;
+    if (typeof structuredDirty === "boolean") {
+        return {
+            known: true,
+            dirty: structuredDirty,
+            source: "structured"
+        };
+    }
+
+    if (typeof structuredDirty === "string") {
+        const normalized = structuredDirty.trim().toLowerCase();
+        if (normalized === "true" || normalized === "1" || normalized === "dirty") {
+            return {
+                known: true,
+                dirty: true,
+                source: "structured"
+            };
+        }
+        if (normalized === "false" || normalized === "0" || normalized === "clean") {
+            return {
+                known: true,
+                dirty: false,
+                source: "structured"
+            };
+        }
+    }
+
+    const combinedVersionText = [rawDisplayVersion, rawUiVersion, rawExeVersion]
+        .filter((value) => typeof value === "string" && value)
+        .join(" ");
+    if (/(^|[+.\-\s])dirty(\b|[.\-\s])/i.test(combinedVersionText)) {
+        return {
+            known: true,
+            dirty: true,
+            source: "version_text"
+        };
+    }
+
+    return {
+        known: false,
+        dirty: false,
+        source: "unavailable"
+    };
+}
+
 function parseWsprryPiVersionResponse(response) {
     const rawDisplayVersion = typeof response?.wspr_version === "string"
         ? response.wspr_version.trim()
@@ -3109,6 +3158,7 @@ function parseWsprryPiVersionResponse(response) {
     const shortShaMatch = versionForShaParsing.match(/[+.:-]([0-9a-f]{7,40})(?:\b|[^0-9a-f])/i) ||
         versionForShaParsing.match(/\b([0-9a-f]{7,40})\b/i);
     const currentSha = backendCommit || fullSha || (shortShaMatch ? shortShaMatch[1] : "");
+    const dirtyState = parseBuildDirtyState(response, rawDisplayVersion, rawUiVersion, rawExeVersion);
 
     if (!currentDisplayVersion) {
         return buildUpdateCheckFailure("missing_version_data", "The /version response did not include wspr_version or ui_version.");
@@ -3129,7 +3179,10 @@ function parseWsprryPiVersionResponse(response) {
         currentSha,
         currentBranch,
         displayBranch,
-        currentShaIsFull: currentSha.length === 40
+        currentShaIsFull: currentSha.length === 40,
+        buildDirtyKnown: dirtyState.known,
+        buildDirty: dirtyState.dirty,
+        buildDirtySource: dirtyState.source
     };
 }
 
@@ -3333,7 +3386,10 @@ function summarizeSemanticReleases(releases) {
 }
 
 function updateCheckCacheKey(versionInfo) {
-    return `${UPDATE_CHECK_CACHE_PREFIX}:${versionInfo.currentBranch}:${versionInfo.currentSha}`;
+    const dirtyKey = versionInfo.buildDirtyKnown
+        ? versionInfo.buildDirty ? "dirty" : "clean"
+        : "dirty-unknown";
+    return `${UPDATE_CHECK_CACHE_PREFIX}:${versionInfo.currentBranch}:${versionInfo.currentSha}:${dirtyKey}`;
 }
 
 function readUpdateCheckCache(versionInfo) {
@@ -3881,14 +3937,42 @@ async function buildCommitBasedWsprryPiUpdateResult(versionInfo, semanticFallbac
     };
 }
 
+function applyDirtyBuildMetadata(versionInfo, result) {
+    if (!versionInfo.buildDirtyKnown) {
+        return result;
+    }
+
+    const dirtyMetadata = {
+        buildDirtyKnown: true,
+        buildDirty: versionInfo.buildDirty,
+        buildDirtySource: versionInfo.buildDirtySource
+    };
+
+    if (!versionInfo.buildDirty) {
+        return Object.assign(result, dirtyMetadata);
+    }
+
+    debugConsole(
+        "debug",
+        "Update check local build was dirty at compile time; dirty means local modifications, not a remote update."
+    );
+
+    return Object.assign(result, dirtyMetadata, {
+        localBuildState: "dirty_build",
+        selectionReason: `${result.selectionReason || "update check"}; local build had build-time modifications`,
+        versionComparisonStatus: result.updateAvailable ? result.versionComparisonStatus : "local_modified"
+    });
+}
+
 async function buildWsprryPiUpdateResult(versionInfo) {
     const semanticResult = await buildSemanticVersionUpdateResult(versionInfo);
     if (!semanticResult.useCommitFallback) {
-        return semanticResult;
+        return applyDirtyBuildMetadata(versionInfo, semanticResult);
     }
 
     debugConsole("debug", `Update check using commit fallback: ${semanticResult.reason}`);
-    return buildCommitBasedWsprryPiUpdateResult(versionInfo, semanticResult);
+    const commitResult = await buildCommitBasedWsprryPiUpdateResult(versionInfo, semanticResult);
+    return applyDirtyBuildMetadata(versionInfo, commitResult);
 }
 
 function logUpdateCheckWarning(error) {
