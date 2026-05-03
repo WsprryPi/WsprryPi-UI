@@ -3324,13 +3324,24 @@ async function isCurrentShaReachableFromBranchHead(currentSha, branchInfo) {
     }
 }
 
+function selectedUpdateBranch(branchInfo, reason, fallbackUsed = false) {
+    return Object.assign({}, branchInfo, {
+        fallbackUsed,
+        selectionReason: reason
+    });
+}
+
 async function selectGithubUpdateBranch(versionInfo) {
     const currentBranch = versionInfo.currentBranch;
 
+    // Rule 1: local main tracks upstream main directly.
     if (currentBranch === "main") {
-        return Object.assign(await lookupGithubBranch("main"), { fallbackUsed: false });
+        return selectedUpdateBranch(await lookupGithubBranch("main"), "local main targets upstream main");
     }
 
+    // Rule 2: local devel tracks upstream devel unless the local commit is
+    // proven reachable from upstream main. This prevents devel builds that are
+    // ahead of or diverged from main from being compared against the wrong head.
     if (currentBranch === "devel") {
         let develBranch;
         try {
@@ -3341,7 +3352,11 @@ async function selectGithubUpdateBranch(versionInfo) {
             }
 
             debugConsole("debug", "Update check local devel falling back to upstream main because upstream devel returned HTTP 404.");
-            return Object.assign(await lookupGithubBranch("main"), { fallbackUsed: true });
+            return selectedUpdateBranch(
+                await lookupGithubBranch("main"),
+                "upstream devel missing; explicit fallback to upstream main",
+                true
+            );
         }
 
         try {
@@ -3350,7 +3365,10 @@ async function selectGithubUpdateBranch(versionInfo) {
             if (mainContainment.contained) {
                 const certainty = mainContainment.uncertain ? "uncertain short SHA match" : "exact/compare-confirmed match";
                 debugConsole("debug", `Update check local devel resolved to upstream main because current SHA is reachable from main (${certainty}, status ${mainContainment.status || "unknown"}).`);
-                return Object.assign(mainBranch, { fallbackUsed: false });
+                return selectedUpdateBranch(
+                    mainBranch,
+                    `local devel commit reachable from upstream main (${certainty}, status ${mainContainment.status || "unknown"})`
+                );
             }
             debugConsole("debug", `Update check local devel staying on upstream devel because current SHA is not reachable from main (compare status ${mainContainment.status || "unknown"}).`);
         } catch (error) {
@@ -3359,20 +3377,31 @@ async function selectGithubUpdateBranch(versionInfo) {
         }
 
         debugConsole("debug", "Update check local devel target remains upstream devel.");
-        return Object.assign(develBranch, { fallbackUsed: false });
+        return selectedUpdateBranch(develBranch, "local devel targets upstream devel");
     }
 
+    // Rule 3: feature, release, and unknown local branches target the same-name
+    // upstream branch first.
     try {
-        return Object.assign(await lookupGithubBranch(currentBranch), { fallbackUsed: false });
+        return selectedUpdateBranch(
+            await lookupGithubBranch(currentBranch),
+            "local branch targets same-name upstream branch"
+        );
     } catch (error) {
         if (error.status !== 404) {
             throw error;
         }
 
         try {
-            // Missing feature/release branches intentionally fall back to devel
-            // so branch-local installs still get a conservative upstream target.
-            return Object.assign(await lookupGithubBranch("devel"), { fallbackUsed: true });
+            // Rule 4: if a non-main/non-devel branch is missing upstream,
+            // explicitly fall back to devel for comparison. The fallback is
+            // reported in the result and still uses normal commit comparison,
+            // so missing branch alone does not imply an update.
+            return selectedUpdateBranch(
+                await lookupGithubBranch("devel"),
+                `same-name upstream branch '${currentBranch}' missing; explicit fallback to upstream devel`,
+                true
+            );
         } catch (fallbackError) {
             if (fallbackError.status === 404) {
                 fallbackError.code = "branch_missing";
@@ -3502,9 +3531,7 @@ async function buildWsprryPiUpdateResult(versionInfo) {
     // Update detection is intentionally branch/commit based. Semantic versions,
     // release tags, prerelease labels, and dirty-tree markers are displayed as
     // metadata only and are not used to decide whether an update exists.
-    const comparison = selectedBranch.fallbackUsed
-        ? { updateAvailable: true }
-        : updateCheckShaMatches(versionInfo.currentSha, selectedBranch.headSha)
+    const comparison = updateCheckShaMatches(versionInfo.currentSha, selectedBranch.headSha)
             ? updateCheckNoUpdateResult()
             : await compareGithubCommits(versionInfo.currentSha, selectedBranch.headSha);
     let releaseUrl = UPDATE_CHECK_RELEASES_URL;
@@ -3531,7 +3558,8 @@ async function buildWsprryPiUpdateResult(versionInfo) {
         updateAvailable: comparison.updateAvailable,
         releaseUrl,
         releaseTitle,
-        fallbackUsed: selectedBranch.fallbackUsed === true
+        fallbackUsed: selectedBranch.fallbackUsed === true,
+        selectionReason: selectedBranch.selectionReason || ""
     };
 }
 
@@ -3793,7 +3821,7 @@ function applyWsprryPiUpdateResult(versionInfo, result) {
     if (result) {
         debugConsole(
             "debug",
-            `Update check selected targetBranch=${result.targetBranch}, fallbackUsed=${result.fallbackUsed === true}, targetHeadSha=${result.targetHeadSha}`
+            `Update check selected targetBranch=${result.targetBranch}, fallbackUsed=${result.fallbackUsed === true}, targetHeadSha=${result.targetHeadSha}, reason=${result.selectionReason || "unspecified"}`
         );
     }
 
