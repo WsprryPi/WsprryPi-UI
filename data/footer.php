@@ -23,6 +23,9 @@
                 <div class="footer-meta__panel">
                     <div>Copyright © 2023 - 2026 Lee Bussy [AA0NT].</div>
                     <div>Licensed under the MIT License.</div>
+                    <button type="button" id="updateCheckToggle" class="btn btn-link btn-sm footer-meta__action px-0">
+                        Disable update checks
+                    </button>
                 </div>
             </details>
         </div>

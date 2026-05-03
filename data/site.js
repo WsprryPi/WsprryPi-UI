@@ -106,6 +106,7 @@ const TAB_STATE_STORAGE_PREFIX = "wsprrypi.activeTab";
 const TEST_TONE_COMMAND_TIMEOUT_MS = 15000;
 const UPDATE_CHECK_CACHE_PREFIX = "wsprrypi.updateCheck";
 const UPDATE_CHECK_FAILURE_CACHE_PREFIX = "wsprrypi.updateCheckFailure";
+const UPDATE_CHECK_DISABLED_KEY = "wsprrypi.updateCheckDisabled";
 const UPDATE_MODAL_STATE_KEY = "wsprrypi.updateModalState";
 const UPDATE_CHECK_CACHE_SCHEMA_VERSION = 6;
 const UPDATE_CHECK_CACHE_TTL_MS = 60 * 60 * 1000;
@@ -823,6 +824,7 @@ function pageLoaded() {
 
 function bindActions() {
     initFooterMetaPanelInteractions();
+    initUpdateCheckControls();
 
     // Tooltips only hover (no focus), so clicking into inputs still works
     $('[data-bs-toggle="tooltip"]').tooltip({
@@ -4266,6 +4268,78 @@ function buildLocalUpdateStateTitle(result) {
     return "";
 }
 
+let fallbackUpdateCheckDisabled = false;
+
+function isUpdateCheckDisabled() {
+    try {
+        return window.localStorage.getItem(UPDATE_CHECK_DISABLED_KEY) === "true";
+    } catch {
+        return fallbackUpdateCheckDisabled;
+    }
+}
+
+function setUpdateCheckDisabled(disabled) {
+    fallbackUpdateCheckDisabled = disabled === true;
+    try {
+        if (fallbackUpdateCheckDisabled) {
+            window.localStorage.setItem(UPDATE_CHECK_DISABLED_KEY, "true");
+        } else {
+            window.localStorage.removeItem(UPDATE_CHECK_DISABLED_KEY);
+        }
+    } catch {
+    }
+    syncUpdateCheckToggle();
+}
+
+function syncUpdateCheckToggle() {
+    const toggle = document.getElementById("updateCheckToggle");
+    if (!toggle) {
+        return;
+    }
+
+    const disabled = isUpdateCheckDisabled();
+    toggle.textContent = disabled ? "Enable update checks" : "Disable update checks";
+    toggle.setAttribute("aria-pressed", disabled ? "true" : "false");
+}
+
+function markWsprryPiUpdateChecksDisabled() {
+    const versionElement = document.getElementById("versionText");
+    const updateLink = document.getElementById("versionUpdateLink");
+    const title = "Update checks are disabled.";
+
+    if (versionElement) {
+        versionElement.classList.remove("update-available");
+        versionElement.classList.remove("update-check-failed");
+        versionElement.title = title;
+    }
+
+    if (updateLink) {
+        updateLink.classList.add("d-none");
+        updateLink.href = UPDATE_CHECK_RELEASES_URL;
+        updateLink.title = title;
+        updateLink.setAttribute("aria-label", title);
+    }
+}
+
+function initUpdateCheckControls() {
+    const toggle = document.getElementById("updateCheckToggle");
+    syncUpdateCheckToggle();
+
+    if (toggle) {
+        toggle.addEventListener("click", () => {
+            const disabled = !isUpdateCheckDisabled();
+            setUpdateCheckDisabled(disabled);
+            if (disabled) {
+                markWsprryPiUpdateChecksDisabled();
+            } else {
+                updateWsprryPiVersion();
+            }
+        });
+    }
+
+    window.addEventListener("storage", handleUpdateCheckStorageEvent);
+}
+
 function markWsprryPiLocalUpdateState(result) {
     const versionElement = document.getElementById("versionText");
     const updateLink = document.getElementById("versionUpdateLink");
@@ -4332,6 +4406,7 @@ function markWsprryPiUpdateCheckFailed(error) {
 }
 
 let fallbackUpdateModalState = null;
+let activeUpdateModalIdentity = null;
 
 function updateModalIdentity(versionInfo, result) {
     // Modal rate limiting is also site-global; the current page path is not
@@ -4367,6 +4442,14 @@ function readUpdateModalState() {
     }
 }
 
+function parseUpdateModalState(raw) {
+    try {
+        return raw ? JSON.parse(raw) : null;
+    } catch {
+        return null;
+    }
+}
+
 function writeUpdateModalState(versionInfo, result, reason) {
     const state = Object.assign(updateModalIdentity(versionInfo, result), {
         schemaVersion: UPDATE_CHECK_CACHE_SCHEMA_VERSION,
@@ -4385,12 +4468,46 @@ function writeUpdateModalState(versionInfo, result, reason) {
 function shouldShowUpdateModal(versionInfo, result) {
     const identity = updateModalIdentity(versionInfo, result);
     const state = readUpdateModalState();
+    const lastSeenAt = Number(state?.lastSeenAt || 0);
 
     if (!updateModalStateMatches(state, identity)) {
         return true;
     }
 
-    return Date.now() - Number(state.lastSeenAt || 0) >= UPDATE_MODAL_RATE_LIMIT_MS;
+    if (lastSeenAt > Date.now()) {
+        return true;
+    }
+
+    return Date.now() - lastSeenAt >= UPDATE_MODAL_RATE_LIMIT_MS;
+}
+
+function handleUpdateCheckStorageEvent(event) {
+    if (event.key === UPDATE_CHECK_DISABLED_KEY) {
+        syncUpdateCheckToggle();
+        if (isUpdateCheckDisabled()) {
+            markWsprryPiUpdateChecksDisabled();
+            const modalEl = document.getElementById("confirmModal");
+            if (modalEl?.dataset.updateCheckActive === "true") {
+                bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+            }
+        }
+        return;
+    }
+
+    if (event.key !== UPDATE_MODAL_STATE_KEY || !activeUpdateModalIdentity) {
+        return;
+    }
+
+    const state = parseUpdateModalState(event.newValue);
+    if (
+        updateModalStateMatches(state, activeUpdateModalIdentity) &&
+        (state.reason === "dismissed" || state.reason === "opened")
+    ) {
+        const modalEl = document.getElementById("confirmModal");
+        if (modalEl?.dataset.updateCheckActive === "true") {
+            bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+        }
+    }
 }
 
 function appendUpdateModalBodyLink(body, result, exactRelease) {
@@ -4415,6 +4532,7 @@ function clearUpdateCheckModalActive(modalEl) {
     if (modalEl) {
         delete modalEl.dataset.updateCheckActive;
     }
+    activeUpdateModalIdentity = null;
 }
 
 function releaseUpdateCheckModalOwnership(modalEl) {
@@ -4443,6 +4561,7 @@ function showWsprryPiUpdateModal(versionInfo, result) {
         : "Review the latest releases: ";
 
     writeUpdateModalState(versionInfo, result, "shown");
+    activeUpdateModalIdentity = updateModalIdentity(versionInfo, result);
     markUpdateCheckModalActive(modalEl);
     document.getElementById("confirmModalLabel").textContent = "Update available";
 
@@ -4460,6 +4579,18 @@ function showWsprryPiUpdateModal(versionInfo, result) {
     }
     body.appendChild(document.createTextNode(releaseMessage));
     appendUpdateModalBodyLink(body, result, exactRelease);
+    body.appendChild(document.createElement("br"));
+    const disableLink = document.createElement("button");
+    disableLink.type = "button";
+    disableLink.className = "btn btn-link btn-sm p-0 mt-2";
+    disableLink.textContent = "Never check again";
+    disableLink.addEventListener("click", () => {
+        writeUpdateModalState(versionInfo, result, "dismissed");
+        setUpdateCheckDisabled(true);
+        markWsprryPiUpdateChecksDisabled();
+        confirmModal.hide();
+    });
+    body.appendChild(disableLink);
 
     const $cancelBtn = $("#confirmCancelBtn");
     const $confirmBtn = $("#confirmActionBtn");
@@ -4514,6 +4645,12 @@ function applyWsprryPiUpdateResult(versionInfo, result) {
 }
 
 function checkForWsprryPiUpdate(response) {
+    if (isUpdateCheckDisabled()) {
+        markWsprryPiUpdateChecksDisabled();
+        debugConsole("debug", "Update checks disabled by user preference.");
+        return;
+    }
+
     const versionInfo = parseWsprryPiVersionResponse(response);
     if (!versionInfo?.ok) {
         markWsprryPiUpdateCheckFailed(versionInfo || buildUpdateCheckFailure("malformed_response", "The /version response was not usable."));
