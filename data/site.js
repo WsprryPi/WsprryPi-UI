@@ -3056,10 +3056,11 @@ function forceUpdateCheckNow() {
     if (elements) {
         elements.status.textContent = "Checking...";
         elements.status.dataset.state = "checking";
-        if (elements.summary) {
-            elements.summary.textContent = "Checking GitHub now.";
-        }
         renderUpdateCheckTechnicalDetails(elements, [
+            {
+                label: "Summary",
+                value: "Checking GitHub now."
+            },
             {
                 label: "Check now",
                 value: "Bypassing the normal update-check cache and failure rate limit."
@@ -4429,7 +4430,6 @@ function updateCheckPanelElements() {
         status: document.getElementById("updateCheckStatus"),
         current: document.getElementById("updateCheckCurrent"),
         target: document.getElementById("updateCheckTarget"),
-        summary: document.getElementById("updateCheckSummary"),
         technical: document.getElementById("updateCheckTechnical"),
         technicalSummary: document.getElementById("updateCheckTechnicalSummary"),
         technicalList: document.getElementById("updateCheckTechnicalList"),
@@ -4458,6 +4458,40 @@ function updateCheckPanelTargetText(result = null) {
         return `${result.targetBranch || "target"} ${shortSha(result.targetHeadSha) || ""}`.trim();
     }
     return "No remote target selected";
+}
+
+function appendUpdateCheckCodeText(parent, value) {
+    const code = document.createElement("code");
+    code.textContent = value;
+    parent.appendChild(code);
+}
+
+function renderUpdateCheckPanelTarget(elements, result = null) {
+    if (!elements?.target) {
+        return;
+    }
+
+    elements.target.textContent = "";
+    if (!result || result.remoteVersionSelected || (!result.targetBranch && !result.targetHeadSha)) {
+        elements.target.textContent = updateCheckPanelTargetText(result);
+        return;
+    }
+
+    const parts = [];
+    if (result.targetBranch) {
+        parts.push({ label: "Branch", value: result.targetBranch });
+    }
+    if (result.targetHeadSha) {
+        parts.push({ label: "Commit", value: shortSha(result.targetHeadSha) });
+    }
+
+    parts.forEach((part, index) => {
+        if (index > 0) {
+            elements.target.appendChild(document.createTextNode(" - "));
+        }
+        elements.target.appendChild(document.createTextNode(`${part.label}: `));
+        appendUpdateCheckCodeText(elements.target, part.value);
+    });
 }
 
 function updateCheckPanelStatus(result = null) {
@@ -4547,6 +4581,11 @@ function buildTechnicalDetails(versionInfo = null, result = null, failure = null
     const details = [];
     const normalizedFailure = failure ? normalizeUpdateCheckFailure(failure) : null;
 
+    appendUpdateCheckTechnicalDetail(
+        details,
+        "Summary",
+        normalizedFailure ? "Unable to check for updates." : getUserFacingUpdateSummary(result)
+    );
     appendUpdateCheckTechnicalDetail(details, "Branch", versionInfo?.currentBranch || result?.currentBranch);
     appendUpdateCheckTechnicalDetail(details, "Branch state", versionInfo?.branchState);
     appendUpdateCheckTechnicalDetail(details, "Current SHA", versionInfo?.currentSha || result?.currentSha);
@@ -4651,10 +4690,7 @@ function renderUpdateCheckPanel(versionInfo = null, result = null) {
     elements.status.textContent = status.label;
     elements.status.dataset.state = status.state;
     elements.current.textContent = updateCheckPanelCurrentText(versionInfo);
-    elements.target.textContent = updateCheckPanelTargetText(result);
-    if (elements.summary) {
-        elements.summary.textContent = getUserFacingUpdateSummary(result);
-    }
+    renderUpdateCheckPanelTarget(elements, result);
     renderUpdateCheckTechnicalDetails(elements, buildTechnicalDetails(versionInfo, result));
     setUpdateCheckPanelAction(result);
     syncUpdateCheckToggle();
@@ -4671,9 +4707,6 @@ function renderUpdateCheckPanelFailure(error, versionInfo = null) {
     elements.status.dataset.state = "failed";
     elements.current.textContent = updateCheckPanelCurrentText(versionInfo);
     elements.target.textContent = "Unknown";
-    if (elements.summary) {
-        elements.summary.textContent = "Unable to check for updates.";
-    }
     renderUpdateCheckTechnicalDetails(elements, buildTechnicalDetails(versionInfo, null, failure));
     setUpdateCheckPanelAction(null);
     syncUpdateCheckToggle();
@@ -4689,10 +4722,11 @@ function renderUpdateCheckPanelDisabled() {
     elements.status.dataset.state = "disabled";
     elements.current.textContent = "Not checked";
     elements.target.textContent = "Disabled";
-    if (elements.summary) {
-        elements.summary.textContent = "Update checks are disabled.";
-    }
     renderUpdateCheckTechnicalDetails(elements, [
+        {
+            label: "Summary",
+            value: "Update checks are disabled."
+        },
         {
             label: "Re-enable",
             value: "Use Enable update checks here or in About to re-enable GitHub update checks."

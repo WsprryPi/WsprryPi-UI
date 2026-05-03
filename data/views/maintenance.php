@@ -124,10 +124,6 @@ require __DIR__ . '/../card_header.php';
                                     <dt>Target</dt>
                                     <dd id="updateCheckTarget">Not checked</dd>
                                 </div>
-                                <div class="maintenance-fact">
-                                    <dt>Summary</dt>
-                                    <dd id="updateCheckSummary" class="maintenance-update-summary">Update status has not been checked yet.</dd>
-                                </div>
                             </dl>
                             <details id="updateCheckTechnical" class="maintenance-update-technical d-none">
                                 <summary id="updateCheckTechnicalSummary">Technical details ▼</summary>

@@ -205,10 +205,6 @@
     margin: 0;
 }
 
-.maintenance-update-summary {
-    color: var(--bs-secondary-color);
-}
-
 .maintenance-update-technical {
     border-top: 1px solid var(--bs-border-color);
     padding-top: 0.75rem;
