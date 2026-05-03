@@ -3056,7 +3056,15 @@ function forceUpdateCheckNow() {
     if (elements) {
         elements.status.textContent = "Checking...";
         elements.status.dataset.state = "checking";
-        elements.details.textContent = "Checking GitHub now, bypassing the normal update-check cache and failure rate limit.";
+        if (elements.summary) {
+            elements.summary.textContent = "Checking GitHub now.";
+        }
+        renderUpdateCheckTechnicalDetails(elements, [
+            {
+                label: "Check now",
+                value: "Bypassing the normal update-check cache and failure rate limit."
+            }
+        ]);
         elements.checkNowButton.disabled = true;
     }
 
@@ -4421,7 +4429,10 @@ function updateCheckPanelElements() {
         status: document.getElementById("updateCheckStatus"),
         current: document.getElementById("updateCheckCurrent"),
         target: document.getElementById("updateCheckTarget"),
-        details: document.getElementById("updateCheckDetails"),
+        summary: document.getElementById("updateCheckSummary"),
+        technical: document.getElementById("updateCheckTechnical"),
+        technicalSummary: document.getElementById("updateCheckTechnicalSummary"),
+        technicalList: document.getElementById("updateCheckTechnicalList"),
         action: document.getElementById("updateCheckAction"),
         checkNowButton: document.getElementById("updateCheckNowBtn")
     };
@@ -4453,38 +4464,157 @@ function updateCheckPanelStatus(result = null) {
     if (!result) {
         return {
             state: "clean",
-            label: "No update",
-            details: "The current build matches the selected update target."
+            label: "No update"
         };
     }
     if (result.updateAvailable === true) {
         return {
             state: "available",
-            label: "Update available",
-            details: result.versionComparisonUsed === "semver" && result.remoteVersionSelected
-                ? `Current build is behind release ${result.remoteVersionSelected}.`
-                : `Current build is behind ${result.targetBranch || "the selected target"} ${shortSha(result.targetHeadSha)}.`
+            label: "Update available"
         };
     }
     if (result.versionComparisonStatus === "local_modified" || result.localBuildState === "dirty_build") {
         return {
             state: "local",
-            label: "Local modified",
-            details: "This build includes local modifications. That does not mean a remote update is available."
+            label: "Local modified"
         };
     }
     if (result.versionComparisonStatus === "local_ahead") {
         return {
             state: "local",
-            label: "Local ahead",
-            details: "This build is newer than the selected remote version or target."
+            label: "Local ahead"
         };
     }
     return {
         state: "clean",
-        label: "No update",
-        details: result.selectionReason || "No update is available for the selected target."
+        label: "No update"
     };
+}
+
+function getUserFacingUpdateSummary(result = null) {
+    if (!result) {
+        return "You are running the latest version.";
+    }
+    if (result.updateAvailable === true) {
+        return "A newer version is available.";
+    }
+    if (result.versionComparisonStatus === "local_modified" || result.localBuildState === "dirty_build") {
+        return "This build includes local modifications.";
+    }
+    if (result.versionComparisonStatus === "local_ahead") {
+        return "This build is newer than the latest published version.";
+    }
+    return "You are running the latest version.";
+}
+
+function appendUpdateCheckTechnicalDetail(details, label, value) {
+    if (value === null || value === undefined || value === "") {
+        return;
+    }
+    const text = String(value).trim();
+    if (!text) {
+        return;
+    }
+    details.push({ label, value: text });
+}
+
+function dedupeUpdateCheckTechnicalDetails(details) {
+    const seenValues = new Set();
+    return details.filter((detail) => {
+        const key = detail.value.toLowerCase();
+        if (seenValues.has(key)) {
+            return false;
+        }
+        seenValues.add(key);
+        return true;
+    });
+}
+
+function formatUpdateCheckSemver(value) {
+    if (!value) {
+        return "";
+    }
+    if (typeof value === "string") {
+        return value;
+    }
+    if (typeof value.normalized === "string") {
+        return value.normalized;
+    }
+    return "";
+}
+
+function buildTechnicalDetails(versionInfo = null, result = null, failure = null) {
+    const details = [];
+    const normalizedFailure = failure ? normalizeUpdateCheckFailure(failure) : null;
+
+    appendUpdateCheckTechnicalDetail(details, "Branch", versionInfo?.currentBranch || result?.currentBranch);
+    appendUpdateCheckTechnicalDetail(details, "Branch state", versionInfo?.branchState);
+    appendUpdateCheckTechnicalDetail(details, "Current SHA", versionInfo?.currentSha || result?.currentSha);
+    appendUpdateCheckTechnicalDetail(details, "Target branch", result?.targetBranch);
+    appendUpdateCheckTechnicalDetail(details, "Target SHA", result?.targetHeadSha);
+    appendUpdateCheckTechnicalDetail(details, "Update URL", result?.releaseUrl);
+    appendUpdateCheckTechnicalDetail(details, "Comparison method", result?.versionComparisonUsed);
+    appendUpdateCheckTechnicalDetail(details, "Comparison status", result?.versionComparisonStatus);
+    appendUpdateCheckTechnicalDetail(
+        details,
+        "Local version",
+        result?.localVersionParsed || formatUpdateCheckSemver(versionInfo?.localVersionParsedObject)
+    );
+    appendUpdateCheckTechnicalDetail(details, "Remote version", result?.remoteVersionSelected);
+    appendUpdateCheckTechnicalDetail(details, "Selection reason", result?.selectionReason);
+    appendUpdateCheckTechnicalDetail(details, "Failure reason", normalizedFailure?.message);
+    appendUpdateCheckTechnicalDetail(details, "Failure code", normalizedFailure?.code);
+    appendUpdateCheckTechnicalDetail(details, "Failure details", normalizedFailure?.detail);
+
+    return dedupeUpdateCheckTechnicalDetails(details);
+}
+
+function updateTechnicalDetailsToggleLabel(elements) {
+    if (!elements?.technicalSummary || !elements?.technical) {
+        return;
+    }
+    elements.technicalSummary.textContent = elements.technical.open
+        ? "Technical details ▲"
+        : "Technical details ▼";
+}
+
+function renderUpdateCheckTechnicalDetails(elements, details) {
+    if (!elements?.technical || !elements?.technicalList) {
+        return;
+    }
+
+    if (elements.technical.dataset.updateCheckTechnicalBound !== "true") {
+        elements.technical.dataset.updateCheckTechnicalBound = "true";
+        elements.technical.addEventListener("toggle", () => {
+            updateTechnicalDetailsToggleLabel(elements);
+        });
+    }
+
+    elements.technical.open = false;
+    elements.technicalList.textContent = "";
+    updateTechnicalDetailsToggleLabel(elements);
+
+    if (!details.length) {
+        elements.technical.classList.add("d-none");
+        return;
+    }
+
+    details.forEach((detail) => {
+        const row = document.createElement("div");
+        row.className = "maintenance-fact";
+
+        const term = document.createElement("dt");
+        term.textContent = detail.label;
+        row.appendChild(term);
+
+        const description = document.createElement("dd");
+        description.textContent = detail.value;
+        row.appendChild(description);
+
+        elements.technicalList.appendChild(row);
+    });
+
+    elements.technical.classList.remove("d-none");
 }
 
 function setUpdateCheckPanelAction(result = null) {
@@ -4522,9 +4652,10 @@ function renderUpdateCheckPanel(versionInfo = null, result = null) {
     elements.status.dataset.state = status.state;
     elements.current.textContent = updateCheckPanelCurrentText(versionInfo);
     elements.target.textContent = updateCheckPanelTargetText(result);
-    elements.details.textContent = result?.selectionReason
-        ? `${status.details} ${result.selectionReason}`
-        : status.details;
+    if (elements.summary) {
+        elements.summary.textContent = getUserFacingUpdateSummary(result);
+    }
+    renderUpdateCheckTechnicalDetails(elements, buildTechnicalDetails(versionInfo, result));
     setUpdateCheckPanelAction(result);
     syncUpdateCheckToggle();
 }
@@ -4536,12 +4667,14 @@ function renderUpdateCheckPanelFailure(error, versionInfo = null) {
     }
 
     const failure = normalizeUpdateCheckFailure(error);
-    const detail = failure.detail ? ` ${failure.detail}` : "";
     elements.status.textContent = "Check failed";
     elements.status.dataset.state = "failed";
     elements.current.textContent = updateCheckPanelCurrentText(versionInfo);
     elements.target.textContent = "Unknown";
-    elements.details.textContent = `${failure.message}${detail}`;
+    if (elements.summary) {
+        elements.summary.textContent = "Unable to check for updates.";
+    }
+    renderUpdateCheckTechnicalDetails(elements, buildTechnicalDetails(versionInfo, null, failure));
     setUpdateCheckPanelAction(null);
     syncUpdateCheckToggle();
 }
@@ -4556,7 +4689,15 @@ function renderUpdateCheckPanelDisabled() {
     elements.status.dataset.state = "disabled";
     elements.current.textContent = "Not checked";
     elements.target.textContent = "Disabled";
-    elements.details.textContent = "GitHub update checks are disabled. Use Enable update checks here or in About to re-enable them.";
+    if (elements.summary) {
+        elements.summary.textContent = "Update checks are disabled.";
+    }
+    renderUpdateCheckTechnicalDetails(elements, [
+        {
+            label: "Re-enable",
+            value: "Use Enable update checks here or in About to re-enable GitHub update checks."
+        }
+    ]);
     setUpdateCheckPanelAction(null);
     syncUpdateCheckToggle();
 }

@@ -205,6 +205,33 @@
     margin: 0;
 }
 
+.maintenance-update-summary {
+    color: var(--bs-secondary-color);
+}
+
+.maintenance-update-technical {
+    border-top: 1px solid var(--bs-border-color);
+    padding-top: 0.75rem;
+}
+
+.maintenance-update-technical summary {
+    width: fit-content;
+    color: var(--bs-secondary-color);
+    cursor: pointer;
+    font-weight: var(--weight-semibold);
+    list-style: none;
+}
+
+.maintenance-update-technical summary::-webkit-details-marker {
+    display: none;
+}
+
+.maintenance-update-technical-list {
+    display: grid;
+    gap: 0.65rem;
+    margin: 0.75rem 0 0;
+}
+
 .maintenance-update-action {
     min-height: 1.5rem;
 }

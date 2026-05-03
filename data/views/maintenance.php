@@ -86,8 +86,7 @@ require __DIR__ . '/../card_header.php';
                 <section class="maintenance-utility" aria-label="Maintenance utilities">
                     <div class="maintenance-utility__grid">
                         <section class="maintenance-pane maintenance-pane--utility" aria-labelledby="maintenanceUtilityTitle">
-                            <p class="maintenance-pane__eyebrow mb-0">Utility</p>
-                            <h2 id="maintenanceUtilityTitle" class="maintenance-section-title h5 mb-0">Run a bench transmit-path check without touching saved settings.</h2>
+                            <h2 id="maintenanceUtilityTitle" class="maintenance-section-title h5 mb-0">Transmit test tone</h2>
                             <p class="maintenance-pane__body mb-0">
                                 Test tone opens the manual tone dialog so you can start or stop a quick output-path check and then return to normal scheduling.
                             </p>
@@ -107,7 +106,6 @@ require __DIR__ . '/../card_header.php';
                             id="updateCheckPanel"
                             class="maintenance-pane maintenance-pane--update"
                             aria-labelledby="updateCheckPanelTitle">
-                            <p class="maintenance-pane__eyebrow mb-0">Update check</p>
                             <h2 id="updateCheckPanelTitle" class="maintenance-section-title h5 mb-0">Review web UI update status.</h2>
                             <div
                                 id="updateCheckStatus"
@@ -127,10 +125,14 @@ require __DIR__ . '/../card_header.php';
                                     <dd id="updateCheckTarget">Not checked</dd>
                                 </div>
                                 <div class="maintenance-fact">
-                                    <dt>Details</dt>
-                                    <dd id="updateCheckDetails">Update status has not been checked yet.</dd>
+                                    <dt>Summary</dt>
+                                    <dd id="updateCheckSummary" class="maintenance-update-summary">Update status has not been checked yet.</dd>
                                 </div>
                             </dl>
+                            <details id="updateCheckTechnical" class="maintenance-update-technical d-none">
+                                <summary id="updateCheckTechnicalSummary">Technical details ▼</summary>
+                                <dl id="updateCheckTechnicalList" class="maintenance-update-technical-list"></dl>
+                            </details>
                             <div id="updateCheckAction" class="maintenance-update-action d-none"></div>
                             <div class="maintenance-action maintenance-action--start maintenance-action--wrap">
                                 <button
