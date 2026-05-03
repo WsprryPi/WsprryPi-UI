@@ -444,7 +444,9 @@ const configSchema = {
             "Web Port": { required: false, type: "number" },
             "Socket Port": { required: false, type: "number" },
             "Use Shutdown": { required: false, type: "boolean" },
-            "Shutdown Button": { required: false, type: "number" }
+            "Shutdown Button": { required: false, type: "number" },
+            "Amp Pin": { required: false, type: "number" },
+            "Amp Pin Active High": { required: false, type: "boolean" }
         }
     },
     GPIO: {
@@ -1576,6 +1578,18 @@ function populateConfig(callback = null) {
                     "Shutdown Button",
                     19
                 );
+                let amp_pin = getConfigIntValue(
+                    operation,
+                    "Operation",
+                    "Amp Pin",
+                    -1
+                );
+                let amp_pin_active_high = getConfigBoolValue(
+                    operation,
+                    "Operation",
+                    "Amp Pin Active High",
+                    false
+                );
                 let dot_length = getConfigFloatValue(cw, "CW", "Dot Seconds", 3.0);
                 let fsk_offset = getConfigFloatValue(cw, "CW", "Shift Hz", 5.0);
                 let cw_base_frequency = getConfigFloatValue(cw, "CW", "Base Frequency", 14096900.0);
@@ -1649,6 +1663,12 @@ function populateConfig(callback = null) {
                         .prop("checked", use_shutdown)
                         .trigger("change");
                     setShutdownPin(shutdown_pin);
+                    if (typeof setAmpPin === "function") {
+                        setAmpPin(amp_pin);
+                    }
+                    $("#amp_active_high")
+                        .prop("checked", amp_pin_active_high)
+                        .trigger("change");
                     if (typeof populateBandGpioForm === "function") {
                         populateBandGpioForm(bandGpio);
                     }

@@ -77,9 +77,21 @@ if ($gpioRenderMode === 'select') {
 
 $dropdownId = isset($dropdownId) ? (string)$dropdownId : 'gpioDropdownButton';
 $defaultGpio = isset($defaultGpio) ? (string)$defaultGpio : '';
+$includeBlankGpio = isset($includeBlankGpio) ? (bool)$includeBlankGpio : false;
+$blankGpioLabel = isset($blankGpioLabel) ? (string)$blankGpioLabel : 'Disabled';
 ?>
 
 <ul class="dropdown-menu bg-body text-body" aria-labelledby="<?= htmlspecialchars($dropdownId) ?>">
+    <?php if ($includeBlankGpio): ?>
+        <li>
+            <button
+                type="button"
+                class="dropdown-item<?= ($defaultGpio === '' ? ' active' : '') ?>"
+                data-val="">
+                <?= htmlspecialchars($blankGpioLabel) ?>
+            </button>
+        </li>
+    <?php endif; ?>
     <?php foreach ($gpioPins as $gpio => $pinText): ?>
         <?php $gpioCode = wsprrypi_gpio_code($gpio); ?>
         <li>

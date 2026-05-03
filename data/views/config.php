@@ -1,6 +1,7 @@
 <?php
 $defaultLedGpio = 'GPIO18';
 $defaultShutdownGpio = 'GPIO19';
+$defaultAmpGpio = '';
 $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '20m', '17m', '15m', '12m', '10m', '6m', '4m', '2m'];
 ?>
 
@@ -724,7 +725,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                             <fieldset class="config-panel">
                                 <legend>Pi Controls</legend>
                                 <p class="config-panel__summary">
-                                    Configure optional GPIO features such as a transmit LED, a shutdown button input, and per-band outputs.
+                                    Configure optional GPIO features such as a transmit LED, a shutdown button input, amplifier control, and per-band outputs.
                                 </p>
 
                                 <div class="row gx-2 gy-2 align-items-center mb-2">
@@ -794,6 +795,49 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                             <?php include __DIR__ . '/../gpio_dropdown.php'; ?>
                                             <div id="shutdown-pin-hint" class="form-text mt-2">
                                                 Choose the GPIO pin monitored for the shutdown button input.
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="row gx-2 gy-2 align-items-center">
+                                    <div class="col-12 col-xxl-4">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <span class="form-label mb-0">Amp Control</span>
+                                        </div>
+                                        <div id="amp-control-hint" class="form-text mt-2">
+                                            Activates prior to transmitting then deactivates after the transmission is complete to control an external amplifier
+                                        </div>
+                                    </div>
+
+                                    <div class="col-12 col-xxl-4 config-stacked-field">
+                                        <label for="ampDropdownButton" class="form-label">Amp Pin</label>
+                                        <div class="dropdown">
+                                            <?php
+                                            $dropdownId = "ampDropdownButton";
+                                            $defaultGpio = $defaultAmpGpio;
+                                            $includeBlankGpio = true;
+                                            ?>
+                                            <button id="ampDropdownButton"
+                                                class="btn btn-outline-secondary dropdown-toggle w-100 text-start pin-dropdown-btn"
+                                                type="button"
+                                                data-bs-toggle="dropdown"
+                                                aria-expanded="false"
+                                                aria-describedby="amp-pin-hint amp-control-hint"
+                                                title="Disabled">
+                                            </button>
+                                            <?php include __DIR__ . '/../gpio_dropdown.php'; ?>
+                                            <div id="amp-pin-hint" class="form-text mt-2">
+                                                Choose the GPIO pin used for amplifier control.
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="col-12 col-xxl-4">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <label class="form-label mb-0" for="amp_active_high">Active High</label>
+                                            <div class="form-check mb-0">
+                                                <input class="form-check-input" type="checkbox" id="amp_active_high" aria-describedby="amp-control-hint">
                                             </div>
                                         </div>
                                     </div>

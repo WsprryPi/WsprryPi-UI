@@ -250,6 +250,10 @@ function restorePersistedConfigDraft() {
     if (typeof setShutdownPin === "function") {
         setShutdownPin(Number(operation["Shutdown Button"]));
     }
+    if (typeof setAmpPin === "function") {
+        setAmpPin(Number(operation["Amp Pin"]));
+    }
+    $("#amp_active_high").prop("checked", !!operation["Amp Pin Active High"]).trigger("change");
     if (typeof populateBandGpioForm === "function") {
         populateBandGpioForm(bandGpio);
     }
@@ -340,12 +344,12 @@ function bindIndexActions() {
         applyBandGpioColumnToggle("activeHigh", $("#band-gpio-active-high-all").is(":checked"));
     });
     $("#wsprform").on("change", ".band-gpio-active-high", syncBandGpioColumnHeaderStates);
-    $("#wsprform").on("input change", ".band-gpio-input, .band-gpio-active-high", validateBandGpioFields);
+    $("#wsprform").on("input change", ".band-gpio-input, .band-gpio-active-high", handleBandGpioInputChange);
 
     // Wire up the pin dropdown menus (only in the form)
     $('#wsprform')
-        .off('click.pin', '[aria-labelledby="ledDropdownButton"] .dropdown-item, [aria-labelledby="shutdownDropdownButton"] .dropdown-item', selectPin)
-        .on('click.pin', '[aria-labelledby="ledDropdownButton"] .dropdown-item, [aria-labelledby="shutdownDropdownButton"] .dropdown-item', selectPin);
+        .off('click.pin', '[aria-labelledby="ledDropdownButton"] .dropdown-item, [aria-labelledby="shutdownDropdownButton"] .dropdown-item, [aria-labelledby="ampDropdownButton"] .dropdown-item', selectPin)
+        .on('click.pin', '[aria-labelledby="ledDropdownButton"] .dropdown-item, [aria-labelledby="shutdownDropdownButton"] .dropdown-item, [aria-labelledby="ampDropdownButton"] .dropdown-item', selectPin);
 
     // Bind the transmit power slider
     $("#gpio-power-range").on("input", updateGpioPowerLabel);
@@ -1417,14 +1421,14 @@ function updateSi5351PowerLabel() {
 function clickUseLED() {
     const on = $("#use_led").prop("checked");
     $("#ledDropdownButton").prop("disabled", !on);
-    refreshBandGpioOptions();
+    refreshGpioConflictOptions();
     scheduleAutosave();
 }
 
 function clickUseShutdown() {
     const on = $('#use_shutdown').prop('checked');
     $('#shutdownDropdownButton').prop('disabled', !on);
-    refreshBandGpioOptions();
+    refreshGpioConflictOptions();
     scheduleAutosave();
 }
 
@@ -1497,6 +1501,7 @@ function applyBandGpioColumnToggle(column, checked) {
         $columnCheckboxes.prop("checked", checked);
     }
 
+    refreshGpioConflictOptions();
     syncBandGpioColumnHeaderStates();
     validateBandGpioFields();
     scheduleAutosave();
@@ -1511,29 +1516,121 @@ function setBandGpioRowState($row, enabled) {
 function clickBandGpioEnabled() {
     const $row = $(this).closest("tr[data-band]");
     setBandGpioRowState($row, $(this).is(":checked"));
+    refreshGpioConflictOptions();
     syncBandGpioColumnHeaderStates();
     validateBandGpioFields();
     scheduleAutosave();
 }
 
-function getReservedBandGpioPins() {
+function handleBandGpioInputChange() {
+    refreshGpioConflictOptions();
+    validateBandGpioFields();
+}
+
+function getDropdownButtonPin(buttonId) {
+    const txt = $(`#${buttonId}`).text().trim();
+    const m = txt.match(/\d+/);
+    return m ? parseInt(m[0], 10) : null;
+}
+
+function setDropdownButtonPin(buttonId, gpioNumber, blankTitle = "Disabled", allowBlank = false) {
+    const $btn = $(`#${buttonId}`);
+    const pinNumber = Number(gpioNumber);
+
+    if (!Number.isInteger(pinNumber) || pinNumber < 0) {
+        if (!allowBlank) {
+            debugConsole("warn", "GPIO value not found:", gpioNumber);
+            return;
+        }
+
+        $btn.text("");
+        $btn.attr("title", blankTitle);
+        $(`[aria-labelledby="${buttonId}"] .dropdown-item`).removeClass("active");
+        $(`[aria-labelledby="${buttonId}"] .dropdown-item[data-val=""]`).addClass("active");
+        return;
+    }
+
+    const code = "GPIO" + pinNumber;
+    const $item = $(`[aria-labelledby="${buttonId}"] .dropdown-item[data-val="${code}"]`);
+    if ($item.length) {
+        $btn.text(code);
+        $btn.attr("title", $item.text().trim());
+        $(`[aria-labelledby="${buttonId}"] .dropdown-item`).removeClass("active");
+        $item.addClass("active");
+    } else {
+        debugConsole("warn", "GPIO value not found:", code);
+    }
+}
+
+function getSelectedBandGpioPins() {
+    const pins = new Set();
+
+    getBandGpioRows().each(function () {
+        const $row = $(this);
+        if (!$row.find(".band-gpio-enabled").is(":checked")) {
+            return;
+        }
+
+        const pin = parseInt($row.find(".band-gpio-input").val(), 10);
+        if (Number.isInteger(pin)) {
+            pins.add(String(pin));
+        }
+    });
+
+    return pins;
+}
+
+function getReservedPiControlPins(excludeButtonId = "") {
     const reservedPins = new Set();
 
     if ($("#use_led").is(":checked")) {
         const ledPin = getLEDPin();
-        if (Number.isInteger(ledPin)) {
+        if (Number.isInteger(ledPin) && excludeButtonId !== "ledDropdownButton") {
             reservedPins.add(String(ledPin));
         }
     }
 
     if ($("#use_shutdown").is(":checked")) {
         const shutdownPin = getShutdownPin();
-        if (Number.isInteger(shutdownPin)) {
+        if (Number.isInteger(shutdownPin) && excludeButtonId !== "shutdownDropdownButton") {
             reservedPins.add(String(shutdownPin));
         }
     }
 
+    const ampPin = getAmpPin();
+    if (Number.isInteger(ampPin) && excludeButtonId !== "ampDropdownButton") {
+        reservedPins.add(String(ampPin));
+    }
+
     return reservedPins;
+}
+
+function getReservedBandGpioPins() {
+    return getReservedPiControlPins();
+}
+
+function refreshPiControlDropdownOptions() {
+    const bandPins = getSelectedBandGpioPins();
+    const buttonIds = ["ledDropdownButton", "shutdownDropdownButton", "ampDropdownButton"];
+
+    buttonIds.forEach((buttonId) => {
+        const reservedPins = getReservedPiControlPins(buttonId);
+        bandPins.forEach((pin) => reservedPins.add(pin));
+        const currentPin = getDropdownButtonPin(buttonId);
+
+        $(`[aria-labelledby="${buttonId}"] .dropdown-item`).each(function () {
+            const $item = $(this);
+            const code = String($item.data("val") || "");
+            const match = code.match(/\d+/);
+            const optionValue = match ? match[0] : "";
+            const isBlank = optionValue === "";
+            const keepCurrentSelection = Number.isInteger(currentPin) && String(currentPin) === optionValue;
+            const shouldDisable = !isBlank && reservedPins.has(optionValue) && !keepCurrentSelection;
+
+            $item.prop("disabled", shouldDisable);
+            $item.toggleClass("disabled", shouldDisable);
+        });
+    });
 }
 
 function refreshBandGpioOptions() {
@@ -1555,6 +1652,11 @@ function refreshBandGpioOptions() {
             $option.prop("hidden", shouldDisable);
         });
     });
+}
+
+function refreshGpioConflictOptions() {
+    refreshPiControlDropdownOptions();
+    refreshBandGpioOptions();
 }
 
 function populateBandGpioForm(bandGpioConfig = {}) {
@@ -1586,7 +1688,7 @@ function populateBandGpioForm(bandGpioConfig = {}) {
         setBandGpioRowState($row, enabled);
     });
 
-    refreshBandGpioOptions();
+    refreshGpioConflictOptions();
     syncBandGpioColumnHeaderStates();
     validateBandGpioFields();
 }
@@ -1646,6 +1748,75 @@ function validateBandGpioFields() {
             }
         }
 
+        if (!valid) {
+            invalidCount++;
+        }
+    });
+
+    return invalidCount === 0;
+}
+
+function validateGpioConflictFields() {
+    const assignments = [];
+    ["ledDropdownButton", "shutdownDropdownButton", "ampDropdownButton"].forEach((buttonId) => {
+        const field = document.getElementById(buttonId);
+        if (field) {
+            field.setCustomValidity("");
+            field.classList.remove("is-invalid");
+            field.removeAttribute("aria-invalid");
+        }
+    });
+
+    function addAssignment(pin, field, label) {
+        if (Number.isInteger(pin)) {
+            assignments.push({ pin: String(pin), field, label });
+        }
+    }
+
+    addAssignment(
+        $("#use_led").is(":checked") ? getLEDPin() : null,
+        document.getElementById("ledDropdownButton"),
+        "Transmit LED"
+    );
+    addAssignment(
+        $("#use_shutdown").is(":checked") ? getShutdownPin() : null,
+        document.getElementById("shutdownDropdownButton"),
+        "Shutdown Button"
+    );
+    addAssignment(getAmpPin(), document.getElementById("ampDropdownButton"), "Amp Control");
+
+    getBandGpioRows().each(function () {
+        const $row = $(this);
+        if (!$row.find(".band-gpio-enabled").is(":checked")) {
+            return;
+        }
+        addAssignment(
+            parseInt($row.find(".band-gpio-input").val(), 10),
+            $row.find(".band-gpio-input").get(0),
+            `Band GPIO ${String($row.data("band") || "").trim()}`
+        );
+    });
+
+    const counts = assignments.reduce((memo, item) => {
+        memo[item.pin] = (memo[item.pin] || 0) + 1;
+        return memo;
+    }, {});
+    let invalidCount = 0;
+
+    assignments.forEach((item) => {
+        const valid = counts[item.pin] === 1;
+        const message = valid
+            ? ""
+            : `GPIO${item.pin} is already assigned to another Pi I/O control.`;
+        if (item.field) {
+            item.field.setCustomValidity(message);
+            if (item.field.tagName === "BUTTON") {
+                item.field.classList.toggle("is-invalid", !valid);
+                item.field.setAttribute("aria-invalid", valid ? "false" : "true");
+            } else {
+                setFieldValidationState(item.field, valid);
+            }
+        }
         if (!valid) {
             invalidCount++;
         }
@@ -2035,6 +2206,10 @@ function validatePage() {
         invalidCount++;
     }
 
+    if (!validateGpioConflictFields()) {
+        invalidCount++;
+    }
+
     // ONLY visible/relevant .form-control elements for the selected mode.
     document
         .querySelectorAll(
@@ -2286,15 +2461,7 @@ function validateTransmitterHardwareFields() {
 }
 
 function setLEDPin(gpioNumber) {
-    const code = "GPIO" + gpioNumber;
-    const $btn = $("#ledDropdownButton");
-    const $item = $(`.dropdown-item[data-val="${code}"]`);
-    if ($item.length) {
-        $btn.text(code);
-        $btn.attr("title", $item.text().trim());
-    } else {
-        debugConsole("warn", "GPIO value not found:", code);
-    }
+    setDropdownButtonPin("ledDropdownButton", gpioNumber, "");
 }
 
 /**
@@ -2303,9 +2470,7 @@ function setLEDPin(gpioNumber) {
  * is selected
  */
 function getLEDPin() {
-    const txt = $("#ledDropdownButton").text().trim();
-    const m = txt.match(/\d+/);
-    return m ? parseInt(m[0], 10) : null;
+    return getDropdownButtonPin("ledDropdownButton");
 }
 
 /**
@@ -2313,6 +2478,11 @@ function getLEDPin() {
  */
 function selectPin(e) {
     const $item = $(this);
+    if ($item.prop("disabled")) {
+        e.preventDefault();
+        return;
+    }
+
     const code = $item.data('val');
     const menuId = $item.closest('.dropdown-menu').attr('aria-labelledby');
     const $btn = $('#' + menuId);
@@ -2329,7 +2499,8 @@ function selectPin(e) {
     // Clear focus from item and (after hide) from the button
     $item.trigger('blur');
     setTimeout(() => $btn.trigger('blur').removeClass('active show'), 0);
-    refreshBandGpioOptions();
+    refreshGpioConflictOptions();
+    validatePage();
     scheduleAutosave();
 }
 
@@ -2338,15 +2509,7 @@ function selectPin(e) {
  * @param {number} gpioNumber  e.g. 18
  */
 function setShutdownPin(gpioNumber) {
-    const code = "GPIO" + gpioNumber;
-    const $btn = $("#shutdownDropdownButton");
-    const $item = $(`.dropdown-item[data-val="${code}"]`);
-    if ($item.length) {
-        $btn.text(code);
-        $btn.attr("title", $item.text().trim());
-    } else {
-        debugConsole("warn", "GPIO value not found:", code);
-    }
+    setDropdownButtonPin("shutdownDropdownButton", gpioNumber, "");
 }
 
 /**
@@ -2355,9 +2518,15 @@ function setShutdownPin(gpioNumber) {
  * is selected
  */
 function getShutdownPin() {
-    const txt = $("#shutdownDropdownButton").text().trim();
-    const m = txt.match(/\d+/);
-    return m ? parseInt(m[0], 10) : null;
+    return getDropdownButtonPin("shutdownDropdownButton");
+}
+
+function setAmpPin(gpioNumber) {
+    setDropdownButtonPin("ampDropdownButton", gpioNumber, "Disabled", true);
+}
+
+function getAmpPin() {
+    return getDropdownButtonPin("ampDropdownButton");
 }
 
 function buildConfigPayload() {
@@ -2373,6 +2542,9 @@ function buildConfigPayload() {
     let led_pin = parseInt(getLEDPin()) || 18;
     let use_shutdown = parseBool($("#use_shutdown").is(":checked"));
     let shutdown_pin = parseInt(getShutdownPin()) || 19;
+    const amp_pin_value = getAmpPin();
+    const amp_pin = Number.isInteger(amp_pin_value) ? amp_pin_value : -1;
+    const amp_pin_active_high = parseBool($("#amp_active_high").is(":checked"));
     let band_gpio = collectBandGpioConfig();
     let transmit_backend = selectedTransmitBackend();
     if (transmit_backend !== "gpio" && transmit_backend !== "si5351") {
@@ -2462,6 +2634,8 @@ function buildConfigPayload() {
         "LED Pin": led_pin,
         "Use Shutdown": use_shutdown,
         "Shutdown Button": shutdown_pin,
+        "Amp Pin": amp_pin,
+        "Amp Pin Active High": amp_pin_active_high,
     };
 
     var GPIO = {
@@ -3092,6 +3266,8 @@ function setHardwareControlsDisabled(disabled) {
         "#ledDropdownButton",
         "#use_shutdown",
         "#shutdownDropdownButton",
+        "#ampDropdownButton",
+        "#amp_active_high",
         "#test_tone"
     ];
 
@@ -3136,6 +3312,8 @@ function setOfflineDefaults() {
     clickTransmitBackend();
     $("#use_led").prop("checked", false);
     $("#use_shutdown").prop("checked", false);
+    setAmpPin(-1);
+    $("#amp_active_high").prop("checked", false);
     populateBandGpioForm({});
 
     $("#ledDropdownButton")
