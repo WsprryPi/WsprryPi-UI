@@ -119,6 +119,7 @@ const UPDATE_CHECK_ERROR_MESSAGES = Object.freeze({
     rate_limited: "Update check failed: GitHub API rate limit reached.",
     network: "Update check failed: GitHub could not be reached.",
     malformed_response: "Update check failed: GitHub returned malformed update data.",
+    detached_target_unknown: "Update check failed: detached or unknown branch state has no safe update target.",
     github_http: "Update check failed: GitHub returned an error.",
     unknown: "Update check failed."
 });
@@ -3129,6 +3130,26 @@ function parseBuildDirtyState(response, rawDisplayVersion, rawUiVersion, rawExeV
     };
 }
 
+function parseBranchState(response, currentBranch) {
+    const rawState = typeof response?.wspr_branch_state === "string"
+        ? response.wspr_branch_state.trim().toLowerCase()
+        : "";
+
+    if (rawState === "branch" || rawState === "detached" || rawState === "unknown") {
+        return rawState;
+    }
+
+    if (currentBranch === "HEAD") {
+        return "detached";
+    }
+
+    if (!currentBranch || currentBranch === "unknown") {
+        return "unknown";
+    }
+
+    return "branch";
+}
+
 function parseWsprryPiVersionResponse(response) {
     const rawDisplayVersion = typeof response?.wspr_version === "string"
         ? response.wspr_version.trim()
@@ -3154,6 +3175,7 @@ function parseWsprryPiVersionResponse(response) {
     const branchMatch = displayVersionForParsing.match(/\(([^()]+)\)/);
     const displayBranch = branchMatch ? branchMatch[1].trim() : "";
     const currentBranch = rawBackendBranch || displayBranch;
+    const branchState = parseBranchState(response, currentBranch);
     const fullSha = findFullShaInValue(response);
     const shortShaMatch = versionForShaParsing.match(/[+.:-]([0-9a-f]{7,40})(?:\b|[^0-9a-f])/i) ||
         versionForShaParsing.match(/\b([0-9a-f]{7,40})\b/i);
@@ -3178,6 +3200,7 @@ function parseWsprryPiVersionResponse(response) {
         currentModalVersion: rawExeVersion || rawUiVersion || rawDisplayVersion,
         currentSha,
         currentBranch,
+        branchState,
         displayBranch,
         currentShaIsFull: currentSha.length === 40,
         buildDirtyKnown: dirtyState.known,
@@ -3389,7 +3412,7 @@ function updateCheckCacheKey(versionInfo) {
     const dirtyKey = versionInfo.buildDirtyKnown
         ? versionInfo.buildDirty ? "dirty" : "clean"
         : "dirty-unknown";
-    return `${UPDATE_CHECK_CACHE_PREFIX}:${versionInfo.currentBranch}:${versionInfo.currentSha}:${dirtyKey}`;
+    return `${UPDATE_CHECK_CACHE_PREFIX}:${versionInfo.branchState || "branch"}:${versionInfo.currentBranch}:${versionInfo.currentSha}:${dirtyKey}`;
 }
 
 function readUpdateCheckCache(versionInfo) {
@@ -3405,6 +3428,7 @@ function readUpdateCheckCache(versionInfo) {
             cached.schemaVersion !== UPDATE_CHECK_CACHE_SCHEMA_VERSION ||
             cached.currentSha !== versionInfo.currentSha ||
             cached.currentBranch !== versionInfo.currentBranch ||
+            cached.branchState !== versionInfo.branchState ||
             Date.now() - Number(cached.checkedAt || 0) >= UPDATE_CHECK_CACHE_TTL_MS
         ) {
             return null;
@@ -3421,7 +3445,10 @@ function writeUpdateCheckCache(versionInfo, result) {
         window.localStorage.setItem(
             updateCheckCacheKey(versionInfo),
             JSON.stringify(Object.assign(
-                { schemaVersion: UPDATE_CHECK_CACHE_SCHEMA_VERSION },
+                {
+                    schemaVersion: UPDATE_CHECK_CACHE_SCHEMA_VERSION,
+                    branchState: versionInfo.branchState || "branch"
+                },
                 result
             ))
         );
@@ -3561,8 +3588,63 @@ function selectedUpdateBranch(branchInfo, reason, fallbackUsed = false) {
     });
 }
 
+function isDetachedOrUnknownBranchBuild(versionInfo) {
+    return versionInfo.branchState === "detached" ||
+        versionInfo.branchState === "unknown" ||
+        versionInfo.currentBranch === "HEAD" ||
+        versionInfo.currentBranch === "unknown";
+}
+
+async function selectDetachedOrUnknownUpdateBranch(versionInfo) {
+    // Detached HEAD and unknown-branch builds do not have a trustworthy
+    // same-name upstream branch. Commit fallback is allowed only after proving
+    // the local commit is reachable from a known upstream branch.
+    const candidates = ["main", "devel"];
+    let lastFailure = null;
+
+    for (const branch of candidates) {
+        let branchInfo;
+        try {
+            branchInfo = await lookupGithubBranch(branch);
+        } catch (error) {
+            if (error.status !== 404) {
+                throw error;
+            }
+            lastFailure = error;
+            debugConsole("debug", `Update check detached/unknown branch target probe skipped missing upstream ${branch}.`);
+            continue;
+        }
+
+        const containment = await isCurrentShaReachableFromBranchHead(versionInfo.currentSha, branchInfo);
+        if (containment.contained) {
+            const certainty = containment.uncertain ? "uncertain short SHA match" : "exact/compare-confirmed match";
+            debugConsole("debug", `Update check detached/unknown build resolved to upstream ${branch} because current SHA is reachable (${certainty}, status ${containment.status || "unknown"}).`);
+            return selectedUpdateBranch(
+                branchInfo,
+                `detached/unknown branch commit reachable from upstream ${branch} (${certainty}, status ${containment.status || "unknown"})`,
+                true
+            );
+        }
+
+        debugConsole("debug", `Update check detached/unknown build is not reachable from upstream ${branch} (compare status ${containment.status || "unknown"}).`);
+    }
+
+    const failure = buildUpdateCheckFailure(
+        "detached_target_unknown",
+        `Local branch state '${versionInfo.branchState || "unknown"}' with branch '${versionInfo.currentBranch || "unknown"}' is not reachable from upstream main or devel.`
+    );
+    if (lastFailure?.status === 404) {
+        failure.detail += " One or more known upstream branches were missing.";
+    }
+    throw failure;
+}
+
 async function selectGithubUpdateBranch(versionInfo) {
     const currentBranch = versionInfo.currentBranch;
+
+    if (isDetachedOrUnknownBranchBuild(versionInfo)) {
+        return selectDetachedOrUnknownUpdateBranch(versionInfo);
+    }
 
     // Rule 1: local main tracks upstream main directly.
     if (currentBranch === "main") {
@@ -3610,8 +3692,10 @@ async function selectGithubUpdateBranch(versionInfo) {
         return selectedUpdateBranch(develBranch, "local devel targets upstream devel");
     }
 
-    // Rule 3: feature, release, and unknown local branches target the same-name
-    // upstream branch first.
+    // Rule 3: feature and release local branches target the same-name upstream
+    // branch first. Detached HEAD and unknown branch-state builds are handled
+    // above so they cannot accidentally probe an upstream branch literally
+    // named "HEAD" or "unknown".
     try {
         return selectedUpdateBranch(
             await lookupGithubBranch(currentBranch),
@@ -4257,7 +4341,7 @@ function checkForWsprryPiUpdate(response) {
 
     debugConsole(
         "debug",
-        `Update check parsed displayBranch=${versionInfo.displayBranch || "(none)"}, rawBranch=${versionInfo.currentBranch}, currentSha=${versionInfo.currentSha}`
+        `Update check parsed displayBranch=${versionInfo.displayBranch || "(none)"}, rawBranch=${versionInfo.currentBranch}, branchState=${versionInfo.branchState}, currentSha=${versionInfo.currentSha}`
     );
 
     const cached = readUpdateCheckCache(versionInfo);
