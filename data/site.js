@@ -4453,6 +4453,15 @@ function appendUpdateCheckCodeText(parent, value) {
     parent.appendChild(code);
 }
 
+function appendUpdateCheckLinkText(parent, value) {
+    const link = document.createElement("a");
+    link.href = value;
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.textContent = value;
+    parent.appendChild(link);
+}
+
 function buildUpdateCheckTargetParts(result = null) {
     const parts = [];
     if (result?.targetBranch) {
@@ -4590,6 +4599,24 @@ function appendUpdateCheckTechnicalParts(details, label, parts) {
     details.push({ label, value, parts });
 }
 
+function formatUpdateCheckTitleCase(value) {
+    return String(value || "")
+        .split(/([\s_-]+)/)
+        .map((part) => /^[a-z0-9]+$/i.test(part)
+            ? part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
+            : part)
+        .join("");
+}
+
+function formatUpdateCheckSentence(value) {
+    const text = String(value || "").trim();
+    if (!text) {
+        return "";
+    }
+    const sentence = text.charAt(0).toUpperCase() + text.slice(1);
+    return sentence.endsWith(".") ? sentence : `${sentence}.`;
+}
+
 function dedupeUpdateCheckTechnicalDetails(details) {
     const seenValues = new Set();
     return details.filter((detail) => {
@@ -4640,18 +4667,37 @@ function buildTechnicalDetails(versionInfo = null, result = null, failure = null
         "Summary",
         normalizedFailure ? "Unable to check for updates." : getUserFacingUpdateSummary(result)
     );
-    appendUpdateCheckTechnicalDetail(details, "Branch", versionInfo?.currentBranch || result?.currentBranch);
+    appendUpdateCheckTechnicalDetail(
+        details,
+        "Branch",
+        versionInfo?.currentBranch || result?.currentBranch,
+        { code: true }
+    );
     appendUpdateCheckTechnicalDetail(details, "Branch state", versionInfo?.branchState);
-    appendUpdateCheckTechnicalDetail(details, "Current SHA", versionInfo?.currentSha || result?.currentSha);
+    appendUpdateCheckTechnicalDetail(
+        details,
+        "Current SHA",
+        versionInfo?.currentSha || result?.currentSha,
+        { code: true }
+    );
     appendUpdateCheckTechnicalDetail(details, "Target branch", result?.targetBranch);
     appendUpdateCheckTechnicalDetail(details, "Target SHA", result?.targetHeadSha);
-    appendUpdateCheckTechnicalDetail(details, "Update URL", result?.releaseUrl);
-    appendUpdateCheckTechnicalDetail(details, "Comparison method", result?.versionComparisonUsed);
-    appendUpdateCheckTechnicalDetail(details, "Comparison status", result?.versionComparisonStatus);
+    appendUpdateCheckTechnicalDetail(details, "Update URL", result?.releaseUrl, { link: true });
+    appendUpdateCheckTechnicalDetail(
+        details,
+        "Comparison method",
+        formatUpdateCheckTitleCase(result?.versionComparisonUsed)
+    );
+    appendUpdateCheckTechnicalDetail(
+        details,
+        "Comparison status",
+        formatUpdateCheckSentence(result?.versionComparisonStatus)
+    );
     appendUpdateCheckTechnicalDetail(
         details,
         "Local version",
-        result?.localVersionParsed || formatUpdateCheckSemver(versionInfo?.localVersionParsedObject)
+        result?.localVersionParsed || formatUpdateCheckSemver(versionInfo?.localVersionParsedObject),
+        { code: true }
     );
     appendUpdateCheckTechnicalDetail(details, "Remote version", result?.remoteVersionSelected);
     appendUpdateCheckTechnicalDetail(details, "Selection reason", result?.selectionReason);
@@ -4711,6 +4757,8 @@ function renderUpdateCheckTechnicalDetails(elements, details) {
             });
         } else if (detail.code === true) {
             appendUpdateCheckCodeText(description, detail.value);
+        } else if (detail.link === true) {
+            appendUpdateCheckLinkText(description, detail.value);
         } else {
             description.textContent = detail.value;
         }
