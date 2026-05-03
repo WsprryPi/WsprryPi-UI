@@ -3056,6 +3056,7 @@ function forceUpdateCheckNow() {
     if (elements) {
         elements.status.textContent = "Checking...";
         elements.status.dataset.state = "checking";
+        renderUpdateCheckPanelTitle(elements, null, "Checking update status");
         renderUpdateCheckTechnicalDetails(elements, [
             {
                 label: "Summary",
@@ -4427,6 +4428,7 @@ function updateCheckPanelElements() {
 
     return {
         panel,
+        title: document.getElementById("updateCheckPanelTitle"),
         status: document.getElementById("updateCheckStatus"),
         technical: document.getElementById("updateCheckTechnical"),
         technicalSummary: document.getElementById("updateCheckTechnicalSummary"),
@@ -4505,6 +4507,52 @@ function updateCheckPanelStatus(result = null) {
         state: "clean",
         label: "No update"
     };
+}
+
+function updateCheckPanelTitleText(result = null) {
+    if (!result) {
+        return "You are on the current version";
+    }
+    if (result.updateAvailable === true) {
+        return "An update is available";
+    }
+    if (result.versionComparisonStatus === "local_modified" || result.localBuildState === "dirty_build") {
+        return "Local build has modifications";
+    }
+    if (result.versionComparisonStatus === "local_ahead") {
+        return "Local build is newer than the latest published version";
+    }
+    return "You are on the current version";
+}
+
+function updateCheckPanelHasReleaseLink(result = null) {
+    return Boolean(
+        result?.updateAvailable === true &&
+        result.remoteVersionSelected &&
+        result.releaseUrl &&
+        result.versionComparisonUsed === "semver"
+    );
+}
+
+function renderUpdateCheckPanelTitle(elements, result = null, overrideText = "") {
+    if (!elements?.title) {
+        return;
+    }
+
+    elements.title.textContent = "";
+    if (!updateCheckPanelHasReleaseLink(result)) {
+        elements.title.textContent = overrideText || updateCheckPanelTitleText(result);
+        return;
+    }
+
+    elements.title.appendChild(document.createTextNode("An update is available: "));
+    const link = document.createElement("a");
+    link.href = result.releaseUrl;
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.textContent = result.remoteVersionSelected;
+    link.setAttribute("aria-label", `View release ${result.remoteVersionSelected}`);
+    elements.title.appendChild(link);
 }
 
 function getUserFacingUpdateSummary(result = null) {
@@ -4707,6 +4755,7 @@ function renderUpdateCheckPanel(versionInfo = null, result = null) {
     const status = updateCheckPanelStatus(result);
     elements.status.textContent = status.label;
     elements.status.dataset.state = status.state;
+    renderUpdateCheckPanelTitle(elements, result);
     renderUpdateCheckTechnicalDetails(elements, buildTechnicalDetails(versionInfo, result));
     setUpdateCheckPanelAction(result);
     syncUpdateCheckToggle();
@@ -4721,6 +4770,7 @@ function renderUpdateCheckPanelFailure(error, versionInfo = null) {
     const failure = normalizeUpdateCheckFailure(error);
     elements.status.textContent = "Check failed";
     elements.status.dataset.state = "failed";
+    renderUpdateCheckPanelTitle(elements, null, "Unable to check for updates");
     renderUpdateCheckTechnicalDetails(elements, buildTechnicalDetails(versionInfo, null, failure));
     setUpdateCheckPanelAction(null);
     syncUpdateCheckToggle();
@@ -4734,6 +4784,7 @@ function renderUpdateCheckPanelDisabled() {
 
     elements.status.textContent = "Update checks disabled";
     elements.status.dataset.state = "disabled";
+    renderUpdateCheckPanelTitle(elements, null, "Update checks are disabled");
     renderUpdateCheckTechnicalDetails(elements, [
         {
             label: "Current",

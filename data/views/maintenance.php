@@ -106,7 +106,7 @@ require __DIR__ . '/../card_header.php';
                             id="updateCheckPanel"
                             class="maintenance-pane maintenance-pane--update"
                             aria-labelledby="updateCheckPanelTitle">
-                            <h2 id="updateCheckPanelTitle" class="maintenance-section-title h5 mb-0">Review web UI update status.</h2>
+                            <h2 id="updateCheckPanelTitle" class="maintenance-section-title h5 mb-0">Checking update status</h2>
                             <div
                                 id="updateCheckStatus"
                                 class="maintenance-update-status visually-hidden"
