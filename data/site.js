@@ -105,9 +105,11 @@ const WSPRNET_URL =
 const TAB_STATE_STORAGE_PREFIX = "wsprrypi.activeTab";
 const TEST_TONE_COMMAND_TIMEOUT_MS = 15000;
 const UPDATE_CHECK_CACHE_PREFIX = "wsprrypi.updateCheck";
+const UPDATE_CHECK_FAILURE_CACHE_PREFIX = "wsprrypi.updateCheckFailure";
 const UPDATE_MODAL_STATE_KEY = "wsprrypi.updateModalState";
 const UPDATE_CHECK_CACHE_SCHEMA_VERSION = 6;
 const UPDATE_CHECK_CACHE_TTL_MS = 60 * 60 * 1000;
+const UPDATE_CHECK_FAILURE_RATE_LIMIT_MS = 5 * 60 * 1000;
 const UPDATE_MODAL_RATE_LIMIT_MS = 2 * 60 * 60 * 1000;
 const UPDATE_CHECK_RELEASES_URL = "https://github.com/WsprryPi/WsprryPi/releases";
 const UPDATE_CHECK_API_BASE = "https://api.github.com/repos/WsprryPi/WsprryPi";
@@ -3412,7 +3414,18 @@ function updateCheckCacheKey(versionInfo) {
     const dirtyKey = versionInfo.buildDirtyKnown
         ? versionInfo.buildDirty ? "dirty" : "clean"
         : "dirty-unknown";
+    // Site-global key: do not include page path so navigation between pages
+    // cannot bypass update-check success or failure rate limits.
     return `${UPDATE_CHECK_CACHE_PREFIX}:${versionInfo.branchState || "branch"}:${versionInfo.currentBranch}:${versionInfo.currentSha}:${dirtyKey}`;
+}
+
+function updateCheckFailureCacheKey(versionInfo) {
+    // Use the same site-global identity as successful checks, but store failure
+    // state separately so a failed check can never masquerade as no-update.
+    return updateCheckCacheKey(versionInfo).replace(
+        `${UPDATE_CHECK_CACHE_PREFIX}:`,
+        `${UPDATE_CHECK_FAILURE_CACHE_PREFIX}:`
+    );
 }
 
 function readUpdateCheckCache(versionInfo) {
@@ -3440,8 +3453,35 @@ function readUpdateCheckCache(versionInfo) {
     }
 }
 
+function readUpdateCheckFailureCache(versionInfo) {
+    try {
+        const raw = window.localStorage.getItem(updateCheckFailureCacheKey(versionInfo));
+        if (!raw) {
+            return null;
+        }
+
+        const cached = JSON.parse(raw);
+        if (
+            !cached ||
+            cached.schemaVersion !== UPDATE_CHECK_CACHE_SCHEMA_VERSION ||
+            cached.currentSha !== versionInfo.currentSha ||
+            cached.currentBranch !== versionInfo.currentBranch ||
+            cached.branchState !== versionInfo.branchState ||
+            cached.updateCheckFailed !== true ||
+            Date.now() - Number(cached.checkedAt || 0) >= UPDATE_CHECK_FAILURE_RATE_LIMIT_MS
+        ) {
+            return null;
+        }
+
+        return cached;
+    } catch {
+        return null;
+    }
+}
+
 function writeUpdateCheckCache(versionInfo, result) {
     try {
+        window.localStorage.removeItem(updateCheckFailureCacheKey(versionInfo));
         window.localStorage.setItem(
             updateCheckCacheKey(versionInfo),
             JSON.stringify(Object.assign(
@@ -3454,6 +3494,29 @@ function writeUpdateCheckCache(versionInfo, result) {
         );
     } catch {
     }
+}
+
+function writeUpdateCheckFailureCache(versionInfo, error) {
+    const failure = normalizeUpdateCheckFailure(error);
+
+    try {
+        window.localStorage.setItem(
+            updateCheckFailureCacheKey(versionInfo),
+            JSON.stringify(Object.assign(
+                {
+                    schemaVersion: UPDATE_CHECK_CACHE_SCHEMA_VERSION,
+                    checkedAt: Date.now(),
+                    currentSha: versionInfo.currentSha,
+                    currentBranch: versionInfo.currentBranch,
+                    branchState: versionInfo.branchState || "branch"
+                },
+                failure
+            ))
+        );
+    } catch {
+    }
+
+    return failure;
 }
 
 async function fetchGithubJson(url, options = {}) {
@@ -4193,6 +4256,8 @@ function markWsprryPiUpdateCheckFailed(error) {
 let fallbackUpdateModalState = null;
 
 function updateModalIdentity(versionInfo, result) {
+    // Modal rate limiting is also site-global; the current page path is not
+    // part of this identity.
     return {
         branch: result.targetBranch || "",
         currentSha: versionInfo.currentSha || result.currentSha || "",
@@ -4389,14 +4454,26 @@ function checkForWsprryPiUpdate(response) {
         return;
     }
 
+    const cachedFailure = readUpdateCheckFailureCache(versionInfo);
+    if (cachedFailure) {
+        debugConsole(
+            "debug",
+            `Update check failure rate limit active for ${versionInfo.currentBranch} ${shortSha(versionInfo.currentSha)}: ${cachedFailure.code || "unknown"}`
+        );
+        markWsprryPiUpdateCheckFailed(cachedFailure);
+        logUpdateCheckWarning(cachedFailure);
+        return;
+    }
+
     buildWsprryPiUpdateResult(versionInfo)
         .then((result) => {
             writeUpdateCheckCache(versionInfo, result);
             applyWsprryPiUpdateResult(versionInfo, result);
         })
         .catch((error) => {
-            markWsprryPiUpdateCheckFailed(error);
-            logUpdateCheckWarning(error);
+            const failure = writeUpdateCheckFailureCache(versionInfo, error);
+            markWsprryPiUpdateCheckFailed(failure);
+            logUpdateCheckWarning(failure);
         });
 }
 
