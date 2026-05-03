@@ -3188,15 +3188,20 @@ function parseStructuredSemanticVersion(value) {
     const build = Array.isArray(value.build)
         ? value.build.map((identifier) => String(identifier).toLowerCase())
         : [];
+    const normalizedPrerelease = normalizeSemanticIdentifiers(prerelease.join("."));
+    const normalizedBuild = normalizeSemanticIdentifiers(build.join("."), true);
+    if (normalizedPrerelease === null || normalizedBuild === null) {
+        return null;
+    }
 
     return {
         major,
         minor,
         patch,
-        prerelease,
-        build,
+        prerelease: normalizedPrerelease,
+        build: normalizedBuild,
         raw: typeof value.raw === "string" ? value.raw : `${major}.${minor}.${patch}`,
-        normalized: `${major}.${minor}.${patch}${prerelease.length ? `-${prerelease.join(".")}` : ""}`
+        normalized: `${major}.${minor}.${patch}${normalizedPrerelease.length ? `-${normalizedPrerelease.join(".")}` : ""}`
     };
 }
 
@@ -3243,10 +3248,15 @@ function parseWsprryPiVersionResponse(response) {
         versionForShaParsing.match(/\b([0-9a-f]{7,40})\b/i);
     const currentSha = backendCommit || fullSha || (shortShaMatch ? shortShaMatch[1] : "");
     const dirtyState = parseBuildDirtyState(response, rawDisplayVersion, rawUiVersion, rawExeVersion);
+    const structuredVersionPresent = Object.prototype.hasOwnProperty.call(response || {}, "wspr_version_parsed");
     const localVersionParsedObject = parseStructuredSemanticVersion(response?.wspr_version_parsed);
 
     if (!currentDisplayVersion) {
         return buildUpdateCheckFailure("missing_version_data", "The /version response did not include wspr_version or ui_version.");
+    }
+
+    if (structuredVersionPresent && response?.wspr_version_parsed?.valid === true && !localVersionParsedObject) {
+        return buildUpdateCheckFailure("missing_version_data", "The /version response included malformed wspr_version_parsed metadata.");
     }
 
     if (branchFieldPresent && !rawBackendBranch) {
