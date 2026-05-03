@@ -1,4 +1,4 @@
-// Debug Logging Level (via debugConsole())
+// Debug Logging Level (via debugConsole("LEVEL", "message"))
 CONSOLE_LOG_LEVEL = "log";
 
 // Service Components
@@ -2188,7 +2188,7 @@ function renderRuntimeControlStatus() {
             currentRuntimeStatus.txState === "transmitting";
         const activeCharIndex =
             isTransmitting &&
-            Number.isInteger(currentRuntimeStatus.cwActiveCharIndex)
+                Number.isInteger(currentRuntimeStatus.cwActiveCharIndex)
                 ? currentRuntimeStatus.cwActiveCharIndex
                 : -1;
 
@@ -2352,8 +2352,8 @@ function buildRuntimeFrequencyItems(currentMode, status) {
         isSkipWindow
             ? 0
             : (status && Number.isFinite(status.frequencyHz) && status.frequencyHz > 0
-            ? status.frequencyHz
-            : fallback.frequencyHz),
+                ? status.frequencyHz
+                : fallback.frequencyHz),
         { skipWindow: isSkipWindow }
     );
     const offsetValue = formatDisplayFrequency(
@@ -3564,8 +3564,8 @@ function showWsprryPiUpdateModal(versionInfo, result) {
     const targetShaLabel = shortSha(result.targetHeadSha);
     const exactRelease = result.fallbackUsed !== true && Boolean(result.releaseTitle);
     const releaseMessage = exactRelease
-        ? "A release is available for this update. "
-        : "Review the latest releases. ";
+        ? "A release is available for this update: "
+        : "Review the latest releases: ";
 
     markUpdateCheckModalActive(modalEl);
     document.getElementById("confirmModalLabel").textContent = "Update available";
@@ -3579,13 +3579,8 @@ function showWsprryPiUpdateModal(versionInfo, result) {
     ));
     body.appendChild(document.createElement("br"));
     if (result.fallbackUsed === true) {
-        body.appendChild(document.createTextNode(
-            `The current branch is not available upstream. Updates are being checked against ${result.targetBranch}.`
-        ));
-        body.appendChild(document.createElement("br"));
+        debugConsole("DEBUG", "The current branch is not available upstream. Updates are being checked against " + result.targetBranch + ".");
     }
-    body.appendChild(document.createTextNode(`Current SHA: ${currentShaLabel}`));
-    body.appendChild(document.createElement("br"));
     body.appendChild(document.createTextNode(releaseMessage));
     appendUpdateModalBodyLink(body, result, exactRelease);
 
