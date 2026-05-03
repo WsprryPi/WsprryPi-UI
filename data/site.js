@@ -3167,6 +3167,25 @@ function formatSemanticVersion(version) {
     return `${version.major}.${version.minor}.${version.patch}${prerelease}`;
 }
 
+function normalizeSemanticIdentifiers(value, allowLeadingZeroNumeric = false) {
+    if (!value) {
+        return [];
+    }
+
+    const identifiers = value.split(".");
+    for (const identifier of identifiers) {
+        if (
+            !identifier ||
+            !/^[0-9A-Za-z-]+$/.test(identifier) ||
+            (!allowLeadingZeroNumeric && /^\d+$/.test(identifier) && identifier.length > 1 && identifier.startsWith("0"))
+        ) {
+            return null;
+        }
+    }
+
+    return identifiers.map((identifier) => identifier.toLowerCase());
+}
+
 function parseSemanticVersion(value) {
     const source = typeof value === "string" ? value.trim() : "";
     const match = source.match(/(?:^|[^0-9A-Za-z])v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+([0-9A-Za-z.-]+))?(?=$|[^0-9A-Za-z.-])/);
@@ -3174,8 +3193,12 @@ function parseSemanticVersion(value) {
         return null;
     }
 
-    const prerelease = match[4] ? match[4].split(".") : [];
-    const build = match[5] ? match[5].split(".") : [];
+    const prerelease = normalizeSemanticIdentifiers(match[4]);
+    const build = normalizeSemanticIdentifiers(match[5], true);
+    if (prerelease === null || build === null) {
+        return null;
+    }
+
     return {
         major: Number(match[1]),
         minor: Number(match[2]),
@@ -3197,6 +3220,17 @@ function comparePrereleaseIdentifier(left, right) {
 
     if (leftNumeric !== rightNumeric) {
         return leftNumeric ? -1 : 1;
+    }
+
+    // Known channel names keep the intended prerelease progression explicit.
+    // Unknown channels still fall back to normal lexical SemVer ordering.
+    const knownChannelOrder = new Map([
+        ["alpha", 0],
+        ["beta", 1],
+        ["rc", 2]
+    ]);
+    if (knownChannelOrder.has(left) && knownChannelOrder.has(right)) {
+        return knownChannelOrder.get(left) - knownChannelOrder.get(right);
     }
 
     return left < right ? -1 : left > right ? 1 : 0;
@@ -3722,10 +3756,13 @@ async function buildSemanticVersionUpdateResult(versionInfo) {
     const localVersionParsed = formatSemanticVersion(localVersion);
 
     // Semantic version flow is primary when the local build is at a parseable
-    // tag. Stable builds compare only with latest stable release. Prerelease
-    // builds compare with newer stable releases first, then newer prereleases
-    // from the same prerelease channel. Commit/branch comparison is fallback
-    // only and must not override a valid semantic decision.
+    // tag. Stable builds compare only with latest stable release and never
+    // upgrade to a prerelease. Prerelease builds compare with newer stable
+    // releases first, then newer prereleases from the same prerelease channel
+    // (alpha stays on alpha, beta stays on beta, rc stays on rc). Different
+    // prerelease channels are intentionally ignored by default. Commit/branch
+    // comparison is fallback only and must not override a valid semantic
+    // decision.
     if (!localIsPrerelease) {
         if (!summary.latestStable) {
             return semanticComparisonFallback("no stable semantic GitHub release was available", localVersion);
