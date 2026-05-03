@@ -3271,15 +3271,35 @@ async function lookupGithubBranch(branch) {
     };
 }
 
-async function isCurrentShaInBranch(currentSha, branchInfo) {
-    if (updateCheckShaMatches(currentSha, branchInfo?.headSha)) {
+async function isCurrentShaReachableFromBranchHead(currentSha, branchInfo) {
+    const normalizedCurrent = typeof currentSha === "string" ? currentSha.trim().toLowerCase() : "";
+    const normalizedHead = typeof branchInfo?.headSha === "string" ? branchInfo.headSha.trim().toLowerCase() : "";
+
+    if (normalizedCurrent.length >= 40 && normalizedHead.length >= 40 && normalizedCurrent === normalizedHead) {
         return {
-            isInBranch: true,
-            status: "identical"
+            contained: true,
+            status: "identical",
+            uncertain: false
+        };
+    }
+
+    if (
+        normalizedCurrent &&
+        normalizedCurrent.length < 40 &&
+        normalizedHead.startsWith(normalizedCurrent)
+    ) {
+        return {
+            contained: true,
+            status: "short_sha_match",
+            uncertain: true
         };
     }
 
     try {
+        // GitHub compare direction is base=currentSha, head=branch HEAD.
+        // In this direction, status "ahead" means the branch HEAD is ahead of
+        // currentSha, so currentSha is reachable from that branch. Status
+        // "behind" means currentSha is ahead of the branch and is not contained.
         const data = await fetchGithubJson(
             `${UPDATE_CHECK_API_BASE}/compare/${encodeURIComponent(currentSha)}...${encodeURIComponent(branchInfo.headSha)}`
         );
@@ -3289,21 +3309,17 @@ async function isCurrentShaInBranch(currentSha, branchInfo) {
             error.code = "malformed_response";
             throw error;
         }
-        if (status === "ahead" || status === "diverged") {
-            return {
-                isInBranch: false,
-                status
-            };
-        }
 
         return {
-            isInBranch: status === "identical" || status === "behind",
-            status
+            contained: status === "identical" || status === "ahead",
+            status,
+            uncertain: false
         };
     } catch {
         return {
-            isInBranch: false,
-            status: "unavailable"
+            contained: false,
+            status: "unavailable",
+            uncertain: false
         };
     }
 }
@@ -3330,18 +3346,19 @@ async function selectGithubUpdateBranch(versionInfo) {
 
         try {
             const mainBranch = await lookupGithubBranch("main");
-            const mainMembership = await isCurrentShaInBranch(versionInfo.currentSha, mainBranch);
-            if (mainMembership.isInBranch) {
-                debugConsole("debug", "Update check local devel resolved to upstream main because the current SHA is part of main.");
+            const mainContainment = await isCurrentShaReachableFromBranchHead(versionInfo.currentSha, mainBranch);
+            if (mainContainment.contained) {
+                const certainty = mainContainment.uncertain ? "uncertain short SHA match" : "exact/compare-confirmed match";
+                debugConsole("debug", `Update check local devel resolved to upstream main because current SHA is reachable from main (${certainty}, status ${mainContainment.status || "unknown"}).`);
                 return Object.assign(mainBranch, { fallbackUsed: false });
             }
-            debugConsole("debug", `Update check local devel staying on upstream devel because main compare status is ${mainMembership.status || "unknown"}.`);
+            debugConsole("debug", `Update check local devel staying on upstream devel because current SHA is not reachable from main (compare status ${mainContainment.status || "unknown"}).`);
         } catch (error) {
             const status = typeof error?.status === "number" ? `HTTP ${error.status}` : "network error";
-            debugConsole("debug", `Update check local devel staying on upstream devel because main membership probe failed (${status}).`);
+            debugConsole("debug", `Update check local devel staying on upstream devel because main containment probe failed (${status}).`);
         }
 
-        debugConsole("debug", "Update check local devel staying on upstream devel because the current SHA is not part of main.");
+        debugConsole("debug", "Update check local devel target remains upstream devel.");
         return Object.assign(develBranch, { fallbackUsed: false });
     }
 
@@ -3353,6 +3370,8 @@ async function selectGithubUpdateBranch(versionInfo) {
         }
 
         try {
+            // Missing feature/release branches intentionally fall back to devel
+            // so branch-local installs still get a conservative upstream target.
             return Object.assign(await lookupGithubBranch("devel"), { fallbackUsed: true });
         } catch (fallbackError) {
             if (fallbackError.status === 404) {
