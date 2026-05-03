@@ -3017,6 +3017,7 @@ function updateWsprryPiVersion() {
     getJsonWithEndpointFallback(VERSION_ENDPOINT)
         .done(function (response) {
             if (response && response.wspr_version) {
+                lastWsprryPiVersionResponse = response;
                 versionElement.textContent = response.wspr_version;
                 versionElement.title = response.wspr_version;
                 maybePromptForUiRefresh(response.ui_version);
@@ -3041,6 +3042,44 @@ function updateWsprryPiVersion() {
                 + (errorThrown ? " (" + errorThrown + ")" : "")
             );
             syncFixedChromeOffsets();
+        });
+}
+
+function forceUpdateCheckNow() {
+    if (isUpdateCheckDisabled()) {
+        renderUpdateCheckPanelDisabled();
+        markWsprryPiUpdateChecksDisabled();
+        return;
+    }
+
+    const elements = updateCheckPanelElements();
+    if (elements) {
+        elements.status.textContent = "Checking...";
+        elements.status.dataset.state = "checking";
+        elements.details.textContent = "Checking GitHub now, bypassing the normal update-check cache and failure rate limit.";
+        elements.checkNowButton.disabled = true;
+    }
+
+    getJsonWithEndpointFallback(VERSION_ENDPOINT)
+        .done(function (response) {
+            lastWsprryPiVersionResponse = response;
+            checkForWsprryPiUpdate(response, {
+                bypassCache: true,
+                suppressModal: true
+            });
+        })
+        .fail(function (jqXHR, textStatus, errorThrown) {
+            renderUpdateCheckPanelFailure(
+                buildUpdateCheckFailure(
+                    "network",
+                    `Could not load local /version metadata: ${textStatus}${errorThrown ? ` (${errorThrown})` : ""}.`
+                )
+            );
+        })
+        .always(function () {
+            if (elements?.checkNowButton) {
+                elements.checkNowButton.disabled = false;
+            }
         });
 }
 
@@ -4279,6 +4318,7 @@ function buildLocalUpdateStateTitle(result) {
 }
 
 let fallbackUpdateCheckDisabled = false;
+let lastWsprryPiVersionResponse = null;
 
 function isUpdateCheckDisabled() {
     try {
@@ -4303,16 +4343,22 @@ function setUpdateCheckDisabled(disabled) {
     syncUpdateCheckToggle();
 }
 
+function updateCheckToggleControls() {
+    return Array.from(document.querySelectorAll("#updateCheckToggle, #updateCheckToggleBtn"));
+}
+
 function syncUpdateCheckToggle() {
-    const toggle = document.getElementById("updateCheckToggle");
-    if (!toggle) {
+    const toggles = updateCheckToggleControls();
+    if (!toggles.length) {
         return;
     }
 
     const disabled = isUpdateCheckDisabled();
     // Footer About is the user-facing re-enable path after "Never check again".
-    toggle.textContent = disabled ? "Enable update checks" : "Disable update checks";
-    toggle.setAttribute("aria-pressed", disabled ? "true" : "false");
+    for (const toggle of toggles) {
+        toggle.textContent = disabled ? "Enable update checks" : "Disable update checks";
+        toggle.setAttribute("aria-pressed", disabled ? "true" : "false");
+    }
 }
 
 function markWsprryPiUpdateChecksDisabled() {
@@ -4335,22 +4381,184 @@ function markWsprryPiUpdateChecksDisabled() {
 }
 
 function initUpdateCheckControls() {
-    const toggle = document.getElementById("updateCheckToggle");
+    const toggles = updateCheckToggleControls();
+    const checkNowButton = document.getElementById("updateCheckNowBtn");
     syncUpdateCheckToggle();
 
-    if (toggle) {
+    for (const toggle of toggles) {
+        if (toggle.dataset.updateCheckToggleBound === "true") {
+            continue;
+        }
+        toggle.dataset.updateCheckToggleBound = "true";
         toggle.addEventListener("click", () => {
             const disabled = !isUpdateCheckDisabled();
             setUpdateCheckDisabled(disabled);
             if (disabled) {
                 markWsprryPiUpdateChecksDisabled();
+                renderUpdateCheckPanelDisabled();
             } else {
                 updateWsprryPiVersion();
             }
         });
     }
 
+    if (checkNowButton && checkNowButton.dataset.updateCheckNowBound !== "true") {
+        checkNowButton.dataset.updateCheckNowBound = "true";
+        checkNowButton.addEventListener("click", forceUpdateCheckNow);
+    }
+
     window.addEventListener("storage", handleUpdateCheckStorageEvent);
+}
+
+function updateCheckPanelElements() {
+    const panel = document.getElementById("updateCheckPanel");
+    if (!panel) {
+        return null;
+    }
+
+    return {
+        panel,
+        status: document.getElementById("updateCheckStatus"),
+        current: document.getElementById("updateCheckCurrent"),
+        target: document.getElementById("updateCheckTarget"),
+        details: document.getElementById("updateCheckDetails"),
+        action: document.getElementById("updateCheckAction"),
+        checkNowButton: document.getElementById("updateCheckNowBtn")
+    };
+}
+
+function updateCheckPanelCurrentText(versionInfo = null) {
+    if (!versionInfo) {
+        return "Unavailable";
+    }
+
+    const branch = versionInfo.currentBranch ? ` (${versionInfo.currentBranch})` : "";
+    return `${versionInfo.currentModalVersion || versionInfo.currentDisplayVersion || "Unknown"}${branch}`;
+}
+
+function updateCheckPanelTargetText(result = null) {
+    if (!result) {
+        return "Not checked";
+    }
+    if (result.remoteVersionSelected) {
+        return result.remoteVersionSelected;
+    }
+    if (result.targetBranch || result.targetHeadSha) {
+        return `${result.targetBranch || "target"} ${shortSha(result.targetHeadSha) || ""}`.trim();
+    }
+    return "No remote target selected";
+}
+
+function updateCheckPanelStatus(result = null) {
+    if (!result) {
+        return {
+            state: "clean",
+            label: "No update",
+            details: "The current build matches the selected update target."
+        };
+    }
+    if (result.updateAvailable === true) {
+        return {
+            state: "available",
+            label: "Update available",
+            details: result.versionComparisonUsed === "semver" && result.remoteVersionSelected
+                ? `Current build is behind release ${result.remoteVersionSelected}.`
+                : `Current build is behind ${result.targetBranch || "the selected target"} ${shortSha(result.targetHeadSha)}.`
+        };
+    }
+    if (result.versionComparisonStatus === "local_modified" || result.localBuildState === "dirty_build") {
+        return {
+            state: "local",
+            label: "Local modified",
+            details: "This build includes local modifications. That does not mean a remote update is available."
+        };
+    }
+    if (result.versionComparisonStatus === "local_ahead") {
+        return {
+            state: "local",
+            label: "Local ahead",
+            details: "This build is newer than the selected remote version or target."
+        };
+    }
+    return {
+        state: "clean",
+        label: "No update",
+        details: result.selectionReason || "No update is available for the selected target."
+    };
+}
+
+function setUpdateCheckPanelAction(result = null) {
+    const elements = updateCheckPanelElements();
+    if (!elements?.action) {
+        return;
+    }
+
+    elements.action.textContent = "";
+    elements.action.classList.add("d-none");
+
+    const url = result?.releaseUrl || "";
+    if (!url || result.updateAvailable !== true) {
+        return;
+    }
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.className = "btn btn-sm btn-outline-warning";
+    link.textContent = result.releaseTitle ? "View update" : "View releases";
+    elements.action.appendChild(link);
+    elements.action.classList.remove("d-none");
+}
+
+function renderUpdateCheckPanel(versionInfo = null, result = null) {
+    const elements = updateCheckPanelElements();
+    if (!elements) {
+        return;
+    }
+
+    const status = updateCheckPanelStatus(result);
+    elements.status.textContent = status.label;
+    elements.status.dataset.state = status.state;
+    elements.current.textContent = updateCheckPanelCurrentText(versionInfo);
+    elements.target.textContent = updateCheckPanelTargetText(result);
+    elements.details.textContent = result?.selectionReason
+        ? `${status.details} ${result.selectionReason}`
+        : status.details;
+    setUpdateCheckPanelAction(result);
+    syncUpdateCheckToggle();
+}
+
+function renderUpdateCheckPanelFailure(error, versionInfo = null) {
+    const elements = updateCheckPanelElements();
+    if (!elements) {
+        return;
+    }
+
+    const failure = normalizeUpdateCheckFailure(error);
+    const detail = failure.detail ? ` ${failure.detail}` : "";
+    elements.status.textContent = "Check failed";
+    elements.status.dataset.state = "failed";
+    elements.current.textContent = updateCheckPanelCurrentText(versionInfo);
+    elements.target.textContent = "Unknown";
+    elements.details.textContent = `${failure.message}${detail}`;
+    setUpdateCheckPanelAction(null);
+    syncUpdateCheckToggle();
+}
+
+function renderUpdateCheckPanelDisabled() {
+    const elements = updateCheckPanelElements();
+    if (!elements) {
+        return;
+    }
+
+    elements.status.textContent = "Update checks disabled";
+    elements.status.dataset.state = "disabled";
+    elements.current.textContent = "Not checked";
+    elements.target.textContent = "Disabled";
+    elements.details.textContent = "GitHub update checks are disabled. Use Enable update checks here or in About to re-enable them.";
+    setUpdateCheckPanelAction(null);
+    syncUpdateCheckToggle();
 }
 
 function markWsprryPiLocalUpdateState(result) {
@@ -4499,10 +4707,27 @@ function handleUpdateCheckStorageEvent(event) {
         syncUpdateCheckToggle();
         if (isUpdateCheckDisabled()) {
             markWsprryPiUpdateChecksDisabled();
+            renderUpdateCheckPanelDisabled();
             const modalEl = document.getElementById("confirmModal");
             if (modalEl?.dataset.updateCheckActive === "true") {
                 bootstrap.Modal.getOrCreateInstance(modalEl).hide();
             }
+        } else if (lastWsprryPiVersionResponse) {
+            checkForWsprryPiUpdate(lastWsprryPiVersionResponse);
+        }
+        return;
+    }
+
+    if (
+        lastWsprryPiVersionResponse &&
+        (event.key?.startsWith(`${UPDATE_CHECK_CACHE_PREFIX}:`) ||
+            event.key?.startsWith(`${UPDATE_CHECK_FAILURE_CACHE_PREFIX}:`))
+    ) {
+        const versionInfo = parseWsprryPiVersionResponse(lastWsprryPiVersionResponse);
+        if (versionInfo?.ok && event.key === updateCheckCacheKey(versionInfo)) {
+            renderUpdateCheckPanel(versionInfo, readUpdateCheckCache(versionInfo));
+        } else if (versionInfo?.ok && event.key === updateCheckFailureCacheKey(versionInfo)) {
+            renderUpdateCheckPanelFailure(readUpdateCheckFailureCache(versionInfo), versionInfo);
         }
         return;
     }
@@ -4639,7 +4864,7 @@ function showWsprryPiUpdateModal(versionInfo, result) {
     confirmModal.show();
 }
 
-function applyWsprryPiUpdateResult(versionInfo, result) {
+function applyWsprryPiUpdateResult(versionInfo, result, options = {}) {
     if (result) {
         const localStateTitle = buildLocalUpdateStateTitle(result);
         debugConsole(
@@ -4654,14 +4879,17 @@ function applyWsprryPiUpdateResult(versionInfo, result) {
     }
 
     markWsprryPiUpdateFooter(result);
-    showWsprryPiUpdateModal(versionInfo, result);
+    if (options.suppressModal !== true) {
+        showWsprryPiUpdateModal(versionInfo, result);
+    }
 }
 
-function checkForWsprryPiUpdate(response) {
+function checkForWsprryPiUpdate(response, options = {}) {
     // Disabled update checks are site-global and persisted in localStorage.
     // The footer About toggle can remove this state and re-enable checks.
     if (isUpdateCheckDisabled()) {
         markWsprryPiUpdateChecksDisabled();
+        renderUpdateCheckPanelDisabled();
         debugConsole("debug", "Update checks disabled by user preference.");
         return;
     }
@@ -4669,6 +4897,7 @@ function checkForWsprryPiUpdate(response) {
     const versionInfo = parseWsprryPiVersionResponse(response);
     if (!versionInfo?.ok) {
         markWsprryPiUpdateCheckFailed(versionInfo || buildUpdateCheckFailure("malformed_response", "The /version response was not usable."));
+        renderUpdateCheckPanelFailure(versionInfo || buildUpdateCheckFailure("malformed_response", "The /version response was not usable."));
         logUpdateCheckWarning(versionInfo || buildUpdateCheckFailure("malformed_response", "The /version response was not usable."));
         return;
     }
@@ -4678,19 +4907,21 @@ function checkForWsprryPiUpdate(response) {
         `Update check parsed displayBranch=${versionInfo.displayBranch || "(none)"}, rawBranch=${versionInfo.currentBranch}, branchState=${versionInfo.branchState}, currentSha=${versionInfo.currentSha}`
     );
 
-    const cached = readUpdateCheckCache(versionInfo);
+    const cached = options.bypassCache === true ? null : readUpdateCheckCache(versionInfo);
     if (cached) {
-        applyWsprryPiUpdateResult(versionInfo, cached);
+        applyWsprryPiUpdateResult(versionInfo, cached, options);
+        renderUpdateCheckPanel(versionInfo, cached);
         return;
     }
 
-    const cachedFailure = readUpdateCheckFailureCache(versionInfo);
+    const cachedFailure = options.bypassCache === true ? null : readUpdateCheckFailureCache(versionInfo);
     if (cachedFailure) {
         debugConsole(
             "debug",
             `Update check failure rate limit active for ${versionInfo.currentBranch} ${shortSha(versionInfo.currentSha)}: ${cachedFailure.code || "unknown"}`
         );
         markWsprryPiUpdateCheckFailed(cachedFailure);
+        renderUpdateCheckPanelFailure(cachedFailure, versionInfo);
         logUpdateCheckWarning(cachedFailure);
         return;
     }
@@ -4698,11 +4929,13 @@ function checkForWsprryPiUpdate(response) {
     buildWsprryPiUpdateResult(versionInfo)
         .then((result) => {
             writeUpdateCheckCache(versionInfo, result);
-            applyWsprryPiUpdateResult(versionInfo, result);
+            applyWsprryPiUpdateResult(versionInfo, result, options);
+            renderUpdateCheckPanel(versionInfo, result);
         })
         .catch((error) => {
             const failure = writeUpdateCheckFailureCache(versionInfo, error);
             markWsprryPiUpdateCheckFailed(failure);
+            renderUpdateCheckPanelFailure(failure, versionInfo);
             logUpdateCheckWarning(failure);
         });
 }

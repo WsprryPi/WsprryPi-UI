@@ -83,23 +83,70 @@ require __DIR__ . '/../card_header.php';
                     </div>
                 </section>
 
-                <section class="maintenance-utility" aria-labelledby="maintenanceUtilityTitle">
-                    <div class="maintenance-utility__copy">
-                        <p class="maintenance-pane__eyebrow mb-0">Utility</p>
-                        <h2 id="maintenanceUtilityTitle" class="maintenance-section-title h5 mb-0">Run a bench transmit-path check without touching saved settings.</h2>
-                        <p class="maintenance-pane__body mb-0">
-                            Test tone opens the manual tone dialog so you can start or stop a quick output-path check and then return to normal scheduling.
-                        </p>
-                    </div>
-                    <div class="maintenance-action maintenance-action--end">
-                        <button
-                            id="test_tone"
-                            type="button"
-                            class="btn btn-outline-warning"
-                            data-bs-toggle="tooltip"
-                            title="Click to generate a test tone">
-                            Test tone
-                        </button>
+                <section class="maintenance-utility" aria-label="Maintenance utilities">
+                    <div class="maintenance-utility__grid">
+                        <section class="maintenance-pane maintenance-pane--utility" aria-labelledby="maintenanceUtilityTitle">
+                            <p class="maintenance-pane__eyebrow mb-0">Utility</p>
+                            <h2 id="maintenanceUtilityTitle" class="maintenance-section-title h5 mb-0">Run a bench transmit-path check without touching saved settings.</h2>
+                            <p class="maintenance-pane__body mb-0">
+                                Test tone opens the manual tone dialog so you can start or stop a quick output-path check and then return to normal scheduling.
+                            </p>
+                            <div class="maintenance-action maintenance-action--start">
+                                <button
+                                    id="test_tone"
+                                    type="button"
+                                    class="btn btn-outline-warning"
+                                    data-bs-toggle="tooltip"
+                                    title="Click to generate a test tone">
+                                    Test tone
+                                </button>
+                            </div>
+                        </section>
+
+                        <section
+                            id="updateCheckPanel"
+                            class="maintenance-pane maintenance-pane--update"
+                            aria-labelledby="updateCheckPanelTitle">
+                            <p class="maintenance-pane__eyebrow mb-0">Update check</p>
+                            <h2 id="updateCheckPanelTitle" class="maintenance-section-title h5 mb-0">Review web UI update status.</h2>
+                            <div
+                                id="updateCheckStatus"
+                                class="maintenance-update-status"
+                                role="status"
+                                aria-live="polite"
+                                aria-atomic="true">
+                                Waiting for version data.
+                            </div>
+                            <dl class="maintenance-update-list">
+                                <div class="maintenance-fact">
+                                    <dt>Current</dt>
+                                    <dd id="updateCheckCurrent">Unavailable</dd>
+                                </div>
+                                <div class="maintenance-fact">
+                                    <dt>Target</dt>
+                                    <dd id="updateCheckTarget">Not checked</dd>
+                                </div>
+                                <div class="maintenance-fact">
+                                    <dt>Details</dt>
+                                    <dd id="updateCheckDetails">Update status has not been checked yet.</dd>
+                                </div>
+                            </dl>
+                            <div id="updateCheckAction" class="maintenance-update-action d-none"></div>
+                            <div class="maintenance-action maintenance-action--start maintenance-action--wrap">
+                                <button
+                                    id="updateCheckNowBtn"
+                                    type="button"
+                                    class="btn btn-outline-primary">
+                                    Check now
+                                </button>
+                                <button
+                                    id="updateCheckToggleBtn"
+                                    type="button"
+                                    class="btn btn-outline-secondary">
+                                    Disable update checks
+                                </button>
+                            </div>
+                        </section>
                     </div>
                 </section>
             </div>
