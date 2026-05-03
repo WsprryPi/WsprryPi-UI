@@ -4113,6 +4113,44 @@ function clearWsprryPiUpdateFooter() {
     }
 }
 
+function buildLocalUpdateStateTitle(result) {
+    if (result?.versionComparisonStatus === "local_modified" || result?.localBuildState === "dirty_build") {
+        return "Local build has modifications. No remote update is being shown.";
+    }
+
+    if (result?.versionComparisonStatus === "local_ahead") {
+        return "Local build is newer than the selected remote version. No update is available.";
+    }
+
+    return "";
+}
+
+function markWsprryPiLocalUpdateState(result) {
+    const versionElement = document.getElementById("versionText");
+    const updateLink = document.getElementById("versionUpdateLink");
+    const title = buildLocalUpdateStateTitle(result);
+
+    if (!title) {
+        clearWsprryPiUpdateFooter();
+        return;
+    }
+
+    // Local modified and local-ahead builds are successful no-update outcomes,
+    // but they should not be indistinguishable from a clean remote match.
+    if (versionElement) {
+        versionElement.classList.remove("update-available");
+        versionElement.classList.remove("update-check-failed");
+        versionElement.title = title;
+    }
+
+    if (updateLink) {
+        updateLink.classList.add("d-none");
+        updateLink.href = UPDATE_CHECK_RELEASES_URL;
+        updateLink.title = title;
+        updateLink.setAttribute("aria-label", title);
+    }
+}
+
 function markWsprryPiUpdateFooter(result) {
     const versionElement = document.getElementById("versionText");
     const updateLink = document.getElementById("versionUpdateLink");
@@ -4316,14 +4354,15 @@ function showWsprryPiUpdateModal(versionInfo, result) {
 
 function applyWsprryPiUpdateResult(versionInfo, result) {
     if (result) {
+        const localStateTitle = buildLocalUpdateStateTitle(result);
         debugConsole(
             "debug",
-            `Update check selected targetBranch=${result.targetBranch}, fallbackUsed=${result.fallbackUsed === true}, targetHeadSha=${result.targetHeadSha}, reason=${result.selectionReason || "unspecified"}`
+            `Update check selected targetBranch=${result.targetBranch}, fallbackUsed=${result.fallbackUsed === true}, targetHeadSha=${result.targetHeadSha}, status=${result.versionComparisonStatus || "unspecified"}, reason=${result.selectionReason || "unspecified"}${localStateTitle ? `, displayState=${localStateTitle}` : ""}`
         );
     }
 
     if (!result || result.updateAvailable !== true) {
-        clearWsprryPiUpdateFooter();
+        markWsprryPiLocalUpdateState(result);
         return;
     }
 
