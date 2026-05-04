@@ -1,5 +1,7 @@
 <?php
 
+// IMPECCABLE: DO NOT MODIFY
+
 /**
  * Standalone diagnostic log viewer.
  * This page is intentionally self-contained and does not depend on header.php
