@@ -1,9 +1,16 @@
 <?php
 require_once __DIR__ . '/ui_version.php';
 
-header("Content-Type: application/json"); // Set response type to JSON
+header('Content-Type: application/json');
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: 0');
 
 $output = getWsprryPiUiVersion();
+$uiBuildId = getWsprryPiUiBuildId();
 
-// Send JSON response
-echo json_encode(["wspr_version" => $output, "ui_version" => $output]);
+echo json_encode([
+    'wspr_version' => $output,
+    'ui_version' => $output,
+    'ui_build_id' => $uiBuildId,
+]);

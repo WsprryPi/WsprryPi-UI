@@ -23,6 +23,7 @@ $pathConfig = [
     window.WSPRRYPI_VIEW = <?= json_encode($activeView) ?>;
     window.WSPRRYPI_PATHS = <?= json_encode($pathConfig, JSON_UNESCAPED_SLASHES) ?>;
     window.WSPRRYPI_UI_VERSION = <?= json_encode(getWsprryPiUiVersion()) ?>;
+    window.WSPRRYPI_UI_BUILD_ID = <?= json_encode(getWsprryPiUiBuildId()) ?>;
 </script>
 <script>
     (function () {

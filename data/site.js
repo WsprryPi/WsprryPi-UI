@@ -114,6 +114,7 @@ const UPDATE_CHECK_FAILURE_RATE_LIMIT_MS = 5 * 60 * 1000;
 const UPDATE_MODAL_RATE_LIMIT_MS = 2 * 60 * 60 * 1000;
 const UPDATE_CHECK_RELEASES_URL = "https://github.com/WsprryPi/WsprryPi/releases";
 const UPDATE_CHECK_API_BASE = "https://api.github.com/repos/WsprryPi/WsprryPi";
+const UI_BUILD_POLL_INTERVAL_MS = 60 * 1000;
 const UPDATE_CHECK_ERROR_MESSAGES = Object.freeze({
     missing_version_data: "Update check failed: local version metadata is incomplete.",
     missing_commit: "Update check failed: local commit metadata is missing.",
@@ -268,6 +269,7 @@ function getJsonWithEndpointFallback(endpoint) {
     return ajaxWithEndpointFallback(endpoint, {
         type: "GET",
         dataType: "json",
+        cache: false,
     });
 }
 
@@ -326,6 +328,10 @@ let websocketCurrentlyConnected = false;
 let outageBannerArmed = false;
 let pageUnloading = false;
 let dismissedUiRefreshVersion = null;
+let dismissedUiRefreshBuildId = null;
+let uiBuildPollTimer = null;
+let uiBuildVersionCheckRunning = false;
+let uiRefreshPromptActive = false;
 let pendingTestToneStopDisableAction = null;
 let pendingTestToneStartRequest = false;
 let pendingTestToneStartTimeoutHandle = null;
@@ -546,6 +552,7 @@ function loadPage() {
     if (typeof initLogStream === "function") {
         initLogStream();
     }
+    initUiBuildChangePolling();
     populateConfig();
 }
 
@@ -3086,7 +3093,7 @@ function updateWsprryPiVersion() {
                 lastWsprryPiVersionResponse = response;
                 versionElement.textContent = response.wspr_version;
                 versionElement.title = response.wspr_version;
-                maybePromptForUiRefresh(response.ui_version);
+                maybePromptForUiRefresh(response);
                 checkForWsprryPiUpdate(response);
             } else {
                 versionElement.textContent = "Service unavailable";
@@ -3109,6 +3116,40 @@ function updateWsprryPiVersion() {
             );
             syncFixedChromeOffsets();
         });
+}
+
+function checkUiBuildVersion() {
+    if (uiBuildVersionCheckRunning) {
+        return;
+    }
+
+    uiBuildVersionCheckRunning = true;
+    getJsonWithEndpointFallback(VERSION_ENDPOINT)
+        .done(function (response) {
+            if (response && (response.ui_build_id || response.ui_version)) {
+                maybePromptForUiRefresh(response);
+            }
+        })
+        .always(function () {
+            uiBuildVersionCheckRunning = false;
+        });
+}
+
+function initUiBuildChangePolling() {
+    if (uiBuildPollTimer !== null) {
+        return;
+    }
+
+    uiBuildPollTimer = window.setInterval(
+        checkUiBuildVersion,
+        UI_BUILD_POLL_INTERVAL_MS
+    );
+
+    document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) {
+            checkUiBuildVersion();
+        }
+    });
 }
 
 function forceUpdateCheckNow() {
@@ -5305,19 +5346,41 @@ function normalizeUiVersion(value) {
     return typeof value === "string" ? value.trim() : "";
 }
 
-function maybePromptForUiRefresh(serverVersion) {
+function normalizeUiBuildId(value) {
+    return typeof value === "string" ? value.trim() : "";
+}
+
+function maybePromptForUiRefresh(versionResponse) {
     const loadedVersion = normalizeUiVersion(window.WSPRRYPI_UI_VERSION);
-    const normalizedServerVersion = normalizeUiVersion(serverVersion);
+    const loadedBuildId = normalizeUiBuildId(window.WSPRRYPI_UI_BUILD_ID);
+    const normalizedServerVersion = normalizeUiVersion(
+        typeof versionResponse === "object" && versionResponse !== null
+            ? versionResponse.ui_version
+            : versionResponse
+    );
+    const normalizedServerBuildId = normalizeUiBuildId(
+        typeof versionResponse === "object" && versionResponse !== null
+            ? versionResponse.ui_build_id
+            : ""
+    );
+    const canCompareBuildId = loadedBuildId && normalizedServerBuildId;
+    const canCompareVersion = loadedVersion && normalizedServerVersion;
+    const refreshIdentity = canCompareBuildId
+        ? normalizedServerBuildId
+        : normalizedServerVersion;
 
     if (
-        !loadedVersion ||
-        !normalizedServerVersion ||
-        normalizedServerVersion === loadedVersion ||
-        normalizedServerVersion === dismissedUiRefreshVersion
+        uiRefreshPromptActive ||
+        !refreshIdentity ||
+        (canCompareBuildId && normalizedServerBuildId === loadedBuildId) ||
+        (!canCompareBuildId && (!canCompareVersion || normalizedServerVersion === loadedVersion)) ||
+        (canCompareBuildId && normalizedServerBuildId === dismissedUiRefreshBuildId) ||
+        (!canCompareBuildId && normalizedServerVersion === dismissedUiRefreshVersion)
     ) {
         return;
     }
 
+    uiRefreshPromptActive = true;
     showConfirmationDialog({
         title: "UI refresh required",
         message: "The WsprryPi web interface has been updated. Refresh this page to load the new web pages, CSS, and JavaScript.",
@@ -5325,21 +5388,37 @@ function maybePromptForUiRefresh(serverVersion) {
         confirmClass: "btn-primary",
         cancelLabel: "Cancel",
         onConfirm: () => {
-            refreshUiForVersion(normalizedServerVersion);
+            refreshUiForVersion(normalizedServerVersion, normalizedServerBuildId);
         },
         onCancel: () => {
-            dismissedUiRefreshVersion = normalizedServerVersion;
+            if (canCompareBuildId) {
+                dismissedUiRefreshBuildId = normalizedServerBuildId;
+            } else {
+                dismissedUiRefreshVersion = normalizedServerVersion;
+            }
+            uiRefreshPromptActive = false;
+        },
+        onHidden: () => {
+            if (uiRefreshPromptActive) {
+                if (canCompareBuildId) {
+                    dismissedUiRefreshBuildId = normalizedServerBuildId;
+                } else {
+                    dismissedUiRefreshVersion = normalizedServerVersion;
+                }
+                uiRefreshPromptActive = false;
+            }
         }
     });
 }
 
-function refreshUiForVersion(serverVersion) {
+function refreshUiForVersion(serverVersion, serverBuildId = "") {
     const url = new URL(window.location.href);
     const normalizedVersion = normalizeUiVersion(serverVersion);
+    const normalizedBuildId = normalizeUiBuildId(serverBuildId);
 
     url.searchParams.set(
         "ui_refresh",
-        normalizedVersion || Date.now().toString()
+        normalizedBuildId || normalizedVersion || Date.now().toString()
     );
 
     window.location.replace(url.toString());
@@ -6029,6 +6108,14 @@ function showConfirmationDialog(options = {}, modalInstance = null) {
             confirmModal.hide();
             if (typeof options.onConfirm === "function") {
                 options.onConfirm();
+            }
+        });
+
+    $(modalEl)
+        .off("hidden.bs.modal.confirmation")
+        .one("hidden.bs.modal.confirmation", () => {
+            if (typeof options.onHidden === "function") {
+                options.onHidden();
             }
         });
 
