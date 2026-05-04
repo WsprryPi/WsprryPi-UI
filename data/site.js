@@ -115,6 +115,7 @@ const UPDATE_MODAL_RATE_LIMIT_MS = 2 * 60 * 60 * 1000;
 const UPDATE_CHECK_RELEASES_URL = "https://github.com/WsprryPi/WsprryPi/releases";
 const UPDATE_CHECK_API_BASE = "https://api.github.com/repos/WsprryPi/WsprryPi";
 const UI_BUILD_POLL_INTERVAL_MS = 60 * 1000;
+const GITHUB_UPDATE_POLL_INTERVAL_MS = 60 * 60 * 1000;
 const UPDATE_CHECK_ERROR_MESSAGES = Object.freeze({
     missing_version_data: "Update check failed: local version metadata is incomplete.",
     missing_commit: "Update check failed: local commit metadata is missing.",
@@ -330,6 +331,7 @@ let pageUnloading = false;
 let dismissedUiRefreshVersion = null;
 let dismissedUiRefreshBuildId = null;
 let uiBuildPollTimer = null;
+let githubUpdatePollTimer = null;
 let uiBuildVersionCheckRunning = false;
 let uiRefreshPromptActive = false;
 let pendingTestToneStopDisableAction = null;
@@ -553,6 +555,7 @@ function loadPage() {
         initLogStream();
     }
     initUiBuildChangePolling();
+    initGithubUpdatePolling();
     populateConfig();
 }
 
@@ -560,6 +563,7 @@ function loadPage() {
 // runs. The shared modal markup is already present before this script is
 // included, and initUiBuildChangePolling() guards against duplicate intervals.
 initUiBuildChangePolling();
+initGithubUpdatePolling();
 
 function getPersistedTabStorageKey(tabList) {
     if (!(tabList instanceof Element)) {
@@ -3155,6 +3159,17 @@ function initUiBuildChangePolling() {
             checkUiBuildVersion();
         }
     });
+}
+
+function initGithubUpdatePolling() {
+    if (githubUpdatePollTimer !== null) {
+        return;
+    }
+
+    githubUpdatePollTimer = window.setInterval(
+        updateWsprryPiVersion,
+        GITHUB_UPDATE_POLL_INTERVAL_MS
+    );
 }
 
 function forceUpdateCheckNow() {
