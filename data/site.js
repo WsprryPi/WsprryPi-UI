@@ -3481,6 +3481,32 @@ function updateCheckNoUpdateResult() {
     };
 }
 
+function updateCheckCommitComparisonResult(currentSha, headSha, status = "") {
+    if (updateCheckShaMatches(currentSha, headSha) || status === "identical") {
+        return {
+            updateAvailable: false,
+            versionComparisonStatus: "equal"
+        };
+    }
+
+    // GitHub compare direction is base=currentSha, head=target branch HEAD.
+    // In this direction, status "ahead" means the target branch contains the
+    // installed commit and has newer commits, including empty commits.
+    if (status === "ahead") {
+        return {
+            updateAvailable: true,
+            versionComparisonStatus: "update_available"
+        };
+    }
+
+    // Status "behind" means the installed commit is ahead of the target branch.
+    // Diverged is also intentionally not surfaced as a remote update.
+    return {
+        updateAvailable: false,
+        versionComparisonStatus: status === "behind" || status === "diverged" ? "local_ahead" : "commit_fallback"
+    };
+}
+
 function formatSemanticVersion(version) {
     if (!version) {
         return "";
@@ -4034,7 +4060,7 @@ async function selectGithubUpdateBranch(versionInfo) {
 
 async function compareGithubCommits(currentSha, headSha) {
     if (updateCheckShaMatches(currentSha, headSha)) {
-        return updateCheckNoUpdateResult();
+        return updateCheckCommitComparisonResult(currentSha, headSha, "identical");
     }
 
     try {
@@ -4047,13 +4073,12 @@ async function compareGithubCommits(currentSha, headSha) {
             error.code = "malformed_response";
             throw error;
         }
-        return {
-            updateAvailable: status === "behind" || status === "diverged"
-        };
+        return updateCheckCommitComparisonResult(currentSha, headSha, status);
     } catch (error) {
         if (error.status === 404) {
             return {
-                updateAvailable: !updateCheckShaMatches(currentSha, headSha)
+                updateAvailable: !updateCheckShaMatches(currentSha, headSha),
+                versionComparisonStatus: updateCheckShaMatches(currentSha, headSha) ? "equal" : "commit_fallback"
             };
         }
 
@@ -4294,7 +4319,7 @@ async function buildSemanticVersionUpdateResult(versionInfo) {
 async function buildCommitBasedWsprryPiUpdateResult(versionInfo, semanticFallback = null) {
     const selectedBranch = await selectGithubUpdateBranch(versionInfo);
     const comparison = updateCheckShaMatches(versionInfo.currentSha, selectedBranch.headSha)
-            ? updateCheckNoUpdateResult()
+            ? updateCheckCommitComparisonResult(versionInfo.currentSha, selectedBranch.headSha, "identical")
             : await compareGithubCommits(versionInfo.currentSha, selectedBranch.headSha);
     let releaseUrl = UPDATE_CHECK_RELEASES_URL;
     let releaseTitle = "";
@@ -4323,7 +4348,7 @@ async function buildCommitBasedWsprryPiUpdateResult(versionInfo, semanticFallbac
         fallbackUsed: selectedBranch.fallbackUsed === true,
         selectionReason: selectedBranch.selectionReason || "",
         versionComparisonUsed: "commit",
-        versionComparisonStatus: semanticFallback?.reason || "commit_fallback",
+        versionComparisonStatus: comparison.versionComparisonStatus || semanticFallback?.reason || "commit_fallback",
         localVersionParsed: semanticFallback?.localVersionParsed || "",
         remoteVersionSelected: semanticFallback?.remoteVersionSelected || ""
     };
@@ -4358,6 +4383,27 @@ function applyDirtyBuildMetadata(versionInfo, result) {
 
 async function buildWsprryPiUpdateResult(versionInfo) {
     const semanticResult = await buildSemanticVersionUpdateResult(versionInfo);
+    const branchCommitComparisonHasPriority = versionInfo.branchState === "branch" &&
+        !isDetachedOrUnknownBranchBuild(versionInfo);
+    if (branchCommitComparisonHasPriority) {
+        const commitResult = await buildCommitBasedWsprryPiUpdateResult(
+            versionInfo,
+            semanticResult.useCommitFallback ? semanticResult : null
+        );
+        if (commitResult.targetBranch === versionInfo.currentBranch && commitResult.fallbackUsed !== true) {
+            debugConsole(
+                "debug",
+                "Update check using same-branch commit comparison priority over semantic version metadata."
+            );
+            return applyDirtyBuildMetadata(versionInfo, commitResult);
+        }
+
+        if (semanticResult.useCommitFallback) {
+            debugConsole("debug", `Update check using commit fallback: ${semanticResult.reason}`);
+            return applyDirtyBuildMetadata(versionInfo, commitResult);
+        }
+    }
+
     if (!semanticResult.useCommitFallback) {
         return applyDirtyBuildMetadata(versionInfo, semanticResult);
     }
