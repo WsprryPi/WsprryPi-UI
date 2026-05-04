@@ -922,7 +922,10 @@ footer .container {
     box-shadow: 0 0.4rem 1rem rgba(0, 0, 0, 0.16);
 }
 
-.footer-meta__action {
+.footer-meta__action,
+.update-modal__disable-action {
+    display: inline-flex;
+    align-items: center;
     color: inherit;
     font-size: inherit;
     line-height: inherit;

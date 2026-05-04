@@ -5181,7 +5181,7 @@ function showWsprryPiUpdateModal(versionInfo, result) {
     body.appendChild(document.createElement("br"));
     const disableLink = document.createElement("button");
     disableLink.type = "button";
-    disableLink.className = "btn btn-link btn-sm p-0 mt-2";
+    disableLink.className = "btn btn-link btn-sm update-modal__disable-action mt-2";
     disableLink.textContent = "Never check again (re-enable in About)";
     disableLink.addEventListener("click", () => {
         writeUpdateModalState(versionInfo, result, "dismissed");
