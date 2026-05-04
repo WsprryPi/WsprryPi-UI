@@ -5253,6 +5253,18 @@ function appendUpdateModalBodyLink(body, result, exactRelease) {
     body.appendChild(link);
 }
 
+function isTaggedReleaseUpdate(result) {
+    return result?.fallbackUsed !== true &&
+        Boolean(result?.releaseTitle) &&
+        Boolean(result?.remoteVersionSelected);
+}
+
+function formatUpdateModalBranchTarget(result) {
+    const branch = result?.targetBranch || "update";
+    const sha = shortSha(result?.targetHeadSha);
+    return sha ? `${branch}+${sha}` : branch;
+}
+
 function markUpdateCheckModalActive(modalEl) {
     if (modalEl) {
         modalEl.dataset.updateCheckActive = "true";
@@ -5285,11 +5297,10 @@ function showWsprryPiUpdateModal(versionInfo, result) {
         backdrop: "static",
         keyboard: false
     });
-    const targetShaLabel = shortSha(result.targetHeadSha);
-    const exactRelease = result.fallbackUsed !== true && Boolean(result.releaseTitle);
-    const releaseMessage = exactRelease
+    const taggedReleaseUpdate = isTaggedReleaseUpdate(result);
+    const releaseMessage = taggedReleaseUpdate
         ? "A release is available for this update: "
-        : "Review the latest releases: ";
+        : "Review the update channel given to you for this pre-release version.";
 
     writeUpdateModalState(versionInfo, result, "shown");
     activeUpdateModalIdentity = updateModalIdentity(versionInfo, result);
@@ -5302,15 +5313,17 @@ function showWsprryPiUpdateModal(versionInfo, result) {
 
     const summaryText = result.versionComparisonUsed === "semver" && result.remoteVersionSelected
         ? `${result.localVersionParsed || versionInfo.currentModalVersion} is behind release ${result.remoteVersionSelected}.`
-        : `${versionInfo.currentModalVersion} is behind ${result.targetBranch} ${targetShaLabel}.`;
+        : `${versionInfo.currentModalVersion} is behind ${formatUpdateModalBranchTarget(result)}.`;
     body.appendChild(document.createTextNode(summaryText));
     body.appendChild(document.createElement("br"));
     if (result.fallbackUsed === true) {
         debugConsole("DEBUG", "The current branch is not available upstream. Updates are being checked against " + result.targetBranch + ".");
     }
     body.appendChild(document.createTextNode(releaseMessage));
-    appendUpdateModalBodyLink(body, result, exactRelease);
-    body.appendChild(document.createElement("br"));
+    if (taggedReleaseUpdate) {
+        appendUpdateModalBodyLink(body, result, taggedReleaseUpdate);
+        body.appendChild(document.createElement("br"));
+    }
     const disableLink = document.createElement("button");
     disableLink.type = "button";
     disableLink.className = "btn btn-link btn-sm update-modal__disable-action mt-2";
@@ -5334,7 +5347,8 @@ function showWsprryPiUpdateModal(versionInfo, result) {
         });
     $confirmBtn
         .attr("class", "btn btn-primary")
-        .text(exactRelease ? "View release" : "View releases")
+        .toggleClass("d-none", !taggedReleaseUpdate)
+        .text("View release")
         .off("click")
         .on("click", () => {
             writeUpdateModalState(versionInfo, result, "opened");
