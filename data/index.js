@@ -2605,7 +2605,7 @@ function buildConfigPayload() {
     let shutdown_pin = parseInt(getShutdownPin()) || 19;
     const use_amp = parseBool(getUseAmp());
     const amp_pin_value = getAmpPin();
-    const amp_pin = use_amp && Number.isInteger(amp_pin_value) ? amp_pin_value : -1;
+    const amp_pin = Number.isInteger(amp_pin_value) ? amp_pin_value : -1;
     const amp_pin_active_high = parseBool($("#amp_active_high").is(":checked"));
     let band_gpio = collectBandGpioConfig();
     let transmit_backend = selectedTransmitBackend();
