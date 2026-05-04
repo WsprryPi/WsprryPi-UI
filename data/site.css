@@ -624,6 +624,27 @@ legend {
 
 .icons-wrapper {
     flex: 0 0 auto;
+    gap: 0.25rem;
+}
+
+.system-action-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    border-radius: var(--bs-border-radius);
+    text-decoration: none;
+}
+
+.system-action-button:hover,
+.system-action-button:focus {
+    text-decoration: none;
+}
+
+.system-action-button.me-2 {
+    margin-right: 0 !important;
 }
 
 .times-wrapper {
@@ -905,6 +926,8 @@ footer .container {
     color: inherit;
     font-size: inherit;
     line-height: inherit;
+    min-height: 2.75rem;
+    padding: 0.45rem 0.6rem !important;
     text-decoration: underline;
 }
 

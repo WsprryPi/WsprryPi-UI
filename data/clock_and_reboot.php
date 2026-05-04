@@ -9,20 +9,22 @@
         <button
             type="button"
             id="rebootButton"
-            class="btn btn-link text-body p-0 custom-tooltip me-2"
+            class="btn btn-link text-body p-0 custom-tooltip system-action-button me-2"
             data-bs-toggle="tooltip"
+            aria-label="Reboot system"
             title="Reboot">
-            <i class="fa-solid fa-rotate-right fa-lg"></i>
+            <i class="fa-solid fa-rotate-right fa-lg" aria-hidden="true"></i>
         </button>
 
         <!-- Shutdown button -->
         <button
             type="button"
             id="shutdownButton"
-            class="btn btn-link text-body p-0 custom-tooltip"
+            class="btn btn-link text-body p-0 custom-tooltip system-action-button"
             data-bs-toggle="tooltip"
+            aria-label="Shutdown system"
             title="Shutdown">
-            <i class="fa-solid fa-power-off fa-lg"></i>
+            <i class="fa-solid fa-power-off fa-lg" aria-hidden="true"></i>
         </button>
     </div>
 
