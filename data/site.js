@@ -5422,6 +5422,11 @@ function normalizeUiBuildId(value) {
     return typeof value === "string" ? value.trim() : "";
 }
 
+function sharedConfirmModalIsVisible() {
+    const modalEl = document.getElementById("confirmModal");
+    return Boolean(modalEl?.classList.contains("show"));
+}
+
 function maybePromptForUiRefresh(versionResponse) {
     const loadedVersion = normalizeUiVersion(window.WSPRRYPI_UI_VERSION);
     const loadedBuildId = normalizeUiBuildId(window.WSPRRYPI_UI_BUILD_ID);
@@ -5441,6 +5446,10 @@ function maybePromptForUiRefresh(versionResponse) {
         ? normalizedServerBuildId
         : normalizedServerVersion;
 
+    if (uiRefreshPromptActive && !sharedConfirmModalIsVisible()) {
+        uiRefreshPromptActive = false;
+    }
+
     if (
         uiRefreshPromptActive ||
         !refreshIdentity ||
@@ -5452,8 +5461,13 @@ function maybePromptForUiRefresh(versionResponse) {
         return;
     }
 
-    uiRefreshPromptActive = true;
-    showConfirmationDialog({
+    const modalEl = document.getElementById("confirmModal");
+    if (!modalEl) {
+        debugConsole("warn", "UI refresh prompt deferred because the shared confirmation modal is not available.");
+        return;
+    }
+
+    const promptShown = showConfirmationDialog({
         title: "UI refresh required",
         message: "The WsprryPi web interface has been updated. Refresh this page to load the new web pages, CSS, and JavaScript.",
         confirmLabel: "Refresh",
@@ -5481,6 +5495,8 @@ function maybePromptForUiRefresh(versionResponse) {
             }
         }
     });
+
+    uiRefreshPromptActive = promptShown === true;
 }
 
 function refreshUiForVersion(serverVersion, serverBuildId = "") {
@@ -6129,7 +6145,7 @@ function showConfirmationDialog(options = {}, modalInstance = null) {
         if (typeof options.onConfirm === "function") {
             options.onConfirm();
         }
-        return;
+        return false;
     }
 
     const confirmModal = modalInstance || bootstrap.Modal.getOrCreateInstance(modalEl, {
@@ -6191,7 +6207,16 @@ function showConfirmationDialog(options = {}, modalInstance = null) {
             }
         });
 
-    confirmModal.show();
+    try {
+        confirmModal.show();
+        return true;
+    } catch (error) {
+        debugConsole(
+            "warn",
+            `Unable to show confirmation modal: ${error && typeof error.message === "string" ? error.message : "unknown error"}`
+        );
+        return false;
+    }
 }
 
 function showMessageDialog(options = {}) {
