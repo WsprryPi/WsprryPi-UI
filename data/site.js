@@ -3507,6 +3507,10 @@ function updateCheckCommitComparisonResult(currentSha, headSha, status = "") {
     };
 }
 
+function branchAllowsCommitUpdate(branch) {
+    return branch !== "main";
+}
+
 function formatSemanticVersion(version) {
     if (!version) {
         return "";
@@ -4204,7 +4208,7 @@ async function semanticUpdateResultFromCandidate(versionInfo, localVersion, cand
     };
 }
 
-async function buildSemanticVersionUpdateResult(versionInfo) {
+async function buildSemanticVersionUpdateResult(versionInfo, options = {}) {
     const localVersion = versionInfo.localVersionParsedObject ||
         parseSemanticVersion(versionInfo.currentModalVersion) ||
         parseSemanticVersion(versionInfo.currentDisplayVersion);
@@ -4212,7 +4216,7 @@ async function buildSemanticVersionUpdateResult(versionInfo) {
         return semanticComparisonFallback("local semantic version could not be parsed");
     }
 
-    if (localVersion.build.length) {
+    if (localVersion.build.length && options.ignoreLocalBuildMetadata !== true) {
         return semanticComparisonFallback("local semantic version has build metadata/commits past tag", localVersion);
     }
 
@@ -4382,7 +4386,10 @@ function applyDirtyBuildMetadata(versionInfo, result) {
 }
 
 async function buildWsprryPiUpdateResult(versionInfo) {
-    const semanticResult = await buildSemanticVersionUpdateResult(versionInfo);
+    const commitUpdatesAllowed = branchAllowsCommitUpdate(versionInfo.currentBranch);
+    const semanticResult = await buildSemanticVersionUpdateResult(versionInfo, {
+        ignoreLocalBuildMetadata: !commitUpdatesAllowed
+    });
     const branchCommitComparisonHasPriority = versionInfo.branchState === "branch" &&
         !isDetachedOrUnknownBranchBuild(versionInfo);
     if (branchCommitComparisonHasPriority) {
@@ -4391,6 +4398,25 @@ async function buildWsprryPiUpdateResult(versionInfo) {
             semanticResult.useCommitFallback ? semanticResult : null
         );
         if (commitResult.targetBranch === versionInfo.currentBranch && commitResult.fallbackUsed !== true) {
+            if (!commitUpdatesAllowed) {
+                const noReleaseUpdateStatus = commitResult.versionComparisonStatus === "equal"
+                    ? "equal"
+                    : "main_commit_diff_without_release";
+                return applyDirtyBuildMetadata(versionInfo, Object.assign(commitResult, {
+                    updateAvailable: semanticResult.updateAvailable === true,
+                    releaseUrl: semanticResult.releaseUrl || commitResult.releaseUrl,
+                    releaseTitle: semanticResult.releaseTitle || "",
+                    selectionReason: semanticResult.updateAvailable === true
+                        ? semanticResult.selectionReason
+                        : `${commitResult.selectionReason || "local main targets upstream main"}; main branch requires a newer tagged release for update notification`,
+                    versionComparisonStatus: semanticResult.updateAvailable === true
+                        ? semanticResult.versionComparisonStatus
+                        : noReleaseUpdateStatus,
+                    localVersionParsed: semanticResult.localVersionParsed || commitResult.localVersionParsed,
+                    remoteVersionSelected: semanticResult.remoteVersionSelected || commitResult.remoteVersionSelected
+                }));
+            }
+
             debugConsole(
                 "debug",
                 "Update check using same-branch commit comparison priority over semantic version metadata."
