@@ -28,8 +28,10 @@ $pathConfig = [
     (function () {
         try {
             var storedTheme = localStorage.getItem("theme");
-            if (storedTheme === "light" || storedTheme === "dark" || storedTheme === "auto") {
+            if (storedTheme === "light" || storedTheme === "dark") {
                 document.documentElement.setAttribute("data-bs-theme", storedTheme);
+            } else if (storedTheme !== null) {
+                localStorage.removeItem("theme");
             }
         } catch (error) {
             // Keep the server-rendered theme if storage is unavailable.

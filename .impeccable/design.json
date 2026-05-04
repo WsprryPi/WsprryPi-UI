@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-05-04T06:51:38-05:00",
+  "generatedAt": "2026-05-04T07:11:01-05:00",
   "title": "Design System: Wsprry Pi Console",
   "extensions": {
     "colorMeta": {
@@ -109,6 +109,10 @@
       "spotsTable": {
         "description": "Fixed-layout Bootstrap table with sticky headers and wrap-safe technical values.",
         "source": "data/view_spots.css"
+      },
+      "footerStateBadge": {
+        "description": "Compact warning/danger footer state badge using signal text on state-tinted transmitter slate, with a full 1px state border.",
+        "source": "data/footer.php, data/site.css"
       }
     },
     "rules": {
@@ -117,13 +121,15 @@
         "Preserve both light and dark themes with the same layout and interaction model.",
         "Use transmitter slate for shell identity and status chrome.",
         "Make state, mode, and transmission context easy to scan.",
-        "Use wrap-safe text behavior for long technical values."
+        "Use wrap-safe text behavior for long technical values.",
+        "Render footer warning and danger states as accessible signal-text badges on state-tinted slate."
       ],
       "dont": [
         "Do not make the interface flashy, ornamental, or marketing-like.",
         "Do not use state colors for decoration.",
         "Do not use gradient text, decorative glassmorphism, or colored side-stripe borders.",
-        "Do not create nested cards for operational content."
+        "Do not create nested cards for operational content.",
+        "Do not put raw warning or danger foreground text directly on the transmitter-slate footer."
       ]
     }
   }

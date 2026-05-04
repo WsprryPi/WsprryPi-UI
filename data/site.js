@@ -938,13 +938,46 @@ function scheduleChromeOffsetSync() {
     });
 }
 
+function normalizeThemePreference(value) {
+    return value === "dark" ? "dark" : "light";
+}
+
+function readThemePreference() {
+    try {
+        const stored = localStorage.getItem("theme");
+        if (stored === "light" || stored === "dark") {
+            return stored;
+        }
+        if (stored !== null) {
+            localStorage.removeItem("theme");
+        }
+    } catch (error) {
+        // Storage can fail in private browsing or locked-down appliance browsers.
+    }
+
+    return "light";
+}
+
+function writeThemePreference(theme) {
+    try {
+        localStorage.setItem("theme", normalizeThemePreference(theme));
+    } catch (error) {
+        // Theme still applies for this page even if persistence is unavailable.
+    }
+}
+
+function applyThemePreference(theme) {
+    const normalizedTheme = normalizeThemePreference(theme);
+    const isDark = normalizedTheme === "dark";
+
+    $("#themeToggle").prop("checked", isDark);
+    document.documentElement.setAttribute("data-bs-theme", normalizedTheme);
+    updateLabel(isDark);
+}
+
 // Initialize on page load: read saved theme, set switch & label
 function initThemeToggle() {
-    const stored = localStorage.getItem("theme") || "light";
-    const isDark = stored === "dark";
-    $("#themeToggle").prop("checked", isDark);
-    document.documentElement.setAttribute("data-bs-theme", stored);
-    updateLabel(isDark);
+    applyThemePreference(readThemePreference());
 }
 
 // Update the theme toggle label
@@ -954,11 +987,9 @@ function updateLabel(isDark) {
 
 // Handler for clicking the theme toggle
 function clickThemeToggle() {
-    const isDark = this.checked;
-    const newTheme = isDark ? "dark" : "light";
-    document.documentElement.setAttribute("data-bs-theme", newTheme);
-    localStorage.setItem("theme", newTheme);
-    updateLabel(isDark);
+    const newTheme = this.checked ? "dark" : "light";
+    applyThemePreference(newTheme);
+    writeThemePreference(newTheme);
 }
 
 // Helper to parse a true bool

@@ -84,6 +84,11 @@ components:
     textColor: "{colors.body-text-light}"
     rounded: "{rounded.pill}"
     padding: "0.45rem 0.75rem"
+  footer-state-badge:
+    backgroundColor: "{colors.transmitter-slate}"
+    textColor: "{colors.signal-text-light}"
+    rounded: "{rounded.sm}"
+    padding: "0.05rem 0.35rem"
 ---
 
 # Design System: Wsprry Pi Console
@@ -138,6 +143,8 @@ The palette is restrained: a transmitter-slate shell, neutral Bootstrap surfaces
 **The State Color Rule.** Success (#5f8f74), warning (#b79256), danger (#b66a76), and active (#c8a85d) are operational vocabulary. Do not use them for decorative emphasis.
 
 **The Slate Shell Rule.** The navigation bar owns the transmitter-slate identity. Interior panels should stay neutral, with `color-mix()` tints only where they clarify status or grouping.
+
+**The Slate State Badge Rule.** Warning and danger text on transmitter slate must not use raw state colors as foregrounds. Use signal text (#ecf1f6 light, #e5ecf2 dark) on a state-tinted slate badge so footer status remains WCAG AA readable.
 
 ## 3. Typography
 
@@ -208,6 +215,13 @@ The system uses a hybrid of light structural shadows and tonal layering. Bootstr
 - **Active State:** `rgba(var(--wspr-accent-text-rgb), 0.12)` background, 1px translucent border, and a subtle inset line.
 - **Mobile Treatment:** Navbar collapses into a full-width stacked menu, preserving icon/text alignment and allowing long labels to wrap.
 
+### Footer Status
+
+- **Style:** Fixed bottom footer uses transmitter slate with signal text for base content.
+- **Update Available:** Render version/update indicators as compact state badges using signal text on `color-mix(in srgb, var(--wspr-state-warning) 30%, rgb(var(--wspr-accent-rgb)) 70%)`, with a 1px full-border state tint.
+- **Update Failed:** Use the same badge structure with `--wspr-state-danger`; do not place raw danger text directly on the slate footer.
+- **Hover / Focus:** Keep signal text and deepen the state tint only slightly, around 32% state color, so warning/danger links remain above 4.5:1 contrast.
+
 ### Tabs and Segmented Controls
 
 - **Style:** Configuration tabs use Barlow Semi Condensed, `0.9rem 0.9rem 0 0` top corners, strong min-height, and active tonal background.
@@ -234,6 +248,7 @@ The system uses a hybrid of light structural shadows and tonal layering. Bootstr
 - **Do** make system state, mode, and transmission context easy to scan quickly.
 - **Do** let technical values wrap with `overflow-wrap: anywhere` when they can be long or user supplied.
 - **Do** use 1px borders and neutral surface mixes for interior grouping before adding more shadows.
+- **Do** render footer warning and danger states as accessible state badges, not raw colored text on slate.
 
 ### Don't:
 
@@ -244,6 +259,7 @@ The system uses a hybrid of light structural shadows and tonal layering. Bootstr
 - **Don't** create nested cards or repeated identical card grids for dense operational screens.
 - **Don't** use gradient text, decorative glassmorphism, or colored side-stripe borders.
 - **Don't** use modal dialogs as the first answer for normal configuration flows; prefer inline progressive controls.
+- **Don't** put low-contrast warning or danger foreground colors directly on the transmitter-slate footer.
 
 ### Excluded Pages
 
