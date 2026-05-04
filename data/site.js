@@ -3201,8 +3201,7 @@ function forceUpdateCheckNow() {
         .done(function (response) {
             lastWsprryPiVersionResponse = response;
             checkForWsprryPiUpdate(response, {
-                bypassCache: true,
-                suppressModal: true
+                bypassCache: true
             });
         })
         .fail(function (jqXHR, textStatus, errorThrown) {
