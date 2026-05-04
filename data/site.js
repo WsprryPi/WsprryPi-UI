@@ -556,6 +556,11 @@ function loadPage() {
     populateConfig();
 }
 
+// Start UI build polling from global script initialization as soon as site.js
+// runs. The shared modal markup is already present before this script is
+// included, and initUiBuildChangePolling() guards against duplicate intervals.
+initUiBuildChangePolling();
+
 function getPersistedTabStorageKey(tabList) {
     if (!(tabList instanceof Element)) {
         return "";
