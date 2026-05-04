@@ -801,9 +801,13 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                 </div>
 
                                 <div class="row gx-2 gy-2 align-items-center">
-                                    <div class="col-12 col-xxl-4">
+                                    <div class="col-12 col-xxl-4 d-flex align-items-center">
                                         <div class="d-flex align-items-center gap-2">
-                                            <span class="form-label mb-0">Amp Control</span>
+                                            <label class="form-label mb-0" for="use_amp">Use Amp:</label>
+                                            <span class="visually-hidden">Amp Control</span>
+                                            <div class="form-check form-switch mb-0">
+                                                <input class="form-check-input" type="checkbox" role="switch" id="use_amp" aria-describedby="amp-control-hint">
+                                            </div>
                                         </div>
                                         <div id="amp-control-hint" class="form-text mt-2">
                                             Activates prior to transmitting then deactivates after the transmission is complete to control an external amplifier
@@ -824,6 +828,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                 data-bs-toggle="dropdown"
                                                 aria-expanded="false"
                                                 aria-describedby="amp-pin-hint amp-control-hint"
+                                                disabled
                                                 title="Disabled">
                                             </button>
                                             <?php include __DIR__ . '/../gpio_dropdown.php'; ?>

@@ -445,6 +445,7 @@ const configSchema = {
             "Socket Port": { required: false, type: "number" },
             "Use Shutdown": { required: false, type: "boolean" },
             "Shutdown Button": { required: false, type: "number" },
+            "Use Amp": { required: false, type: "boolean" },
             "Amp Pin": { required: false, type: "number" },
             "Amp Pin Active High": { required: false, type: "boolean" }
         }
@@ -1584,6 +1585,15 @@ function populateConfig(callback = null) {
                     "Amp Pin",
                     -1
                 );
+                let use_amp = getConfigBoolValue(
+                    operation,
+                    "Operation",
+                    "Use Amp",
+                    amp_pin >= 0
+                );
+                if (amp_pin < 0) {
+                    use_amp = false;
+                }
                 let amp_pin_active_high = getConfigBoolValue(
                     operation,
                     "Operation",
@@ -1665,6 +1675,11 @@ function populateConfig(callback = null) {
                     setShutdownPin(shutdown_pin);
                     if (typeof setAmpPin === "function") {
                         setAmpPin(amp_pin);
+                    }
+                    if (typeof setUseAmp === "function") {
+                        setUseAmp(use_amp);
+                    } else {
+                        $("#use_amp").prop("checked", use_amp).trigger("change");
                     }
                     $("#amp_active_high")
                         .prop("checked", amp_pin_active_high)

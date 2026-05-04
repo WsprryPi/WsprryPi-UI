@@ -251,7 +251,14 @@ function restorePersistedConfigDraft() {
         setShutdownPin(Number(operation["Shutdown Button"]));
     }
     if (typeof setAmpPin === "function") {
-        setAmpPin(Number(operation["Amp Pin"]));
+        const ampPin = Number(operation["Amp Pin"]);
+        setAmpPin(ampPin);
+        if (typeof setUseAmp === "function") {
+            const useAmp = typeof operation["Use Amp"] === "boolean"
+                ? operation["Use Amp"]
+                : Number.isInteger(ampPin) && ampPin >= 0;
+            setUseAmp(useAmp && Number.isInteger(ampPin) && ampPin >= 0);
+        }
     }
     $("#amp_active_high").prop("checked", !!operation["Amp Pin Active High"]).trigger("change");
     if (typeof populateBandGpioForm === "function") {
@@ -334,6 +341,9 @@ function bindIndexActions() {
 
     // Wire up the LED switch
     $("#use_shutdown").on("change", clickUseShutdown);
+
+    // Wire up the Amp Control switch
+    $("#use_amp").on("change", clickUseAmp);
 
     // Wire up Band GPIO switches
     $("#wsprform").on("change", ".band-gpio-enabled", clickBandGpioEnabled);
@@ -1432,6 +1442,26 @@ function clickUseShutdown() {
     scheduleAutosave();
 }
 
+function setUseAmp(enabled) {
+    $("#use_amp").prop("checked", !!enabled);
+    syncAmpControlState();
+}
+
+function getUseAmp() {
+    return $("#use_amp").is(":checked");
+}
+
+function syncAmpControlState() {
+    $("#ampDropdownButton").prop("disabled", !getUseAmp());
+    refreshGpioConflictOptions();
+}
+
+function clickUseAmp() {
+    syncAmpControlState();
+    validatePage();
+    scheduleAutosave();
+}
+
 function getBandGpioRows() {
     return $("#bandGpioTable tbody tr[data-band]");
 }
@@ -1597,9 +1627,11 @@ function getReservedPiControlPins(excludeButtonId = "") {
         }
     }
 
-    const ampPin = getAmpPin();
-    if (Number.isInteger(ampPin) && excludeButtonId !== "ampDropdownButton") {
-        reservedPins.add(String(ampPin));
+    if (getUseAmp()) {
+        const ampPin = getAmpPin();
+        if (Number.isInteger(ampPin) && excludeButtonId !== "ampDropdownButton") {
+            reservedPins.add(String(ampPin));
+        }
     }
 
     return reservedPins;
@@ -1783,7 +1815,11 @@ function validateGpioConflictFields() {
         document.getElementById("shutdownDropdownButton"),
         "Shutdown Button"
     );
-    addAssignment(getAmpPin(), document.getElementById("ampDropdownButton"), "Amp Control");
+    addAssignment(
+        getUseAmp() ? getAmpPin() : null,
+        document.getElementById("ampDropdownButton"),
+        "Amp Control"
+    );
 
     getBandGpioRows().each(function () {
         const $row = $(this);
@@ -1823,6 +1859,27 @@ function validateGpioConflictFields() {
     });
 
     return invalidCount === 0;
+}
+
+function validateAmpControlFields() {
+    const button = document.getElementById("ampDropdownButton");
+    if (!button) {
+        return true;
+    }
+
+    const requiredMessage = "Select an Amp Pin before enabling Amp Control.";
+    const valid = !getUseAmp() || Number.isInteger(getAmpPin());
+    if (!valid) {
+        button.setCustomValidity(requiredMessage);
+        button.classList.add("is-invalid");
+        button.setAttribute("aria-invalid", "true");
+    } else if (button.validationMessage === requiredMessage) {
+        button.setCustomValidity("");
+        button.classList.remove("is-invalid");
+        button.setAttribute("aria-invalid", "false");
+    }
+
+    return valid;
 }
 
 function isPlaceholderCallsign(callsign) {
@@ -2022,7 +2079,7 @@ function describeControlTab(control) {
 
 function firstInvalidConfigControl() {
     const candidates = document.querySelectorAll(
-        '#wsprform input, #wsprform select, #wsprform textarea'
+        '#wsprform input, #wsprform select, #wsprform textarea, #wsprform button.pin-dropdown-btn'
     );
 
     let firstHiddenInvalid = null;
@@ -2207,6 +2264,10 @@ function validatePage() {
     }
 
     if (!validateGpioConflictFields()) {
+        invalidCount++;
+    }
+
+    if (!validateAmpControlFields()) {
         invalidCount++;
     }
 
@@ -2542,8 +2603,9 @@ function buildConfigPayload() {
     let led_pin = parseInt(getLEDPin()) || 18;
     let use_shutdown = parseBool($("#use_shutdown").is(":checked"));
     let shutdown_pin = parseInt(getShutdownPin()) || 19;
+    const use_amp = parseBool(getUseAmp());
     const amp_pin_value = getAmpPin();
-    const amp_pin = Number.isInteger(amp_pin_value) ? amp_pin_value : -1;
+    const amp_pin = use_amp && Number.isInteger(amp_pin_value) ? amp_pin_value : -1;
     const amp_pin_active_high = parseBool($("#amp_active_high").is(":checked"));
     let band_gpio = collectBandGpioConfig();
     let transmit_backend = selectedTransmitBackend();
@@ -2634,6 +2696,7 @@ function buildConfigPayload() {
         "LED Pin": led_pin,
         "Use Shutdown": use_shutdown,
         "Shutdown Button": shutdown_pin,
+        "Use Amp": use_amp,
         "Amp Pin": amp_pin,
         "Amp Pin Active High": amp_pin_active_high,
     };
@@ -3266,6 +3329,7 @@ function setHardwareControlsDisabled(disabled) {
         "#ledDropdownButton",
         "#use_shutdown",
         "#shutdownDropdownButton",
+        "#use_amp",
         "#ampDropdownButton",
         "#amp_active_high",
         "#test_tone"
@@ -3277,6 +3341,7 @@ function setHardwareControlsDisabled(disabled) {
 
     if (!disabled) {
         syncStopButtonState();
+        syncAmpControlState();
     }
 
     syncCalibrationControls();
@@ -3312,6 +3377,7 @@ function setOfflineDefaults() {
     clickTransmitBackend();
     $("#use_led").prop("checked", false);
     $("#use_shutdown").prop("checked", false);
+    setUseAmp(false);
     setAmpPin(-1);
     $("#amp_active_high").prop("checked", false);
     populateBandGpioForm({});
