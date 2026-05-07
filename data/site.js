@@ -2869,7 +2869,7 @@ function connectWebSocket(endpoint, reconnectDelay = 5000, attemptIndex = 0) {
             return;
         }
 
-        if (msg.command === "stop") {
+        if (String(msg.command || "").toLowerCase() === "stop") {
             if (typeof handleStopCommandResponse === "function") {
                 handleStopCommandResponse(msg);
             }
@@ -2954,6 +2954,17 @@ function connectWebSocket(endpoint, reconnectDelay = 5000, attemptIndex = 0) {
                 typeof formatReloadFailureMessage === "function"
                     ? formatReloadFailureMessage(message)
                     : message;
+            if (
+                typeof shouldSuppressDisabledModeSwitchReloadFailure === "function" &&
+                shouldSuppressDisabledModeSwitchReloadFailure(message)
+            ) {
+                debugConsole(
+                    "debug",
+                    "Suppressed disabled mode-switch reload failure:",
+                    message
+                );
+                return;
+            }
             if (typeof showBackendStatus === "function") {
                 showBackendStatus(formattedMessage, "danger", "runtime");
             }

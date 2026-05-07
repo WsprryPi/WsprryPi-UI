@@ -3,6 +3,7 @@ let stopRequestInFlight = false;
 const CONFIG_AUTOSAVE_DELAY_MS = 800;
 const CONFIG_REQUEST_TIMEOUT_MS = 15000;
 const STOP_REQUEST_TIMEOUT_MS = 10000;
+const MODE_CHANGE_GUARD_STOP_TIMEOUT_MS = 15000;
 const CONFIG_DRAFT_STORAGE_KEY = "wsprrypi.configDraft";
 let configAutosaveTimer = null;
 let configAutosaveSuspended = false;
@@ -19,9 +20,12 @@ let currentConfigModeSelection = "WSPR";
 let pendingModeChange = null;
 let modeChangeGuardBusy = false;
 let suppressModeChangeGuard = false;
+let disabledModeSwitchReloadFailureSuppression = null;
+let suppressNextConfigDraftRestore = false;
 let configNetworkHandlersBound = false;
 let configNavigationGuardBound = false;
 let stopRequestTimeoutHandle = null;
+let modeChangeGuardStopTimeoutHandle = null;
 const PAIRED_PLANNING_SHORT_MESSAGE =
     "Paired planning requires a compound callsign and 6-character locator.";
 
@@ -186,6 +190,12 @@ function persistLocalConfigDraftIfPossible() {
 }
 
 function restorePersistedConfigDraft() {
+    if (suppressNextConfigDraftRestore) {
+        suppressNextConfigDraftRestore = false;
+        removePersistedConfigDraft();
+        return false;
+    }
+
     let rawDraft = "";
     try {
         rawDraft = window.sessionStorage.getItem(CONFIG_DRAFT_STORAGE_KEY) || "";
@@ -308,6 +318,11 @@ function restorePersistedConfigDraft() {
 
     persistLocalConfigDraftIfPossible();
     return true;
+}
+
+function suppressNextPersistedConfigDraftRestore() {
+    suppressNextConfigDraftRestore = true;
+    removePersistedConfigDraft();
 }
 
 function bindIndexActions() {
@@ -650,10 +665,24 @@ function stopTransmission(options = {}) {
 function handleStopCommandResponse(message) {
     const response = message && typeof message === "object" ? message : {};
     const stopSucceeded =
-        response.transmit_disabled === true || response.stop_performed === true;
+        response.transmit_disabled === true ||
+        response.stop_performed === true ||
+        response.status === "ok";
     clearStopRequestTimeout();
 
-    if (pendingModeChange && pendingModeChange.awaitingRuntimeIdle === false) {
+    if (pendingModeChange && pendingModeChange.awaitingGuardedStop === true) {
+        if (stopSucceeded) {
+            completeGuardedActiveModeChange();
+        } else {
+            failGuardedActiveModeChange(
+                response.message || "Failed to disable transmissions before switching modes."
+            );
+        }
+    } else if (
+        pendingModeChange &&
+        pendingModeChange.guardedActiveModeChange !== true &&
+        pendingModeChange.awaitingRuntimeIdle === false
+    ) {
         if (stopSucceeded) {
             pendingModeChange.awaitingRuntimeIdle = true;
         } else {
@@ -716,12 +745,77 @@ function modeChangeGuardModalInstance() {
     });
 }
 
+function clearModeChangeGuardStopTimeout() {
+    if (modeChangeGuardStopTimeoutHandle !== null) {
+        clearTimeout(modeChangeGuardStopTimeoutHandle);
+        modeChangeGuardStopTimeoutHandle = null;
+    }
+}
+
+function setModeChangeGuardActionBusy(busy, label = "Disable & switch") {
+    const confirmBtn = document.getElementById("modeChangeGuardConfirmBtn");
+    const cancelBtn = document.getElementById("modeChangeGuardCancelBtn");
+    const modalEl = document.getElementById("modeChangeGuardModal");
+
+    if (confirmBtn) {
+        confirmBtn.disabled = !!busy;
+        confirmBtn.textContent = busy ? "Working..." : label;
+    }
+    if (cancelBtn) {
+        cancelBtn.disabled = !!busy;
+    }
+    if (modalEl) {
+        const closeBtn = modalEl.querySelector(".btn-close");
+        if (closeBtn) {
+            closeBtn.disabled = !!busy;
+        }
+    }
+}
+
 function clearPendingModeChange() {
+    clearModeChangeGuardStopTimeout();
     pendingModeChange = null;
     modeChangeGuardBusy = false;
+    setModeChangeGuardActionBusy(false);
     if (typeof suspendConfigAutosave === "function") {
         suspendConfigAutosave(false);
     }
+}
+
+function markDisabledModeSwitchReloadFailureSuppression(mode) {
+    disabledModeSwitchReloadFailureSuppression = {
+        mode,
+        expiresAt: Date.now() + CONFIG_REQUEST_TIMEOUT_MS,
+    };
+}
+
+function clearDisabledModeSwitchReloadFailureSuppression() {
+    disabledModeSwitchReloadFailureSuppression = null;
+}
+
+function shouldSuppressDisabledModeSwitchReloadFailure(message) {
+    if (!disabledModeSwitchReloadFailureSuppression) {
+        return false;
+    }
+
+    if (Date.now() > disabledModeSwitchReloadFailureSuppression.expiresAt) {
+        clearDisabledModeSwitchReloadFailureSuppression();
+        return false;
+    }
+
+    const transmitDisabled = !$("#transmit").is(":checked");
+    const activeMode = selectedConfigMode();
+    const expectedMode = disabledModeSwitchReloadFailureSuppression.mode;
+    const normalizedMessage = String(message || "").trim();
+    const isModePayloadError =
+        /^(QRSS|FSKCW|DFCW) payload message is empty\.$/.test(normalizedMessage);
+
+    if (transmitDisabled && activeMode === expectedMode && isModePayloadError) {
+        clearDisabledModeSwitchReloadFailureSuppression();
+        return true;
+    }
+
+    return false;
 }
 
 function persistDisabledModeChange(targetMode, previousMode = currentConfigModeSelection) {
@@ -740,6 +834,7 @@ function persistDisabledModeChange(targetMode, previousMode = currentConfigModeS
 
     setTransmitFromBackend(false);
     updateRuntimeControlStatusFromForm(previousMode);
+    markDisabledModeSwitchReloadFailureSuppression(normalizedTargetMode);
 
     return ajaxWithEndpointFallback(SETTINGS_ENDPOINT, {
         type: "PATCH",
@@ -757,11 +852,23 @@ function persistDisabledModeChange(targetMode, previousMode = currentConfigModeS
             pendingPersistedMode = "";
             configAutosaveNeedsRuntimeRefresh = true;
             clearBackendStatus("runtime");
-            applyCommittedConfigMode(normalizedTargetMode, { skipAutosave: true });
+            if (typeof suppressNextPersistedConfigDraftRestore === "function") {
+                suppressNextPersistedConfigDraftRestore();
+            }
+            if (typeof suspendConfigAutosave === "function") {
+                suspendConfigAutosave(true);
+            }
+            applyCommittedConfigMode(normalizedTargetMode, {
+                skipAutosave: true,
+                keepAutosaveSuspended: true,
+            });
             setTransmitFromBackend(false);
             updateRuntimeControlStatusFromForm(normalizedTargetMode);
             if (typeof syncConfigAutosaveBaseline === "function") {
                 syncConfigAutosaveBaseline();
+            }
+            if (typeof populateConfig === "function") {
+                populateConfig();
             }
             if (typeof getTxState === "function") {
                 getTxState();
@@ -769,6 +876,7 @@ function persistDisabledModeChange(targetMode, previousMode = currentConfigModeS
             clearPendingModeChange();
         })
         .fail(function (xhr, textStatus) {
+            clearDisabledModeSwitchReloadFailureSuppression();
             let message = "Failed to disable transmissions and change mode.";
 
             if (isTransientNetworkFailure(xhr, textStatus)) {
@@ -808,7 +916,10 @@ function applyCommittedConfigMode(mode, options = {}) {
     if (options.skipAutosave === true) {
         pendingPersistedMode = "";
         configAutosaveNeedsRuntimeRefresh = false;
-        if (typeof suspendConfigAutosave === "function") {
+        if (
+            options.keepAutosaveSuspended !== true &&
+            typeof suspendConfigAutosave === "function"
+        ) {
             suspendConfigAutosave(false);
         }
         return;
@@ -842,7 +953,13 @@ function showModeChangeGuardModal(options) {
     const cancelBtn = document.getElementById("modeChangeGuardCancelBtn");
     confirmBtn.textContent = options.confirmLabel;
     confirmBtn.className = options.confirmClass || "btn btn-danger";
+    confirmBtn.disabled = false;
     cancelBtn.textContent = options.cancelLabel || "Cancel";
+    cancelBtn.disabled = false;
+    const closeBtn = modalEl.querySelector(".btn-close");
+    if (closeBtn) {
+        closeBtn.disabled = false;
+    }
 
     $(confirmBtn)
         .off("click.modeGuard")
@@ -884,9 +1001,89 @@ function finalizePendingModeChange(targetModeOverride = null) {
     clearPendingModeChange();
 }
 
+function failGuardedActiveModeChange(message) {
+    clearModeChangeGuardStopTimeout();
+    if (pendingModeChange) {
+        pendingModeChange.awaitingGuardedStop = false;
+        pendingModeChange.awaitingRuntimeIdle = false;
+    }
+    modeChangeGuardBusy = false;
+    setModeChangeGuardActionBusy(false);
+    revertConfigModeSelection();
+    showBackendStatus(message, "danger", "runtime");
+    if (typeof getTxState === "function") {
+        getTxState();
+    }
+}
+
+function completeGuardedActiveModeChange() {
+    if (!pendingModeChange || pendingModeChange.awaitingGuardedStop !== true) {
+        return;
+    }
+
+    clearModeChangeGuardStopTimeout();
+    pendingModeChange.awaitingGuardedStop = false;
+    pendingModeChange.awaitingRuntimeIdle = false;
+    setTransmitFromBackend(false);
+
+    const request = persistDisabledModeChange(
+        pendingModeChange.targetMode,
+        typeof pendingModeChange.previousMode === "string"
+            ? pendingModeChange.previousMode
+            : currentConfigModeSelection
+    );
+
+    if (request && typeof request.done === "function") {
+        request.done(function () {
+            const modal = modeChangeGuardModalInstance();
+            if (modal) {
+                modal.hide();
+            }
+        });
+        request.always(function () {
+            setModeChangeGuardActionBusy(false);
+        });
+    } else {
+        setModeChangeGuardActionBusy(false);
+    }
+}
+
+function startGuardedActiveModeChange() {
+    if (!pendingModeChange || pendingModeChange.awaitingGuardedStop === true) {
+        return;
+    }
+
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        failGuardedActiveModeChange(runtimeConnectionUnavailableMessage());
+        return;
+    }
+
+    modeChangeGuardBusy = true;
+    pendingModeChange.awaitingGuardedStop = true;
+    pendingModeChange.awaitingRuntimeIdle = true;
+    setModeChangeGuardActionBusy(true);
+    setTransmitFromBackend(false);
+    updateRuntimeControlStatusFromForm(pendingModeChange.previousMode);
+
+    clearModeChangeGuardStopTimeout();
+    modeChangeGuardStopTimeoutHandle = window.setTimeout(() => {
+        failGuardedActiveModeChange(
+            "Stop command timed out before the controller confirmed it. Check controller connectivity and runtime state, then try again."
+        );
+    }, MODE_CHANGE_GUARD_STOP_TIMEOUT_MS);
+
+    ws.send(
+        JSON.stringify({
+            command: "stop",
+            persist_transmit: false,
+        })
+    );
+}
+
 function handleRuntimeStatusUpdate(status) {
     if (
         pendingModeChange &&
+        pendingModeChange.guardedActiveModeChange !== true &&
         pendingModeChange.awaitingRuntimeIdle === true &&
         (!status || status.txState !== "transmitting")
     ) {
@@ -928,6 +1125,7 @@ function requestConfigModeChange(targetMode) {
             targetMode: normalizedTargetMode,
             prerequisite: "disable",
             previousMode,
+            guardedActiveModeChange: true,
             awaitingRuntimeIdle: false,
         };
         showModeChangeGuardModal({
@@ -936,17 +1134,7 @@ function requestConfigModeChange(targetMode) {
             confirmLabel: "Disable & switch",
             confirmClass: "btn btn-danger",
             onConfirm() {
-                modeChangeGuardBusy = true;
-                const modal = modeChangeGuardModalInstance();
-                if (modal) {
-                    modal.hide();
-                }
-                setTransmitFromBackend(false);
-                updateRuntimeControlStatusFromForm(previousMode);
-                if (!stopTransmission({ persistTransmit: false })) {
-                    setTransmitFromBackend(true);
-                    clearPendingModeChange();
-                }
+                startGuardedActiveModeChange();
             },
             onCancel() {
                 clearPendingModeChange();
