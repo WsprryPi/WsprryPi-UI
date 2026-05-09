@@ -6,11 +6,12 @@
 .operation-hero {
     display: grid;
     gap: 1.2rem 1.5rem;
-    grid-template-columns: minmax(0, 2.2fr) minmax(16rem, 0.7fr);
-    align-items: start;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(16rem, 0.8fr);
+    align-items: stretch;
 }
 
 .operation-hero__status,
+.operation-hero__reboot,
 .operation-hero__controls,
 .operation-panel,
 .operation-nav-panel {
@@ -107,11 +108,26 @@
     gap: 0.85rem;
     align-content: start;
     min-width: 0;
-    padding-top: 1.15rem;
 }
 
 .operation-hero__status {
     padding-block: 1.2rem 1.25rem;
+}
+
+.operation-hero__reboot {
+    display: grid;
+    gap: 0.85rem;
+    align-content: start;
+    min-height: 100%;
+}
+
+.operation-reboot-options {
+    display: grid;
+    gap: 0.6rem;
+}
+
+.operation-reboot-options .form-check {
+    margin-bottom: 0;
 }
 
 .operation-recovery {

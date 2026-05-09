@@ -24,7 +24,27 @@ require __DIR__ . '/../card_header.php';
                         </div>
                     </div>
 
+                    <div class="operation-hero__reboot" aria-labelledby="operationRebootBehaviorTitle">
+                        <div class="operation-hero__state-label" id="operationRebootBehaviorTitle">Reboot behavior</div>
+                        <div class="operation-reboot-options" role="radiogroup" aria-labelledby="operationRebootBehaviorTitle">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="operation_reboot_behavior" id="operation_reboot_disable" value="disable" checked>
+                                <label class="form-check-label" for="operation_reboot_disable">Disable transmission on (re)boot</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="operation_reboot_behavior" id="operation_reboot_follow_last" value="follow_last">
+                                <label class="form-check-label" for="operation_reboot_follow_last">Follow the last transmit setting</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="operation_reboot_behavior" id="operation_reboot_restart" value="restart">
+                                <label class="form-check-label" for="operation_reboot_restart">Restart transmissions on (re)boot</label>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="operation-hero__controls" aria-label="Runtime controls">
+                        <div class="operation-hero__state-label">Transmit control</div>
+
                         <div class="operation-runtime-toggle">
                             <div class="form-check form-switch">
                                 <input class="form-check-input" type="checkbox" role="switch" id="transmit" aria-describedby="transmitAvailabilityHint operationControlHint">

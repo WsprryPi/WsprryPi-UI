@@ -447,6 +447,7 @@ const configSchema = {
             "Mode": { required: false, type: "string" },
             "Transmit": { required: false, type: "boolean" },
             "Transmit Backend": { required: false, type: "string" },
+            "Enable on Boot": { required: false, type: "string" },
             "Use LED": { required: false, type: "boolean" },
             "LED Pin": { required: false, type: "number" },
             "Web Port": { required: false, type: "number" },
@@ -1514,6 +1515,17 @@ function populateConfig(callback = null) {
                 if (transmitBackend !== "gpio" && transmitBackend !== "si5351") {
                     transmitBackend = "gpio";
                 }
+                let enableOnBoot = String(
+                    getConfigValue(
+                        operation,
+                        "Operation",
+                        "Enable on Boot",
+                        "Never"
+                    ) || "Never"
+                ).trim();
+                if (!["Never", "Follow", "Always"].includes(enableOnBoot)) {
+                    enableOnBoot = "Never";
+                }
                 const callsignWasLoaded = hasConfigValue(wspr, "Call Sign");
                 let callsign = String(getConfigValue(
                     wspr,
@@ -1803,6 +1815,7 @@ function populateConfig(callback = null) {
                             mode,
                             transmit,
                             transmitBackend,
+                            enableOnBoot,
                             callsign,
                             gridsquare,
                             wsprFrequencyHz,

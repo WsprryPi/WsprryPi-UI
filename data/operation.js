@@ -1,4 +1,5 @@
 let isUpdatingTransmitFromBackend = false;
+let isUpdatingRebootBehaviorFromBackend = false;
 let stopRequestInFlight = false;
 let stopRequestTimeoutHandle = null;
 let operationRetryInFlight = false;
@@ -20,7 +21,44 @@ let operationSnapshot = {
     wsprFrequencyHz: 0,
     cwBaseFrequencyHz: 0,
     cwOffsetHz: 0,
+    enableOnBoot: "Never",
 };
+
+function rebootBehaviorRadioValueFromConfig(value) {
+    switch (String(value || "").trim()) {
+        case "Follow":
+            return "follow_last";
+        case "Always":
+            return "restart";
+        case "Never":
+        default:
+            return "disable";
+    }
+}
+
+function rebootBehaviorConfigValueFromRadio(value) {
+    switch (String(value || "").trim()) {
+        case "follow_last":
+            return "Follow";
+        case "restart":
+            return "Always";
+        case "disable":
+        default:
+            return "Never";
+    }
+}
+
+function setRebootBehaviorFromBackend(value) {
+    const radioValue = rebootBehaviorRadioValueFromConfig(value);
+    isUpdatingRebootBehaviorFromBackend = true;
+    $(`input[name="operation_reboot_behavior"][value="${radioValue}"]`).prop("checked", true);
+    isUpdatingRebootBehaviorFromBackend = false;
+    operationSnapshot.enableOnBoot = rebootBehaviorConfigValueFromRadio(radioValue);
+}
+
+function setRebootBehaviorUiDisabled(disabled) {
+    $('input[name="operation_reboot_behavior"]').prop("disabled", !!disabled);
+}
 
 function browserOfflineOperationMessage() {
     return "This browser is offline, so runtime controls cannot reach the controller.";
@@ -303,6 +341,7 @@ function retryOperationRuntimeLoad() {
 
 function setRuntimeUiDisabled(disabled) {
     $("#transmit").prop("disabled", !!disabled);
+    setRebootBehaviorUiDisabled(disabled);
     if (disabled) {
         $("#stop_transmit").prop("disabled", true);
         return;
@@ -463,6 +502,69 @@ function patchTransmitControl() {
     requestTransmitEnabledChange(enabled, !enabled);
 }
 
+function patchRebootBehaviorControl() {
+    if (isUpdatingRebootBehaviorFromBackend) {
+        return;
+    }
+
+    const selectedRadio = document.querySelector('input[name="operation_reboot_behavior"]:checked');
+    if (!selectedRadio) {
+        return;
+    }
+
+    const previousValue = operationSnapshot.enableOnBoot || "Never";
+    const nextValue = rebootBehaviorConfigValueFromRadio(selectedRadio.value);
+
+    if (nextValue === previousValue) {
+        return;
+    }
+
+    if (navigator.onLine === false) {
+        setRebootBehaviorFromBackend(previousValue);
+        showBackendStatus(runtimeConnectionUnavailableMessage(), "warning", "runtime");
+        return;
+    }
+
+    setRebootBehaviorUiDisabled(true);
+
+    ajaxWithEndpointFallback(SETTINGS_ENDPOINT, {
+        type: "PATCH",
+        contentType: "application/merge-patch+json",
+        timeout: CONFIG_REQUEST_TIMEOUT_MS,
+        data: JSON.stringify({
+            Operation: {
+                "Enable on Boot": nextValue,
+            },
+        }),
+    })
+        .done(function () {
+            lastSaveTimestamp = Date.now();
+            operationSnapshot.enableOnBoot = nextValue;
+            clearBackendStatus("runtime");
+        })
+        .fail(function (xhr, textStatus) {
+            let message = "Failed to update reboot behavior.";
+
+            if (isTransientNetworkFailure(xhr, textStatus)) {
+                message = transientRuntimeActionMessage(textStatus);
+                showBackendStatus(message, "warning", "runtime");
+                setRebootBehaviorFromBackend(previousValue);
+                return;
+            }
+
+            if (xhr.responseJSON && typeof xhr.responseJSON === "object" &&
+                typeof xhr.responseJSON.message === "string" && xhr.responseJSON.message.trim()) {
+                message = xhr.responseJSON.message.trim();
+            }
+
+            setRebootBehaviorFromBackend(previousValue);
+            showBackendStatus(message, "danger", "runtime");
+        })
+        .always(function () {
+            setRebootBehaviorUiDisabled(false);
+        });
+}
+
 function stopTransmission(options = {}) {
     const $stop = $("#stop_transmit");
     if ($stop.prop("disabled")) {
@@ -529,7 +631,11 @@ function handleOperationConfigSnapshot(snapshot = {}) {
         cwOffsetHz: Number.isFinite(Number(snapshot.cwOffsetHz))
             ? Number(snapshot.cwOffsetHz)
             : 0,
+        enableOnBoot: typeof snapshot.enableOnBoot === "string"
+            ? snapshot.enableOnBoot
+            : "Never",
     };
+    setRebootBehaviorFromBackend(operationSnapshot.enableOnBoot);
 
     updateOperationStatusSummary(currentRuntimeStatus);
 }
@@ -801,6 +907,7 @@ function bindOperationNetworkHandlers() {
 
 function bindOperationActions() {
     $("#transmit").on("change", patchTransmitControl);
+    $('input[name="operation_reboot_behavior"]').on("change", patchRebootBehaviorControl);
     $("#stop_transmit").on("click", stopTransmission);
     $("#operationRetryButton").on("click", retryOperationRuntimeLoad);
     bindOperationNetworkHandlers();
