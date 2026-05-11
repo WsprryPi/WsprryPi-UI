@@ -1984,6 +1984,11 @@ function normalizeRuntimeStatus(msg) {
             ? Number(msg.offset_hz)
             : 0,
         frequencyIsSkip: msg.frequency_is_skip === true,
+        selectorGpioEnabled: msg.selector_gpio_enabled === true,
+        selectorGpio: Number.isInteger(Number(msg.selector_gpio))
+            ? Number(msg.selector_gpio)
+            : -1,
+        selectorGpioActiveHigh: msg.selector_gpio_active_high === true,
         planType,
         powerDbm: Number.isFinite(Number(msg.power_dbm))
             ? Number(msg.power_dbm)
@@ -2460,12 +2465,13 @@ function buildRuntimeFrequencyItems(currentMode, status) {
         ? getOperationFrequencyFallback(normalizedMode)
         : { frequencyHz: 0, offsetHz: 0 };
     const isSkipWindow = status && status.frequencyIsSkip === true;
-    const frequencyValue = formatDisplayFrequency(
+    const frequencyValue = formatDisplayFrequencyWithSelector(
         isSkipWindow
             ? 0
             : (status && Number.isFinite(status.frequencyHz) && status.frequencyHz > 0
                 ? status.frequencyHz
                 : fallback.frequencyHz),
+        status,
         { skipWindow: isSkipWindow }
     );
     const offsetValue = formatDisplayFrequency(
@@ -2538,6 +2544,28 @@ function formatDisplayFrequency(valueHz, options = {}) {
         useGrouping: false
     });
     return `${formatted} ${selectedUnit.suffix}`;
+}
+
+function formatSelectorGpioSuffix(status) {
+    if (
+        !status ||
+        status.selectorGpioEnabled !== true ||
+        !Number.isInteger(status.selectorGpio) ||
+        status.selectorGpio < 0
+    ) {
+        return "";
+    }
+
+    return ` @ GPIO${status.selectorGpio}${status.selectorGpioActiveHigh ? "H" : "L"}`;
+}
+
+function formatDisplayFrequencyWithSelector(valueHz, status, options = {}) {
+    const frequency = formatDisplayFrequency(valueHz, options);
+    if (frequency === "Not available" || frequency === "(Skip)") {
+        return frequency;
+    }
+
+    return `${frequency}${formatSelectorGpioSuffix(status)}`;
 }
 
 function renderCwRuntimeMessage(node, message, activeCharIndex) {
