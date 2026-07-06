@@ -21,7 +21,7 @@
 //   "type": "journal" | "internal",
 //   "playback": boolean,
 //   "__CURSOR": string|null,
-//   "__REALTIME_TIMESTAMP": int,   // microseconds since epoch
+//   "__REALTIME_TIMESTAMP": string|null, // microseconds since epoch
 //   "PRIORITY": string|null,       // journald 0..7 as strings
 //   "SYSLOG_IDENTIFIER": string|null,
 //   "MESSAGE": string,
@@ -69,9 +69,13 @@ while (ob_get_level() > 0) {
 // -----------------------------------------------------------------------------
 // Helpers
 // -----------------------------------------------------------------------------
-function now_micro(): int
+function now_micro(): string
 {
-    return (int)(microtime(true) * 1_000_000);
+    $parts = gettimeofday();
+    $sec = isset($parts['sec']) ? (int)$parts['sec'] : time();
+    $usec = isset($parts['usec']) ? (int)$parts['usec'] : 0;
+
+    return sprintf('%d%06d', $sec, $usec);
 }
 
 function flush_sse(): void
@@ -369,18 +373,41 @@ function proc_cleanup(array $started): void
     }
 }
 
+function normalize_realtime_timestamp($value): ?string
+{
+    if (is_int($value)) {
+        $value = (string)$value;
+    } elseif (is_float($value)) {
+        $value = sprintf('%.0F', $value);
+    } elseif (is_string($value)) {
+        $value = trim($value);
+    } else {
+        return null;
+    }
+
+    if ($value === '' || !preg_match('/^[0-9]+$/', $value)) {
+        return null;
+    }
+
+    if (ltrim($value, '0') === '') {
+        return null;
+    }
+
+    return $value;
+}
+
 function send_entry(array $entry, bool $isPlayback): ?string
 {
     $cursor = $entry['__CURSOR'] ?? null;
+    $realtimeTimestamp = normalize_realtime_timestamp(
+        $entry['__REALTIME_TIMESTAMP'] ?? ($entry['_SOURCE_REALTIME_TIMESTAMP'] ?? null)
+    );
 
     $payload = [
         'type' => 'journal',
         'playback' => $isPlayback,
         '__CURSOR' => is_string($cursor) ? $cursor : null,
-        '__REALTIME_TIMESTAMP' =>
-            isset($entry['__REALTIME_TIMESTAMP'])
-                ? (int)$entry['__REALTIME_TIMESTAMP']
-                : now_micro(),
+        '__REALTIME_TIMESTAMP' => $realtimeTimestamp,
         'PRIORITY' => $entry['PRIORITY'] ?? null,
         'SYSLOG_IDENTIFIER' => $entry['SYSLOG_IDENTIFIER'] ?? null,
         'MESSAGE' => (string)($entry['MESSAGE'] ?? ''),

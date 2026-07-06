@@ -14,7 +14,7 @@
  * - type: "journal" | "internal"
  * - playback: bool
  * - __CURSOR: string|null
- * - __REALTIME_TIMESTAMP: int (microseconds since epoch)
+ * - __REALTIME_TIMESTAMP: string|null (microseconds since epoch)
  * - PRIORITY: "0".."7" (string) or null
  * - SYSLOG_IDENTIFIER, MESSAGE, _SYSTEMD_UNIT, HOSTNAME, PID, UID, GID
  *
@@ -26,6 +26,7 @@
     "use strict";
 
     const MAX_LINES = 8000; 
+    const MIN_VALID_JOURNAL_TIMESTAMP_US = 946684800000000; // 2000-01-01T00:00:00.000Z
     function setConnectButton(state) {
         const btn = document.getElementById("btn-reconnect");
         if (!btn) return;
@@ -620,9 +621,12 @@
 
         const us = Number(raw);
         if (!Number.isFinite(us)) return "";
+        if (!Number.isSafeInteger(us)) return "";
+        if (us < MIN_VALID_JOURNAL_TIMESTAMP_US) return "";
 
         const ms = Math.floor(us / 1000);
         const d = new Date(ms);
+        if (Number.isNaN(d.getTime())) return "";
 
         const yyyy = String(d.getUTCFullYear()).padStart(4, "0");
         const MM = String(d.getUTCMonth() + 1).padStart(2, "0");
@@ -1159,6 +1163,15 @@
     // Export entry points for site.js.
     // - loadPage() calls initLogStream() when present.
     // - bindActions() calls bindLogViewActions() when present.
+    if (window.WSPRRYPI_ENABLE_LOG_TEST_HOOKS === true) {
+        window.WSPRRYPI_LOG_TEST_HOOKS = {
+            formatTimestampUTC,
+            extractSeverityAndMessage,
+            formatUnitFixed16,
+            priorityToLabel
+        };
+    }
+
     window.initLogStream = init;
     window.bindLogViewActions = bindLogViewActions;
 })();
