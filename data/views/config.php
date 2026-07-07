@@ -457,7 +457,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                     </div>
 
                                     <div class="row gx-2 gy-3 align-items-start mt-1">
-                                        <div class="col-12 col-lg-4 config-stacked-field">
+                                        <div class="col-12 col-lg-4 config-stacked-field cw-shared-gap-control">
                                             <label for="cw_intra_element_gap" class="form-label">Intra-Element Gap:</label>
                                             <input
                                                 type="number"
@@ -476,7 +476,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                             </div>
                                         </div>
 
-                                        <div class="col-12 col-lg-4 config-stacked-field">
+                                        <div class="col-12 col-lg-4 config-stacked-field cw-shared-gap-control">
                                             <label for="cw_inter_character_gap" class="form-label">Inter-Character Gap:</label>
                                             <input
                                                 type="number"
@@ -495,7 +495,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                             </div>
                                         </div>
 
-                                        <div class="col-12 col-lg-4 config-stacked-field">
+                                        <div class="col-12 col-lg-4 config-stacked-field cw-shared-gap-control">
                                             <label for="cw_inter_word_gap" class="form-label">Inter-Word Gap:</label>
                                             <input
                                                 type="number"
@@ -511,6 +511,71 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                 required />
                                             <div id="cw-inter-word-gap-hint" class="form-text mt-2">
                                                 Enter a positive timing multiplier for gaps between Morse words.
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="row gx-2 gy-3 align-items-start mt-1 dfcw-gap-control d-none">
+                                        <div class="col-12">
+                                            <div id="dfcw-gap-hint" class="form-text">
+                                                DFCW uses equal-length dot and dash symbols separated by frequency; these gap multipliers control the off gaps between symbols, characters, and words.
+                                            </div>
+                                        </div>
+
+                                        <div class="col-12 col-lg-4 config-stacked-field">
+                                            <label for="dfcw_intra_element_gap" class="form-label">DFCW Intra-Element Gap:</label>
+                                            <input
+                                                type="number"
+                                                class="form-control"
+                                                id="dfcw_intra_element_gap"
+                                                min="0.000000001"
+                                                step="any"
+                                                inputmode="decimal"
+                                                aria-describedby="dfcw-intra-gap-hint"
+                                                data-bs-toggle="tooltip"
+                                                title="CW.DFCW Intra Element Gap: multiplier of Dot Seconds for the short off gap between DFCW dot/dash symbols."
+                                                value="0.333333"
+                                                required />
+                                            <div id="dfcw-intra-gap-hint" class="form-text mt-2">
+                                                Multiplier of Dot Seconds for the short off gap between DFCW dot/dash symbols.
+                                            </div>
+                                        </div>
+
+                                        <div class="col-12 col-lg-4 config-stacked-field">
+                                            <label for="dfcw_inter_character_gap" class="form-label">DFCW Inter-Character Gap:</label>
+                                            <input
+                                                type="number"
+                                                class="form-control"
+                                                id="dfcw_inter_character_gap"
+                                                min="0.000000001"
+                                                step="any"
+                                                inputmode="decimal"
+                                                aria-describedby="dfcw-inter-character-gap-hint"
+                                                data-bs-toggle="tooltip"
+                                                title="CW.DFCW Inter Character Gap: multiplier of Dot Seconds for the off gap between DFCW characters."
+                                                value="1"
+                                                required />
+                                            <div id="dfcw-inter-character-gap-hint" class="form-text mt-2">
+                                                Multiplier of Dot Seconds for the off gap between DFCW characters.
+                                            </div>
+                                        </div>
+
+                                        <div class="col-12 col-lg-4 config-stacked-field">
+                                            <label for="dfcw_inter_word_gap" class="form-label">DFCW Inter-Word Gap:</label>
+                                            <input
+                                                type="number"
+                                                class="form-control"
+                                                id="dfcw_inter_word_gap"
+                                                min="0.000000001"
+                                                step="any"
+                                                inputmode="decimal"
+                                                aria-describedby="dfcw-inter-word-gap-hint"
+                                                data-bs-toggle="tooltip"
+                                                title="CW.DFCW Inter Word Gap: multiplier of Dot Seconds for the off gap between DFCW words."
+                                                value="3"
+                                                required />
+                                            <div id="dfcw-inter-word-gap-hint" class="form-text mt-2">
+                                                Multiplier of Dot Seconds for the off gap between DFCW words.
                                             </div>
                                         </div>
                                     </div>
@@ -539,6 +604,9 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                 required />
                                             <div id="qrss-message-hint" class="form-text mt-2">
                                                 Enter the exact CW message to send. This field cannot be empty.
+                                            </div>
+                                            <div id="cw_message_length_estimate" class="form-text mt-2" aria-live="polite">
+                                                Estimated Message Length: unavailable
                                             </div>
                                         </div>
                                     </div>

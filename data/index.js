@@ -287,6 +287,9 @@ function restorePersistedConfigDraft() {
     $("#cw_intra_element_gap").val(Number(cw["Intra Element Gap"])).trigger("change");
     $("#cw_inter_character_gap").val(Number(cw["Inter Character Gap"])).trigger("change");
     $("#cw_inter_word_gap").val(Number(cw["Inter Word Gap"])).trigger("change");
+    $("#dfcw_intra_element_gap").val(Number(cw["DFCW Intra Element Gap"] ?? 0.333333)).trigger("change");
+    $("#dfcw_inter_character_gap").val(Number(cw["DFCW Inter Character Gap"] ?? 1.0)).trigger("change");
+    $("#dfcw_inter_word_gap").val(Number(cw["DFCW Inter Word Gap"] ?? 3.0)).trigger("change");
     $("#tx_start_minute").val(Number(cw["Start Minute"])).trigger("change");
     $("#tx_repeat_every").val(Number(cw["Repeat Minutes"])).trigger("change");
     $("#qrss_message").val(String(cw.Message || "")).trigger("change");
@@ -399,11 +402,15 @@ function bindIndexActions() {
     $("#qrss_frequency").on("input blur", validateCwBaseFrequency);
     $("#qrss_message").on("input change blur", function () {
         validateCwMessage();
+        updateCwMessageLengthEstimate();
         if (typeof renderRuntimeStatus === "function") {
             renderRuntimeStatus(currentRuntimeStatus);
         }
     });
-    $("#dot_length").on("input blur", validateCwDotSeconds);
+    $("#dot_length").on("input blur", function () {
+        validateCwDotSeconds();
+        updateCwMessageLengthEstimate();
+    });
     $("#fsk_offset").on("input blur", validateCwShiftHz);
     $("#tx_repeat_every").on("input blur", validateCwRepeatMinutes);
     $("#tx_start_minute").on("input blur", validateCwStartMinute);
@@ -412,18 +419,42 @@ function bindIndexActions() {
             "cw_intra_element_gap",
             "Enter a positive CW intra-element gap."
         );
+        updateCwMessageLengthEstimate();
     });
     $("#cw_inter_character_gap").on("input blur", function () {
         validatePositiveCwField(
             "cw_inter_character_gap",
             "Enter a positive CW inter-character gap."
         );
+        updateCwMessageLengthEstimate();
     });
     $("#cw_inter_word_gap").on("input blur", function () {
         validatePositiveCwField(
             "cw_inter_word_gap",
             "Enter a positive CW inter-word gap."
         );
+        updateCwMessageLengthEstimate();
+    });
+    $("#dfcw_intra_element_gap").on("input blur", function () {
+        validatePositiveCwField(
+            "dfcw_intra_element_gap",
+            "Enter a positive DFCW intra-element gap."
+        );
+        updateCwMessageLengthEstimate();
+    });
+    $("#dfcw_inter_character_gap").on("input blur", function () {
+        validatePositiveCwField(
+            "dfcw_inter_character_gap",
+            "Enter a positive DFCW inter-character gap."
+        );
+        updateCwMessageLengthEstimate();
+    });
+    $("#dfcw_inter_word_gap").on("input blur", function () {
+        validatePositiveCwField(
+            "dfcw_inter_word_gap",
+            "Enter a positive DFCW inter-word gap."
+        );
+        updateCwMessageLengthEstimate();
     });
     $("#si5351_i2c_address").on("input blur", validateSi5351I2cAddress);
     $("#si5351_i2c_bus, #si5351_reference_frequency").on(
@@ -716,6 +747,195 @@ function selectedConfigMode() {
 
 function isWsprConfigMode() {
     return selectedConfigMode() === "WSPR";
+}
+
+const CW_MESSAGE_MORSE_TABLE = Object.freeze({
+    A: ".-",
+    B: "-...",
+    C: "-.-.",
+    D: "-..",
+    E: ".",
+    F: "..-.",
+    G: "--.",
+    H: "....",
+    I: "..",
+    J: ".---",
+    K: "-.-",
+    L: ".-..",
+    M: "--",
+    N: "-.",
+    O: "---",
+    P: ".--.",
+    Q: "--.-",
+    R: ".-.",
+    S: "...",
+    T: "-",
+    U: "..-",
+    V: "...-",
+    W: ".--",
+    X: "-..-",
+    Y: "-.--",
+    Z: "--..",
+    0: "-----",
+    1: ".----",
+    2: "..---",
+    3: "...--",
+    4: "....-",
+    5: ".....",
+    6: "-....",
+    7: "--...",
+    8: "---..",
+    9: "----.",
+    "/": "-..-.",
+    "?": "..--..",
+    ".": ".-.-.-",
+    ",": "--..--",
+    "-": "-....-",
+    "+": ".-.-.",
+    "=": "-...-",
+});
+
+function parsePositiveFormNumber(fieldId) {
+    const field = document.getElementById(fieldId);
+    if (!field) {
+        return Number.NaN;
+    }
+
+    const value = Number.parseFloat(field.value);
+    return Number.isFinite(value) && value > 0 ? value : Number.NaN;
+}
+
+function estimateCwMessageSeconds(message, mode, timing) {
+    if (!timing || !Number.isFinite(timing.dotSeconds) || timing.dotSeconds <= 0) {
+        return { ok: false, reason: "unavailable" };
+    }
+
+    const normalizedMode = ["QRSS", "FSKCW", "DFCW"].includes(mode) ? mode : "";
+    if (!normalizedMode) {
+        return { ok: false, reason: "not applicable" };
+    }
+
+    const dashSeconds =
+        normalizedMode === "DFCW" ? timing.dotSeconds : timing.dotSeconds * 3;
+    const requiredTiming = [
+        dashSeconds,
+        timing.intraElementGapSeconds,
+        timing.interCharacterGapSeconds,
+        timing.interWordGapSeconds,
+    ];
+    if (!requiredTiming.every((value) => Number.isFinite(value) && value > 0)) {
+        return { ok: false, reason: "unavailable" };
+    }
+
+    let totalSeconds = 0;
+    let emittedCharacter = false;
+    let pendingWordGap = false;
+    const text = String(message || "");
+
+    for (const ch of text) {
+        if (/\s/.test(ch)) {
+            if (emittedCharacter) {
+                pendingWordGap = true;
+            }
+            continue;
+        }
+
+        const morse = CW_MESSAGE_MORSE_TABLE[ch.toUpperCase()];
+        if (!morse) {
+            return {
+                ok: false,
+                reason: `unavailable: unsupported character ${ch}`,
+            };
+        }
+
+        if (emittedCharacter) {
+            totalSeconds += pendingWordGap
+                ? timing.interWordGapSeconds
+                : timing.interCharacterGapSeconds;
+        }
+
+        for (let i = 0; i < morse.length; ++i) {
+            totalSeconds += morse[i] === "." ? timing.dotSeconds : dashSeconds;
+            if (i + 1 < morse.length) {
+                totalSeconds += timing.intraElementGapSeconds;
+            }
+        }
+
+        emittedCharacter = true;
+        pendingWordGap = false;
+    }
+
+    if (!emittedCharacter) {
+        return { ok: false, reason: "unavailable" };
+    }
+
+    return { ok: true, seconds: totalSeconds };
+}
+
+function formatCompactDuration(seconds) {
+    const roundedSeconds = Math.round(seconds);
+    if (roundedSeconds < 60) {
+        return "";
+    }
+
+    const minutes = Math.floor(roundedSeconds / 60);
+    const remainingSeconds = roundedSeconds % 60;
+    return `${minutes}m ${remainingSeconds}s`;
+}
+
+function formatCwMessageLengthEstimate(seconds) {
+    const secondsText = `${seconds.toFixed(1)} s`;
+    const compact = formatCompactDuration(seconds);
+    return compact ? `${secondsText} (${compact})` : secondsText;
+}
+
+function currentCwMessageTiming(mode) {
+    const dotSeconds = parsePositiveFormNumber("dot_length");
+
+    if (mode === "DFCW") {
+        return {
+            dotSeconds,
+            intraElementGapSeconds:
+                dotSeconds * parsePositiveFormNumber("dfcw_intra_element_gap"),
+            interCharacterGapSeconds:
+                dotSeconds * parsePositiveFormNumber("dfcw_inter_character_gap"),
+            interWordGapSeconds:
+                dotSeconds * parsePositiveFormNumber("dfcw_inter_word_gap"),
+        };
+    }
+
+    return {
+        dotSeconds,
+        intraElementGapSeconds:
+            dotSeconds * parsePositiveFormNumber("cw_intra_element_gap"),
+        interCharacterGapSeconds:
+            dotSeconds * parsePositiveFormNumber("cw_inter_character_gap"),
+        interWordGapSeconds:
+            dotSeconds * parsePositiveFormNumber("cw_inter_word_gap"),
+    };
+}
+
+function updateCwMessageLengthEstimate() {
+    const display = document.getElementById("cw_message_length_estimate");
+    if (!display) {
+        return;
+    }
+
+    const mode = selectedConfigMode();
+    if (mode === "WSPR") {
+        display.textContent = "Estimated Message Length: not applicable";
+        return;
+    }
+
+    const estimate = estimateCwMessageSeconds(
+        $("#qrss_message").val(),
+        mode,
+        currentCwMessageTiming(mode)
+    );
+
+    display.textContent = estimate.ok
+        ? `Estimated Message Length: ${formatCwMessageLengthEstimate(estimate.seconds)}`
+        : `Estimated Message Length: ${estimate.reason}`;
 }
 
 function bindModeChangeGuardModal() {
@@ -1528,6 +1748,7 @@ function syncConfigModeSections() {
 
     syncCalibrationControls();
     updateRuntimeControlStatusFromForm(null);
+    updateCwMessageLengthEstimate();
 }
 
 function syncPpmFields(source = "wspr") {
@@ -2404,6 +2625,7 @@ function validatePage() {
     let invalidCount = 0;
     const activeSelectors = ["#global_runtime_control"];
     const mode = selectedConfigMode();
+    updateCwMessageLengthEstimate();
 
     if (mode === "WSPR") {
         activeSelectors.push("#wspr_config");
@@ -2431,14 +2653,27 @@ function validatePage() {
         if (!validateCwStartMinute()) {
             invalidCount++;
         }
-        if (!validatePositiveCwField("cw_intra_element_gap", "Enter a positive CW intra-element gap.")) {
-            invalidCount++;
-        }
-        if (!validatePositiveCwField("cw_inter_character_gap", "Enter a positive CW inter-character gap.")) {
-            invalidCount++;
-        }
-        if (!validatePositiveCwField("cw_inter_word_gap", "Enter a positive CW inter-word gap.")) {
-            invalidCount++;
+        const cwMode = $('input[name="qrss_type"]:checked').val();
+        if (cwMode === "DFCW") {
+            if (!validatePositiveCwField("dfcw_intra_element_gap", "Enter a positive DFCW intra-element gap.")) {
+                invalidCount++;
+            }
+            if (!validatePositiveCwField("dfcw_inter_character_gap", "Enter a positive DFCW inter-character gap.")) {
+                invalidCount++;
+            }
+            if (!validatePositiveCwField("dfcw_inter_word_gap", "Enter a positive DFCW inter-word gap.")) {
+                invalidCount++;
+            }
+        } else {
+            if (!validatePositiveCwField("cw_intra_element_gap", "Enter a positive CW intra-element gap.")) {
+                invalidCount++;
+            }
+            if (!validatePositiveCwField("cw_inter_character_gap", "Enter a positive CW inter-character gap.")) {
+                invalidCount++;
+            }
+            if (!validatePositiveCwField("cw_inter_word_gap", "Enter a positive CW inter-word gap.")) {
+                invalidCount++;
+            }
         }
         clearValidationState("#wspr_config");
     }
@@ -2532,6 +2767,7 @@ function clickQRSSModeToggle() {
 function syncSelectedCwModeControls() {
     const selectedMode = $('input[name="qrss_type"]:checked').val();
     const shiftField = document.getElementById("fsk_offset");
+    const dfcwSelected = selectedMode === "DFCW";
 
     // CW.Shift Hz is only used by FSKCW and DFCW.
     if (selectedMode === "QRSS") {
@@ -2540,7 +2776,13 @@ function syncSelectedCwModeControls() {
         $('#fsk_offset').prop('disabled', false);
     }
 
+    $(".cw-shared-gap-control").toggleClass("d-none", dfcwSelected);
+    $(".cw-shared-gap-control input").prop("disabled", dfcwSelected);
+    $(".dfcw-gap-control").toggleClass("d-none", !dfcwSelected);
+    $(".dfcw-gap-control input").prop("disabled", !dfcwSelected);
+
     validateCwShiftHz();
+    updateCwMessageLengthEstimate();
 
     if (shiftField && shiftField.disabled) {
         shiftField.setCustomValidity("");
@@ -2826,6 +3068,9 @@ function buildConfigPayload() {
     let cw_intra_element_gap = parseFloat($('#cw_intra_element_gap').val());
     let cw_inter_character_gap = parseFloat($('#cw_inter_character_gap').val());
     let cw_inter_word_gap = parseFloat($('#cw_inter_word_gap').val());
+    let dfcw_intra_element_gap = parseFloat($('#dfcw_intra_element_gap').val());
+    let dfcw_inter_character_gap = parseFloat($('#dfcw_inter_character_gap').val());
+    let dfcw_inter_word_gap = parseFloat($('#dfcw_inter_word_gap').val());
     let cw_message = String($('#qrss_message').val() || "").trim();
     if (!Number.isFinite(dot_length) || dot_length <= 0) dot_length = 3.0;
     if (!Number.isInteger(fsk_offset) || fsk_offset <= 0) fsk_offset = 5;
@@ -2835,6 +3080,9 @@ function buildConfigPayload() {
     if (!Number.isFinite(cw_intra_element_gap) || cw_intra_element_gap <= 0) cw_intra_element_gap = 1.0;
     if (!Number.isFinite(cw_inter_character_gap) || cw_inter_character_gap <= 0) cw_inter_character_gap = 3.0;
     if (!Number.isFinite(cw_inter_word_gap) || cw_inter_word_gap <= 0) cw_inter_word_gap = 7.0;
+    if (!Number.isFinite(dfcw_intra_element_gap) || dfcw_intra_element_gap <= 0) dfcw_intra_element_gap = 0.333333;
+    if (!Number.isFinite(dfcw_inter_character_gap) || dfcw_inter_character_gap <= 0) dfcw_inter_character_gap = 1.0;
+    if (!Number.isFinite(dfcw_inter_word_gap) || dfcw_inter_word_gap <= 0) dfcw_inter_word_gap = 3.0;
 
     // GPIO timing calibration
     let use_ntp = parseBool($("#use_ntp").is(":checked"));
@@ -2923,6 +3171,9 @@ function buildConfigPayload() {
         "Intra Element Gap": cw_intra_element_gap,
         "Inter Character Gap": cw_inter_character_gap,
         "Inter Word Gap": cw_inter_word_gap,
+        "DFCW Intra Element Gap": dfcw_intra_element_gap,
+        "DFCW Inter Character Gap": dfcw_inter_character_gap,
+        "DFCW Inter Word Gap": dfcw_inter_word_gap,
         "Start Minute": tx_start_minute,
         "Repeat Minutes": tx_repeat_every,
     };

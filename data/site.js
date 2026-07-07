@@ -1665,6 +1665,9 @@ function populateConfig(callback = null) {
                 let cw_intra_element_gap = getConfigFloatValue(cw, "CW", "Intra Element Gap", 1.0);
                 let cw_inter_character_gap = getConfigFloatValue(cw, "CW", "Inter Character Gap", 3.0);
                 let cw_inter_word_gap = getConfigFloatValue(cw, "CW", "Inter Word Gap", 7.0);
+                let dfcw_intra_element_gap = getConfigFloatValue(cw, "CW", "DFCW Intra Element Gap", 0.333333);
+                let dfcw_inter_character_gap = getConfigFloatValue(cw, "CW", "DFCW Inter Character Gap", 1.0);
+                let dfcw_inter_word_gap = getConfigFloatValue(cw, "CW", "DFCW Inter Word Gap", 3.0);
                 let tx_start_minute = getConfigIntValue(cw, "CW", "Start Minute", 0);
                 let tx_repeat_every = getConfigIntValue(cw, "CW", "Repeat Minutes", 10);
                 let cw_message = String(getConfigValue(cw, "CW", "Message", "") || "").trim();
@@ -1763,9 +1766,15 @@ function populateConfig(callback = null) {
                     $("#cw_intra_element_gap").val(cw_intra_element_gap).trigger("change");
                     $("#cw_inter_character_gap").val(cw_inter_character_gap).trigger("change");
                     $("#cw_inter_word_gap").val(cw_inter_word_gap).trigger("change");
+                    $("#dfcw_intra_element_gap").val(dfcw_intra_element_gap).trigger("change");
+                    $("#dfcw_inter_character_gap").val(dfcw_inter_character_gap).trigger("change");
+                    $("#dfcw_inter_word_gap").val(dfcw_inter_word_gap).trigger("change");
                     $("#tx_start_minute").val(tx_start_minute).trigger("change");
                     $("#tx_repeat_every").val(tx_repeat_every).trigger("change");
                     $('#qrss_message').val(cw_message).trigger("change");
+                    if (typeof updateCwMessageLengthEstimate === "function") {
+                        updateCwMessageLengthEstimate();
+                    }
 
                     // Frequency Calibration
                     $("#use_ntp").prop("checked", use_ntp).trigger("change");
