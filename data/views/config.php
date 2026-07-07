@@ -533,7 +533,6 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                 autocomplete="off"
                                                 spellcheck="false"
                                                 aria-describedby="qrss-message-hint"
-                                                step="1"
                                                 data-bs-toggle="tooltip"
                                                 title="CW.Message sent by QRSS, FSKCW, or DFCW"
                                                 value="Hello"
