@@ -300,6 +300,75 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                     <legend>CW Control</legend>
                                     <p class="config-panel__summary">Choose the CW mode and timing first, then set frequency and repeat timing.</p>
 
+                                    <section class="cw-control-section" aria-labelledby="cw-modulation-heading">
+                                        <h3 id="cw-modulation-heading" class="cw-control-section__title">Modulation</h3>
+                                        <div id="cw_modulation_controls"></div>
+                                    </section>
+
+                                    <section class="cw-control-section" aria-labelledby="cw-timing-heading">
+                                        <h3 id="cw-timing-heading" class="cw-control-section__title">CW Timing</h3>
+                                        <p class="form-text mb-0">Select the shared base duration used by QRSS, FSKCW, and DFCW. Each modulation retains its own element and spacing behavior.</p>
+
+                                        <div class="cw-timing-selectors">
+                                            <fieldset class="cw-choice-group">
+                                                <legend class="form-label">Speed</legend>
+                                                <div class="d-flex flex-wrap gap-3" aria-describedby="cw-speed-hint">
+                                                    <?php foreach (['QRSS1', 'QRSS3', 'QRSS6', 'Advanced'] as $speed): ?>
+                                                        <div class="form-check">
+                                                            <input class="form-check-input" type="radio" name="cw_speed" id="cw_speed_<?= strtolower($speed) ?>" value="<?= $speed ?>">
+                                                            <label class="form-check-label" for="cw_speed_<?= strtolower($speed) ?>"><?= $speed ?></label>
+                                                        </div>
+                                                    <?php endforeach; ?>
+                                                </div>
+                                                <div id="cw-speed-hint" class="form-text">QRSS1, QRSS3, and QRSS6 select a shared one-, three-, or six-second base duration.</div>
+                                            </fieldset>
+
+                                            <fieldset class="cw-choice-group">
+                                                <legend class="form-label">Spacing</legend>
+                                                <div class="d-flex flex-wrap gap-3" aria-describedby="cw-spacing-hint">
+                                                    <?php foreach (['Standard', 'Advanced'] as $spacing): ?>
+                                                        <div class="form-check">
+                                                            <input class="form-check-input" type="radio" name="cw_spacing" id="cw_spacing_<?= strtolower($spacing) ?>" value="<?= $spacing ?>">
+                                                            <label class="form-check-label" for="cw_spacing_<?= strtolower($spacing) ?>"><?= $spacing ?></label>
+                                                        </div>
+                                                    <?php endforeach; ?>
+                                                </div>
+                                                <div id="cw-spacing-hint" class="form-text">Standard uses the selected modulation's established gap multipliers.</div>
+                                            </fieldset>
+                                        </div>
+
+                                        <div id="cw_dot_duration_control"></div>
+                                        <div id="cw_conventional_gap_section" class="cw-gap-section" aria-labelledby="cw-conventional-gap-title">
+                                            <div class="cw-repair-header" hidden>
+                                                <div>
+                                                    <h4 id="cw-conventional-gap-title" class="cw-repair-header__title">Review QRSS/FSKCW spacing</h4>
+                                                    <p class="form-text mb-0">Correct the preserved conventional spacing values before saving can continue.</p>
+                                                </div>
+                                                <button type="button" class="btn btn-outline-secondary btn-sm cw-repair-close" data-group="conventional">Close</button>
+                                            </div>
+                                        </div>
+                                        <div id="cw_dfcw_gap_section" class="cw-gap-section" aria-labelledby="cw-dfcw-gap-title">
+                                            <div class="cw-repair-header" hidden>
+                                                <div>
+                                                    <h4 id="cw-dfcw-gap-title" class="cw-repair-header__title">Review DFCW spacing</h4>
+                                                    <p class="form-text mb-0">Correct the preserved DFCW spacing values before saving can continue.</p>
+                                                </div>
+                                                <button type="button" class="btn btn-outline-secondary btn-sm cw-repair-close" data-group="dfcw">Close</button>
+                                            </div>
+                                        </div>
+                                        <p id="cw-mode-timing-explanation" class="cw-mode-explanation" aria-live="polite"></p>
+                                    </section>
+
+                                    <section class="cw-control-section" aria-labelledby="cw-frequency-heading">
+                                        <h3 id="cw-frequency-heading" class="cw-control-section__title">Frequency</h3>
+                                        <div id="cw_frequency_controls" class="row gx-2 gy-3 align-items-start"></div>
+                                    </section>
+
+                                    <section class="cw-control-section" aria-labelledby="cw-schedule-heading">
+                                        <h3 id="cw-schedule-heading" class="cw-control-section__title">Schedule</h3>
+                                        <div id="cw_schedule_controls" class="row gx-2 gy-3 align-items-start"></div>
+                                    </section>
+
                                     <div class="row gx-2 gy-3 align-items-start">
 
                                         <div class="col-12 col-lg-4">

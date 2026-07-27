@@ -1174,6 +1174,11 @@ function getConfigFloatValue(section, sectionName, key, fallback) {
     return value;
 }
 
+function getConfigTimingValue(section, sectionName, key, fallback) {
+    const rawValue = getConfigValue(section, sectionName, key, fallback);
+    return typeof rawValue === "number" ? rawValue : Number(String(rawValue).trim());
+}
+
 function getConfigBoolValue(section, sectionName, key, fallback) {
     const rawValue = getConfigValue(section, sectionName, key, fallback);
 
@@ -1659,15 +1664,15 @@ function populateConfig(callback = null) {
                     "Amp Pin Active High",
                     false
                 );
-                let dot_length = getConfigFloatValue(cw, "CW", "Dot Seconds", 3.0);
+                let dot_length = getConfigTimingValue(cw, "CW", "Dot Seconds", 3.0);
                 let fsk_offset = getConfigFloatValue(cw, "CW", "Shift Hz", 5.0);
                 let cw_base_frequency = getConfigFloatValue(cw, "CW", "Base Frequency", 14096900.0);
-                let cw_intra_element_gap = getConfigFloatValue(cw, "CW", "Intra Element Gap", 1.0);
-                let cw_inter_character_gap = getConfigFloatValue(cw, "CW", "Inter Character Gap", 3.0);
-                let cw_inter_word_gap = getConfigFloatValue(cw, "CW", "Inter Word Gap", 7.0);
-                let dfcw_intra_element_gap = getConfigFloatValue(cw, "CW", "DFCW Intra Element Gap", 0.333333);
-                let dfcw_inter_character_gap = getConfigFloatValue(cw, "CW", "DFCW Inter Character Gap", 1.0);
-                let dfcw_inter_word_gap = getConfigFloatValue(cw, "CW", "DFCW Inter Word Gap", 3.0);
+                let cw_intra_element_gap = getConfigTimingValue(cw, "CW", "Intra Element Gap", 1.0);
+                let cw_inter_character_gap = getConfigTimingValue(cw, "CW", "Inter Character Gap", 3.0);
+                let cw_inter_word_gap = getConfigTimingValue(cw, "CW", "Inter Word Gap", 7.0);
+                let dfcw_intra_element_gap = getConfigTimingValue(cw, "CW", "DFCW Intra Element Gap", 0.333333);
+                let dfcw_inter_character_gap = getConfigTimingValue(cw, "CW", "DFCW Inter Character Gap", 1.0);
+                let dfcw_inter_word_gap = getConfigTimingValue(cw, "CW", "DFCW Inter Word Gap", 3.0);
                 let tx_start_minute = getConfigIntValue(cw, "CW", "Start Minute", 0);
                 let tx_repeat_every = getConfigIntValue(cw, "CW", "Repeat Minutes", 10);
                 let cw_message = String(getConfigValue(cw, "CW", "Message", "") || "").trim();
@@ -1769,6 +1774,9 @@ function populateConfig(callback = null) {
                     $("#dfcw_intra_element_gap").val(dfcw_intra_element_gap).trigger("change");
                     $("#dfcw_inter_character_gap").val(dfcw_inter_character_gap).trigger("change");
                     $("#dfcw_inter_word_gap").val(dfcw_inter_word_gap).trigger("change");
+                    if (typeof synchronizeCwTimingAfterPopulation === "function") {
+                        synchronizeCwTimingAfterPopulation();
+                    }
                     $("#tx_start_minute").val(tx_start_minute).trigger("change");
                     $("#tx_repeat_every").val(tx_repeat_every).trigger("change");
                     $('#qrss_message').val(cw_message).trigger("change");
