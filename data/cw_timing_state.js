@@ -19,6 +19,17 @@
         interCharacter: 1,
         interWord: 3,
     });
+    const MORSE_TABLE = Object.freeze({
+        A: ".-", B: "-...", C: "-.-.", D: "-..", E: ".", F: "..-.",
+        G: "--.", H: "....", I: "..", J: ".---", K: "-.-", L: ".-..",
+        M: "--", N: "-.", O: "---", P: ".--.", Q: "--.-", R: ".-.",
+        S: "...", T: "-", U: "..-", V: "...-", W: ".--", X: "-..-",
+        Y: "-.--", Z: "--..", 0: "-----", 1: ".----", 2: "..---",
+        3: "...--", 4: "....-", 5: ".....", 6: "-....", 7: "--...",
+        8: "---..", 9: "----.", "/": "-..-.", "?": "..--..",
+        ".": ".-.-.-", ",": "--..--", "-": "-....-", "+": ".-.-.",
+        "=": "-...-",
+    });
 
     function positiveFinite(value) {
         const text = typeof value === "string" ? value.trim() : value;
@@ -127,10 +138,73 @@
         };
     }
 
+    // Mirrors ExecutionPlanCompiler::expand_morse_message and its QRSS,
+    // FSKCW, and DFCW mark/gap selection. Keep this as the browser's single
+    // duration estimator so display and duration-policy validation cannot drift.
+    function estimateMessageSeconds(message, mode, timing) {
+        if (!timing || positiveFinite(timing.dotSeconds) === null) {
+            return { ok: false, reason: "unavailable" };
+        }
+
+        const normalizedMode = String(mode || "").toUpperCase();
+        if (!["QRSS", "FSKCW", "DFCW"].includes(normalizedMode)) {
+            return { ok: false, reason: "not applicable" };
+        }
+
+        const dashSeconds = normalizedMode === "DFCW"
+            ? Number(timing.dotSeconds)
+            : Number(timing.dotSeconds) * 3;
+        const required = [
+            dashSeconds,
+            timing.intraElementGapSeconds,
+            timing.interCharacterGapSeconds,
+            timing.interWordGapSeconds,
+        ];
+        if (!required.every((value) => positiveFinite(value) !== null)) {
+            return { ok: false, reason: "unavailable" };
+        }
+
+        let totalSeconds = 0;
+        let emittedCharacter = false;
+        let pendingWordGap = false;
+        for (const ch of String(message || "")) {
+            if (/\s/.test(ch)) {
+                if (emittedCharacter) pendingWordGap = true;
+                continue;
+            }
+
+            const morse = MORSE_TABLE[ch.toUpperCase()];
+            if (!morse) {
+                return { ok: false, reason: `unavailable: unsupported character ${ch}` };
+            }
+
+            if (emittedCharacter) {
+                totalSeconds += pendingWordGap
+                    ? Number(timing.interWordGapSeconds)
+                    : Number(timing.interCharacterGapSeconds);
+            }
+            for (let index = 0; index < morse.length; ++index) {
+                totalSeconds += morse[index] === "."
+                    ? Number(timing.dotSeconds)
+                    : dashSeconds;
+                if (index + 1 < morse.length) {
+                    totalSeconds += Number(timing.intraElementGapSeconds);
+                }
+            }
+            emittedCharacter = true;
+            pendingWordGap = false;
+        }
+
+        return emittedCharacter
+            ? { ok: true, seconds: totalSeconds }
+            : { ok: false, reason: "unavailable" };
+    }
+
     return Object.freeze({
         SPEEDS,
         CONVENTIONAL_STANDARD,
         DFCW_STANDARD,
+        MORSE_TABLE,
         positiveFinite,
         inferSpeed,
         activeGroup,
@@ -144,5 +218,6 @@
         invalidFields,
         isValid,
         serialize,
+        estimateMessageSeconds,
     });
 }));

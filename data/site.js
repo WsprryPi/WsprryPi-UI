@@ -3023,6 +3023,17 @@ function connectWebSocket(endpoint, reconnectDelay = 5000, attemptIndex = 0) {
                 );
                 return;
             }
+            if (
+                typeof handleCwDurationPolicyFailure === "function" &&
+                handleCwDurationPolicyFailure(message)
+            ) {
+                debugConsole(
+                    "debug",
+                    "Routed CW duration reload failure to Setup validation:",
+                    message
+                );
+                return;
+            }
             if (typeof showBackendStatus === "function") {
                 showBackendStatus(formattedMessage, "danger", "runtime");
             }

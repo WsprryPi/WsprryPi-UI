@@ -78,4 +78,56 @@ assert.equal(timing.isValid(custom), true);
     });
 });
 
+function estimate(message, mode, dotSeconds, gaps) {
+    return timing.estimateMessageSeconds(message, mode, {
+        dotSeconds,
+        intraElementGapSeconds: dotSeconds * gaps.intraElement,
+        interCharacterGapSeconds: dotSeconds * gaps.interCharacter,
+        interWordGapSeconds: dotSeconds * gaps.interWord,
+    });
+}
+
+const conventional = timing.CONVENTIONAL_STANDARD;
+const dfcw = timing.DFCW_STANDARD;
+for (const mode of ["QRSS", "FSKCW", "DFCW"]) {
+    const gaps = mode === "DFCW" ? dfcw : conventional;
+    assert.equal(
+        estimate("E", mode, 61, gaps).seconds > 60,
+        true,
+        `${mode} must detect an overlong message`
+    );
+    assert.equal(
+        estimate("E", mode, 60, gaps).seconds,
+        60,
+        `${mode} must accept equality with the repeat interval`
+    );
+}
+
+const overlong = estimate("EE", "QRSS", 20, conventional);
+assert.equal(overlong.seconds > 60, true);
+assert.equal(estimate("E", "QRSS", 20, conventional).seconds <= 60, true,
+    "shortening the message must recover");
+assert.equal(overlong.seconds <= 120, true,
+    "increasing the repeat interval must recover");
+assert.equal(estimate("EE", "QRSS", 10, conventional).seconds <= 60, true,
+    "shortening dot length must recover");
+assert.equal(
+    estimate("EE", "QRSS", 20, { intraElement: 1, interCharacter: 0.5, interWord: 7 }).seconds <
+        overlong.seconds,
+    true,
+    "changing active spacing must reevaluate duration"
+);
+assert.equal(timing.estimateMessageSeconds("", "QRSS", {
+    dotSeconds: 1,
+    intraElementGapSeconds: 1,
+    interCharacterGapSeconds: 3,
+    interWordGapSeconds: 7,
+}).ok, false, "empty messages must remain invalid");
+assert.match(timing.estimateMessageSeconds("E@", "QRSS", {
+    dotSeconds: 1,
+    intraElementGapSeconds: 1,
+    interCharacterGapSeconds: 3,
+    interWordGapSeconds: 7,
+}).reason, /unsupported character @/, "unsupported messages must remain invalid");
+
 console.log("cw_timing_state_test passed");

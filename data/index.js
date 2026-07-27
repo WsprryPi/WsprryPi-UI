@@ -13,6 +13,7 @@ let configAutosaveDirty = false;
 let lastSavedConfigPayload = "";
 let lastFailedConfigPayload = "";
 let lastFailedConfigMessage = "";
+let cwDurationPolicyLatched = false;
 let configSaveStatusClearTimer = null;
 let configAutosaveNeedsRuntimeRefresh = false;
 let pendingPersistedMode = "";
@@ -985,51 +986,7 @@ function isWsprConfigMode() {
     return selectedConfigMode() === "WSPR";
 }
 
-const CW_MESSAGE_MORSE_TABLE = Object.freeze({
-    A: ".-",
-    B: "-...",
-    C: "-.-.",
-    D: "-..",
-    E: ".",
-    F: "..-.",
-    G: "--.",
-    H: "....",
-    I: "..",
-    J: ".---",
-    K: "-.-",
-    L: ".-..",
-    M: "--",
-    N: "-.",
-    O: "---",
-    P: ".--.",
-    Q: "--.-",
-    R: ".-.",
-    S: "...",
-    T: "-",
-    U: "..-",
-    V: "...-",
-    W: ".--",
-    X: "-..-",
-    Y: "-.--",
-    Z: "--..",
-    0: "-----",
-    1: ".----",
-    2: "..---",
-    3: "...--",
-    4: "....-",
-    5: ".....",
-    6: "-....",
-    7: "--...",
-    8: "---..",
-    9: "----.",
-    "/": "-..-.",
-    "?": "..--..",
-    ".": ".-.-.-",
-    ",": "--..--",
-    "-": "-....-",
-    "+": ".-.-.",
-    "=": "-...-",
-});
+const CW_MESSAGE_MORSE_TABLE = CwTimingState.MORSE_TABLE;
 
 function parsePositiveFormNumber(fieldId) {
     const field = document.getElementById(fieldId);
@@ -1042,70 +999,7 @@ function parsePositiveFormNumber(fieldId) {
 }
 
 function estimateCwMessageSeconds(message, mode, timing) {
-    if (!timing || !Number.isFinite(timing.dotSeconds) || timing.dotSeconds <= 0) {
-        return { ok: false, reason: "unavailable" };
-    }
-
-    const normalizedMode = ["QRSS", "FSKCW", "DFCW"].includes(mode) ? mode : "";
-    if (!normalizedMode) {
-        return { ok: false, reason: "not applicable" };
-    }
-
-    const dashSeconds =
-        normalizedMode === "DFCW" ? timing.dotSeconds : timing.dotSeconds * 3;
-    const requiredTiming = [
-        dashSeconds,
-        timing.intraElementGapSeconds,
-        timing.interCharacterGapSeconds,
-        timing.interWordGapSeconds,
-    ];
-    if (!requiredTiming.every((value) => Number.isFinite(value) && value > 0)) {
-        return { ok: false, reason: "unavailable" };
-    }
-
-    let totalSeconds = 0;
-    let emittedCharacter = false;
-    let pendingWordGap = false;
-    const text = String(message || "");
-
-    for (const ch of text) {
-        if (/\s/.test(ch)) {
-            if (emittedCharacter) {
-                pendingWordGap = true;
-            }
-            continue;
-        }
-
-        const morse = CW_MESSAGE_MORSE_TABLE[ch.toUpperCase()];
-        if (!morse) {
-            return {
-                ok: false,
-                reason: `unavailable: unsupported character ${ch}`,
-            };
-        }
-
-        if (emittedCharacter) {
-            totalSeconds += pendingWordGap
-                ? timing.interWordGapSeconds
-                : timing.interCharacterGapSeconds;
-        }
-
-        for (let i = 0; i < morse.length; ++i) {
-            totalSeconds += morse[i] === "." ? timing.dotSeconds : dashSeconds;
-            if (i + 1 < morse.length) {
-                totalSeconds += timing.intraElementGapSeconds;
-            }
-        }
-
-        emittedCharacter = true;
-        pendingWordGap = false;
-    }
-
-    if (!emittedCharacter) {
-        return { ok: false, reason: "unavailable" };
-    }
-
-    return { ok: true, seconds: totalSeconds };
+    return CwTimingState.estimateMessageSeconds(message, mode, timing);
 }
 
 function formatCompactDuration(seconds) {
@@ -1160,6 +1054,7 @@ function updateCwMessageLengthEstimate() {
     const mode = selectedConfigMode();
     if (mode === "WSPR") {
         display.textContent = "Estimated Message Length: not applicable";
+        updateCwDurationPolicyLatch();
         return;
     }
 
@@ -1172,6 +1067,115 @@ function updateCwMessageLengthEstimate() {
     display.textContent = estimate.ok
         ? `Estimated Message Length: ${formatCwMessageLengthEstimate(estimate.seconds)}`
         : `Estimated Message Length: ${estimate.reason}`;
+
+    updateCwDurationPolicyLatch();
+
+    return estimate;
+}
+
+function cwMessageOrdinaryValidation(message) {
+    const text = String(message || "").trim();
+    if (!text) {
+        return { valid: false, message: "CW message is required." };
+    }
+
+    for (const ch of text) {
+        if (!/\s/.test(ch) && !CW_MESSAGE_MORSE_TABLE[ch.toUpperCase()]) {
+            return {
+                valid: false,
+                message: `CW message contains unsupported character ${ch}.`,
+            };
+        }
+    }
+
+    return { valid: true, message: "" };
+}
+
+function currentCwDurationConstraint() {
+    const mode = selectedConfigMode();
+    if (!["QRSS", "FSKCW", "DFCW"].includes(mode)) {
+        return { applicable: false };
+    }
+
+    const estimate = estimateCwMessageSeconds(
+        $("#qrss_message").val(),
+        mode,
+        currentCwMessageTiming(mode)
+    );
+    const repeatMinutes = parsePositiveFormNumber("tx_repeat_every");
+    if (!estimate.ok || !Number.isFinite(repeatMinutes)) {
+        return { applicable: false, estimate, mode };
+    }
+
+    const repeatSeconds = repeatMinutes * 60;
+    return {
+        applicable: true,
+        mode,
+        seconds: estimate.seconds,
+        repeatSeconds,
+        overLimit: estimate.seconds > repeatSeconds,
+    };
+}
+
+function cwDurationPolicyDetail(constraint) {
+    return `The calculated ${constraint.mode} message duration is ${formatCwMessageLengthEstimate(constraint.seconds)}, which exceeds the repeat interval of ${formatCwMessageLengthEstimate(constraint.repeatSeconds)}. Shorten the message, shorten the dot length or active spacing, or increase the repeat interval.`;
+}
+
+function updateCwDurationPolicyLatch(options = {}) {
+    const constraint = currentCwDurationConstraint();
+    const shouldLatch = constraint.applicable && constraint.overLimit;
+    const wasLatched = cwDurationPolicyLatched;
+    cwDurationPolicyLatched = shouldLatch;
+
+    if (cwDurationPolicyLatched) {
+        if (configAutosaveTimer) {
+            clearTimeout(configAutosaveTimer);
+            configAutosaveTimer = null;
+        }
+        setConfigSaveStatus(
+            "error",
+            "Save failed",
+            cwDurationPolicyDetail(constraint)
+        );
+    } else if (wasLatched) {
+        lastFailedConfigPayload = "";
+        lastFailedConfigMessage = "";
+        setConfigSaveStatus("saving", "Saving...", "");
+    }
+
+    if (options.markDirty && cwDurationPolicyLatched) {
+        configAutosaveDirty = true;
+        persistLocalConfigDraftIfPossible();
+    }
+
+    return constraint;
+}
+
+function isCwDurationPolicyError(data) {
+    return !!data && typeof data === "object" &&
+        data.policy === "cw_duration_repeat_interval" &&
+        data.field === "CW.Message";
+}
+
+function handleCwDurationPolicyFailure(messageOrData) {
+    const structured = isCwDurationPolicyError(messageOrData);
+    const message = typeof messageOrData === "string"
+        ? messageOrData
+        : (messageOrData && typeof messageOrData.message === "string"
+            ? messageOrData.message
+            : "");
+    const recognizedMessage = /^Configured (QRSS|FSKCW|DFCW) message duration of .+ exceeds repeat_every interval of .+\. Reduce the message length, shorten the unit length, or increase repeat_every\.$/.test(message.trim());
+    const constraint = currentCwDurationConstraint();
+
+    if ((!structured && !recognizedMessage) ||
+        !constraint.applicable || !constraint.overLimit) {
+        return false;
+    }
+
+    cwDurationPolicyLatched = true;
+    validateCwMessage();
+    updateCwDurationPolicyLatch({ markDirty: true });
+    return true;
 }
 
 function bindModeChangeGuardModal() {
@@ -3505,7 +3509,11 @@ function syncConfigAutosaveBaseline() {
         lastFailedConfigMessage = "";
         configAutosaveDirty = false;
         removePersistedConfigDraft();
-        setConfigSaveStatus("", "", "");
+        if (cwDurationPolicyLatched) {
+            updateCwDurationPolicyLatch();
+        } else {
+            setConfigSaveStatus("", "", "");
+        }
         return;
     }
 
@@ -3525,6 +3533,11 @@ function scheduleAutosave() {
         return;
     }
 
+    const durationConstraint = updateCwDurationPolicyLatch({ markDirty: true });
+    if (durationConstraint.applicable && durationConstraint.overLimit) {
+        return;
+    }
+
     configAutosaveDirty = true;
     persistLocalConfigDraftIfPossible();
     if (configAutosaveTimer) {
@@ -3539,6 +3552,11 @@ function scheduleAutosave() {
 
 function flushAutosave() {
     if (configAutosaveSuspended) {
+        return;
+    }
+
+    const durationConstraint = updateCwDurationPolicyLatch({ markDirty: true });
+    if (durationConstraint.applicable && durationConstraint.overLimit) {
         return;
     }
 
@@ -3654,6 +3672,14 @@ function flushAutosave() {
 
             const isPairedPlanningFailure =
                 isPairedPlanningUnavailableError(parsedError);
+
+            if (handleCwDurationPolicyFailure(parsedError)) {
+                debugConsole("warn", "Autosave rejected by CW duration policy.");
+                lastFailedConfigPayload = payloadJson;
+                lastFailedConfigMessage = message;
+                configAutosaveDirty = true;
+                return;
+            }
 
             debugConsole("error", "Autosave failed:", message);
             lastFailedConfigPayload = payloadJson;
@@ -3886,10 +3912,17 @@ function validateCwBaseFrequency() {
 
 function validateCwMessage() {
     const fld = document.getElementById("qrss_message");
-    const message = String(fld.value || "").trim();
-    const valid = message.length > 0;
+    const ordinary = cwMessageOrdinaryValidation(fld.value);
+    const constraint = currentCwDurationConstraint();
+    const durationInvalid = constraint.applicable && constraint.overLimit;
+    updateCwDurationPolicyLatch();
+    const valid = ordinary.valid && !durationInvalid;
 
-    fld.setCustomValidity(valid ? "" : "CW message is required.");
+    fld.setCustomValidity(
+        !ordinary.valid
+            ? ordinary.message
+            : (durationInvalid ? cwDurationPolicyDetail(constraint) : "")
+    );
     setFieldValidationState(fld, valid);
 
     return valid;
