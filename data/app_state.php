@@ -22,7 +22,7 @@ $viewMetadata = [
         'bodyClass' => '',
         'htmlTheme' => 'light',
         'css' => ['index.css'],
-        'js' => ['index.js'],
+        'js' => ['cw_timing_state.js', 'index.js'],
         'partial' => __DIR__ . '/views/config.php',
     ],
     'logs' => [

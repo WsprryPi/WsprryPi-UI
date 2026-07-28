@@ -13,6 +13,7 @@ let configAutosaveDirty = false;
 let lastSavedConfigPayload = "";
 let lastFailedConfigPayload = "";
 let lastFailedConfigMessage = "";
+let cwDurationPolicyLatched = false;
 let configSaveStatusClearTimer = null;
 let configAutosaveNeedsRuntimeRefresh = false;
 let pendingPersistedMode = "";
@@ -26,6 +27,9 @@ let configNetworkHandlersBound = false;
 let configNavigationGuardBound = false;
 let stopRequestTimeoutHandle = null;
 let modeChangeGuardStopTimeoutHandle = null;
+let cwSpeedSelectionOverride = null;
+const cwSpacingSelectionOverride = { conventional: null, dfcw: null };
+const cwRepairRevealed = { conventional: false, dfcw: false };
 const PAIRED_PLANNING_SHORT_MESSAGE =
     "Paired planning requires a compound callsign and 6-character locator.";
 
@@ -290,7 +294,9 @@ function restorePersistedConfigDraft() {
     $("#dfcw_intra_element_gap").val(Number(cw["DFCW Intra Element Gap"] ?? 0.333333)).trigger("change");
     $("#dfcw_inter_character_gap").val(Number(cw["DFCW Inter Character Gap"] ?? 1.0)).trigger("change");
     $("#dfcw_inter_word_gap").val(Number(cw["DFCW Inter Word Gap"] ?? 3.0)).trigger("change");
+    synchronizeCwTimingAfterPopulation();
     $("#tx_start_minute").val(Number(cw["Start Minute"])).trigger("change");
+    $("#tx_start_second").val(Number(cw["Start Second"] ?? 5)).trigger("change");
     $("#tx_repeat_every").val(Number(cw["Repeat Minutes"])).trigger("change");
     $("#qrss_message").val(String(cw.Message || "")).trigger("change");
 
@@ -347,6 +353,10 @@ function bindIndexActions() {
 
     // Bind the shared CW mode radio buttons
     $('input[name="qrss_type"]').on('change', clickQRSSModeToggle);
+    organizeCwControlLayout();
+    $('input[name="cw_speed"]').on("change", handleCwSpeedChange);
+    $('input[name="cw_spacing"]').on("change", handleCwSpacingChange);
+    $(".cw-repair-close").on("click", handleCwRepairClose);
 
     // Bind the Use NTP Switch
     $("#use_ntp").on("change", clickUseNTP);
@@ -414,6 +424,7 @@ function bindIndexActions() {
     $("#fsk_offset").on("input blur", validateCwShiftHz);
     $("#tx_repeat_every").on("input blur", validateCwRepeatMinutes);
     $("#tx_start_minute").on("input blur", validateCwStartMinute);
+    $("#tx_start_second").on("input blur", validateCwStartSecond);
     $("#cw_intra_element_gap").on("input blur", function () {
         validatePositiveCwField(
             "cw_intra_element_gap",
@@ -456,6 +467,17 @@ function bindIndexActions() {
         );
         updateCwMessageLengthEstimate();
     });
+    $("#dot_length, #cw_intra_element_gap, #cw_inter_character_gap, #cw_inter_word_gap, #dfcw_intra_element_gap, #dfcw_inter_character_gap, #dfcw_inter_word_gap")
+        .on("input", function () {
+            const fieldId = this.id;
+            if (fieldId === "dot_length") {
+                cwSpeedSelectionOverride = "Advanced";
+            } else {
+                const group = fieldId.startsWith("dfcw_") ? "dfcw" : "conventional";
+                cwSpacingSelectionOverride[group] = "Advanced";
+            }
+            syncCwTimingControls({ announce: true });
+        });
     $("#si5351_i2c_address").on("input blur", validateSi5351I2cAddress);
     $("#si5351_i2c_bus, #si5351_reference_frequency").on(
         "input blur",
@@ -745,55 +767,228 @@ function selectedConfigMode() {
     return $('input[name="qrss_type"]:checked').val() || "QRSS";
 }
 
+function organizeCwControlLayout() {
+    if (typeof CwTimingState === "undefined" || !document.getElementById("cw_modulation_controls")) {
+        return;
+    }
+
+    const moveField = (fieldId, targetId) => {
+        const field = document.getElementById(fieldId);
+        const target = document.getElementById(targetId);
+        const wrapper = field ? field.closest(".config-stacked-field") : null;
+        if (wrapper && target && !target.contains(wrapper)) target.appendChild(wrapper);
+    };
+
+    const modeSelect = document.getElementById("mode_select");
+    const modeFieldset = modeSelect ? modeSelect.closest("fieldset") : null;
+    if (modeFieldset) document.getElementById("cw_modulation_controls").appendChild(modeFieldset);
+    moveField("dot_length", "cw_dot_duration_control");
+    ["fsk_offset", "qrss_frequency", "ppm_cw"].forEach((id) => moveField(id, "cw_frequency_controls"));
+    ["tx_start_minute", "tx_start_second", "tx_repeat_every"].forEach((id) => moveField(id, "cw_schedule_controls"));
+
+    const shared = document.getElementById("cw_intra_element_gap");
+    const sharedRow = shared ? shared.closest(".row") : null;
+    const dfcw = document.getElementById("dfcw_intra_element_gap");
+    const dfcwRow = dfcw ? dfcw.closest(".row") : null;
+    if (sharedRow) document.getElementById("cw_conventional_gap_section").appendChild(sharedRow);
+    if (dfcwRow) document.getElementById("cw_dfcw_gap_section").appendChild(dfcwRow);
+    ["dot_length", ...cwTimingFieldIds("conventional"), ...cwTimingFieldIds("dfcw")]
+        .forEach((id) => {
+            const field = document.getElementById(id);
+            if (field) field.dataset.cwTimingValue = "true";
+        });
+
+    document.querySelectorAll("#qrss_control > .row").forEach((row) => {
+        if (!row.querySelector("input, select, textarea, button")) row.remove();
+    });
+
+    [
+        ["cw_intra_element_gap", "cw-intra-gap-hint", "cw-intra-duration"],
+        ["cw_inter_character_gap", "cw-inter-character-gap-hint", "cw-character-duration"],
+        ["cw_inter_word_gap", "cw-inter-word-gap-hint", "cw-word-duration"],
+        ["dfcw_intra_element_gap", "dfcw-intra-gap-hint", "dfcw-intra-duration"],
+        ["dfcw_inter_character_gap", "dfcw-inter-character-gap-hint", "dfcw-character-duration"],
+        ["dfcw_inter_word_gap", "dfcw-inter-word-gap-hint", "dfcw-word-duration"],
+    ].forEach(([fieldId, hintId, outputId]) => {
+        const hint = document.getElementById(hintId);
+        const field = document.getElementById(fieldId);
+        if (!hint || !field || document.getElementById(outputId)) return;
+        const output = document.createElement("span");
+        output.id = outputId;
+        output.className = "cw-gap-duration";
+        output.setAttribute("aria-live", "polite");
+        hint.appendChild(output);
+        const describedBy = new Set(String(field.getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean));
+        describedBy.add(outputId);
+        field.setAttribute("aria-describedby", Array.from(describedBy).join(" "));
+    });
+}
+
+function readCwTimingStateFromDom() {
+    const numberValue = (id) => Number(String($(id).val() ?? "").trim());
+    return {
+        dotSeconds: numberValue("#dot_length"),
+        conventional: {
+            intraElement: numberValue("#cw_intra_element_gap"),
+            interCharacter: numberValue("#cw_inter_character_gap"),
+            interWord: numberValue("#cw_inter_word_gap"),
+        },
+        dfcw: {
+            intraElement: numberValue("#dfcw_intra_element_gap"),
+            interCharacter: numberValue("#dfcw_inter_character_gap"),
+            interWord: numberValue("#dfcw_inter_word_gap"),
+        },
+    };
+}
+
+function writeCwTimingStateToDom(state) {
+    $("#dot_length").val(state.dotSeconds);
+    $("#cw_intra_element_gap").val(state.conventional.intraElement);
+    $("#cw_inter_character_gap").val(state.conventional.interCharacter);
+    $("#cw_inter_word_gap").val(state.conventional.interWord);
+    $("#dfcw_intra_element_gap").val(state.dfcw.intraElement);
+    $("#dfcw_inter_character_gap").val(state.dfcw.interCharacter);
+    $("#dfcw_inter_word_gap").val(state.dfcw.interWord);
+}
+
+function cwTimingFieldIds(group) {
+    return group === "dfcw"
+        ? ["dfcw_intra_element_gap", "dfcw_inter_character_gap", "dfcw_inter_word_gap"]
+        : ["cw_intra_element_gap", "cw_inter_character_gap", "cw_inter_word_gap"];
+}
+
+function invalidCwTimingGroups(state = readCwTimingStateFromDom()) {
+    const invalid = CwTimingState.invalidFields(state);
+    return {
+        dot: invalid.includes("dotSeconds"),
+        conventional: invalid.some((name) => name.startsWith("conventional.")),
+        dfcw: invalid.some((name) => name.startsWith("dfcw.")),
+    };
+}
+
+function inactiveInvalidCwTimingGroup() {
+    const active = CwTimingState.activeGroup(selectedConfigMode());
+    const invalid = invalidCwTimingGroups();
+    const inactive = active === "dfcw" ? "conventional" : "dfcw";
+    return invalid[inactive] ? inactive : null;
+}
+
+function formatCwGapDuration(value) {
+    if (!Number.isFinite(value)) return "Invalid duration";
+    return `${Number(value.toFixed(6))} seconds`;
+}
+
+function syncCwTimingControls(options = {}) {
+    if (typeof CwTimingState === "undefined") return;
+    const state = readCwTimingStateFromDom();
+    const mode = selectedConfigMode();
+    if (mode === "WSPR") return;
+    const active = CwTimingState.activeGroup(mode);
+    const inferredSpeed = CwTimingState.inferSpeed(state.dotSeconds);
+    const speed = cwSpeedSelectionOverride || inferredSpeed;
+    $(`input[name="cw_speed"][value="${speed}"]`).prop("checked", true);
+    $("#dot_length").prop("disabled", speed !== "Advanced");
+    $("#dot-length-hint").text(speed === "Advanced"
+        ? "Enter a positive finite base duration in seconds."
+        : `${speed} determines this shared base duration. Select Advanced to edit it.`);
+
+    const spacing = cwSpacingSelectionOverride[active] ||
+        CwTimingState.inferSpacing(active, state[active]);
+    $(`input[name="cw_spacing"][value="${spacing}"]`).prop("checked", true);
+    const invalid = invalidCwTimingGroups(state);
+
+    ["conventional", "dfcw"].forEach((group) => {
+        const isActive = group === active;
+        const isRepair = !isActive && cwRepairRevealed[group];
+        const section = document.getElementById(group === "dfcw" ? "cw_dfcw_gap_section" : "cw_conventional_gap_section");
+        const repairHeader = section ? section.querySelector(".cw-repair-header") : null;
+        if (section) section.hidden = !isActive && !isRepair;
+        if (repairHeader) repairHeader.hidden = !isRepair;
+        cwTimingFieldIds(group).forEach((id) => {
+            const editable = isRepair || (isActive && spacing === "Advanced");
+            $(`#${id}`).prop("disabled", !editable);
+        });
+    });
+
+    const durations = CwTimingState.gapDurations(state.dotSeconds, state[active]);
+    const prefix = active === "dfcw" ? "dfcw" : "cw";
+    const outputs = [`${prefix}-intra-duration`, `${prefix}-character-duration`, `${prefix}-word-duration`];
+    const values = durations ? [durations.intraElement, durations.interCharacter, durations.interWord] : [NaN, NaN, NaN];
+    outputs.forEach((id, index) => {
+        const output = document.getElementById(id);
+        if (output) output.textContent = ` × base duration = ${formatCwGapDuration(values[index])}`;
+    });
+
+    const explanation = document.getElementById("cw-mode-timing-explanation");
+    if (explanation) {
+        explanation.textContent = active === "dfcw"
+            ? "DFCW uses equal-duration, frequency-distinguished elements and its 0.333333×/1×/3× standard spacing."
+            : "QRSS and FSKCW use conventional dot, dash, and 1×/3×/7× standard spacing.";
+    }
+    if (options.announce) updateCwMessageLengthEstimate();
+}
+
+function handleCwSpeedChange(event) {
+    const speed = event.target.value;
+    const state = readCwTimingStateFromDom();
+    cwSpeedSelectionOverride = speed;
+    if (speed !== "Advanced") writeCwTimingStateToDom(CwTimingState.applySpeed(state, speed));
+    syncCwTimingControls({ announce: true });
+    validatePage();
+    if (speed !== "Advanced") scheduleAutosave();
+}
+
+function handleCwSpacingChange(event) {
+    const spacing = event.target.value;
+    const mode = selectedConfigMode();
+    const group = CwTimingState.activeGroup(mode);
+    cwSpacingSelectionOverride[group] = spacing;
+    if (spacing === "Standard") {
+        writeCwTimingStateToDom(CwTimingState.applySpacing(readCwTimingStateFromDom(), mode, spacing));
+    }
+    syncCwTimingControls({ announce: true });
+    validatePage();
+    if (spacing === "Standard") scheduleAutosave();
+}
+
+function revealCwTimingRepair(group) {
+    cwRepairRevealed[group] = true;
+    syncCwTimingControls();
+    const action = document.querySelector("#configSaveStatusDetail button[aria-controls]");
+    if (action) action.setAttribute("aria-expanded", "true");
+    const firstInvalid = cwTimingFieldIds(group)
+        .map((id) => document.getElementById(id))
+        .find((field) => field && CwTimingState.positiveFinite(field.value) === null);
+    focusInvalidConfigControl(firstInvalid);
+}
+
+function handleCwRepairClose(event) {
+    const group = event.currentTarget.dataset.group;
+    const invalid = invalidCwTimingGroups();
+    if (invalid[group]) return;
+    cwRepairRevealed[group] = false;
+    syncCwTimingControls();
+    const action = document.querySelector("#configSaveStatusDetail button");
+    if (action) {
+        action.setAttribute("aria-expanded", "false");
+        action.focus();
+    }
+}
+
+function synchronizeCwTimingAfterPopulation() {
+    cwSpeedSelectionOverride = null;
+    cwSpacingSelectionOverride.conventional = null;
+    cwSpacingSelectionOverride.dfcw = null;
+    cwRepairRevealed.conventional = false;
+    cwRepairRevealed.dfcw = false;
+    syncCwTimingControls();
+}
+
 function isWsprConfigMode() {
     return selectedConfigMode() === "WSPR";
 }
 
-const CW_MESSAGE_MORSE_TABLE = Object.freeze({
-    A: ".-",
-    B: "-...",
-    C: "-.-.",
-    D: "-..",
-    E: ".",
-    F: "..-.",
-    G: "--.",
-    H: "....",
-    I: "..",
-    J: ".---",
-    K: "-.-",
-    L: ".-..",
-    M: "--",
-    N: "-.",
-    O: "---",
-    P: ".--.",
-    Q: "--.-",
-    R: ".-.",
-    S: "...",
-    T: "-",
-    U: "..-",
-    V: "...-",
-    W: ".--",
-    X: "-..-",
-    Y: "-.--",
-    Z: "--..",
-    0: "-----",
-    1: ".----",
-    2: "..---",
-    3: "...--",
-    4: "....-",
-    5: ".....",
-    6: "-....",
-    7: "--...",
-    8: "---..",
-    9: "----.",
-    "/": "-..-.",
-    "?": "..--..",
-    ".": ".-.-.-",
-    ",": "--..--",
-    "-": "-....-",
-    "+": ".-.-.",
-    "=": "-...-",
-});
+const CW_MESSAGE_MORSE_TABLE = CwTimingState.MORSE_TABLE;
 
 function parsePositiveFormNumber(fieldId) {
     const field = document.getElementById(fieldId);
@@ -806,70 +1001,7 @@ function parsePositiveFormNumber(fieldId) {
 }
 
 function estimateCwMessageSeconds(message, mode, timing) {
-    if (!timing || !Number.isFinite(timing.dotSeconds) || timing.dotSeconds <= 0) {
-        return { ok: false, reason: "unavailable" };
-    }
-
-    const normalizedMode = ["QRSS", "FSKCW", "DFCW"].includes(mode) ? mode : "";
-    if (!normalizedMode) {
-        return { ok: false, reason: "not applicable" };
-    }
-
-    const dashSeconds =
-        normalizedMode === "DFCW" ? timing.dotSeconds : timing.dotSeconds * 3;
-    const requiredTiming = [
-        dashSeconds,
-        timing.intraElementGapSeconds,
-        timing.interCharacterGapSeconds,
-        timing.interWordGapSeconds,
-    ];
-    if (!requiredTiming.every((value) => Number.isFinite(value) && value > 0)) {
-        return { ok: false, reason: "unavailable" };
-    }
-
-    let totalSeconds = 0;
-    let emittedCharacter = false;
-    let pendingWordGap = false;
-    const text = String(message || "");
-
-    for (const ch of text) {
-        if (/\s/.test(ch)) {
-            if (emittedCharacter) {
-                pendingWordGap = true;
-            }
-            continue;
-        }
-
-        const morse = CW_MESSAGE_MORSE_TABLE[ch.toUpperCase()];
-        if (!morse) {
-            return {
-                ok: false,
-                reason: `unavailable: unsupported character ${ch}`,
-            };
-        }
-
-        if (emittedCharacter) {
-            totalSeconds += pendingWordGap
-                ? timing.interWordGapSeconds
-                : timing.interCharacterGapSeconds;
-        }
-
-        for (let i = 0; i < morse.length; ++i) {
-            totalSeconds += morse[i] === "." ? timing.dotSeconds : dashSeconds;
-            if (i + 1 < morse.length) {
-                totalSeconds += timing.intraElementGapSeconds;
-            }
-        }
-
-        emittedCharacter = true;
-        pendingWordGap = false;
-    }
-
-    if (!emittedCharacter) {
-        return { ok: false, reason: "unavailable" };
-    }
-
-    return { ok: true, seconds: totalSeconds };
+    return CwTimingState.estimateMessageSeconds(message, mode, timing);
 }
 
 function formatCompactDuration(seconds) {
@@ -924,6 +1056,7 @@ function updateCwMessageLengthEstimate() {
     const mode = selectedConfigMode();
     if (mode === "WSPR") {
         display.textContent = "Estimated Message Length: not applicable";
+        updateCwDurationPolicyLatch();
         return;
     }
 
@@ -936,6 +1069,115 @@ function updateCwMessageLengthEstimate() {
     display.textContent = estimate.ok
         ? `Estimated Message Length: ${formatCwMessageLengthEstimate(estimate.seconds)}`
         : `Estimated Message Length: ${estimate.reason}`;
+
+    updateCwDurationPolicyLatch();
+
+    return estimate;
+}
+
+function cwMessageOrdinaryValidation(message) {
+    const text = String(message || "").trim();
+    if (!text) {
+        return { valid: false, message: "CW message is required." };
+    }
+
+    for (const ch of text) {
+        if (!/\s/.test(ch) && !CW_MESSAGE_MORSE_TABLE[ch.toUpperCase()]) {
+            return {
+                valid: false,
+                message: `CW message contains unsupported character ${ch}.`,
+            };
+        }
+    }
+
+    return { valid: true, message: "" };
+}
+
+function currentCwDurationConstraint() {
+    const mode = selectedConfigMode();
+    if (!["QRSS", "FSKCW", "DFCW"].includes(mode)) {
+        return { applicable: false };
+    }
+
+    const estimate = estimateCwMessageSeconds(
+        $("#qrss_message").val(),
+        mode,
+        currentCwMessageTiming(mode)
+    );
+    const repeatMinutes = parsePositiveFormNumber("tx_repeat_every");
+    if (!estimate.ok || !Number.isFinite(repeatMinutes)) {
+        return { applicable: false, estimate, mode };
+    }
+
+    const repeatSeconds = repeatMinutes * 60;
+    return {
+        applicable: true,
+        mode,
+        seconds: estimate.seconds,
+        repeatSeconds,
+        overLimit: estimate.seconds > repeatSeconds,
+    };
+}
+
+function cwDurationPolicyDetail(constraint) {
+    return `The calculated ${constraint.mode} message duration is ${formatCwMessageLengthEstimate(constraint.seconds)}, which exceeds the repeat interval of ${formatCwMessageLengthEstimate(constraint.repeatSeconds)}. Shorten the message, shorten the dot length or active spacing, or increase the repeat interval.`;
+}
+
+function updateCwDurationPolicyLatch(options = {}) {
+    const constraint = currentCwDurationConstraint();
+    const shouldLatch = constraint.applicable && constraint.overLimit;
+    const wasLatched = cwDurationPolicyLatched;
+    cwDurationPolicyLatched = shouldLatch;
+
+    if (cwDurationPolicyLatched) {
+        if (configAutosaveTimer) {
+            clearTimeout(configAutosaveTimer);
+            configAutosaveTimer = null;
+        }
+        setConfigSaveStatus(
+            "error",
+            "Save failed",
+            cwDurationPolicyDetail(constraint)
+        );
+    } else if (wasLatched) {
+        lastFailedConfigPayload = "";
+        lastFailedConfigMessage = "";
+        setConfigSaveStatus("saving", "Saving...", "");
+    }
+
+    if (options.markDirty && cwDurationPolicyLatched) {
+        configAutosaveDirty = true;
+        persistLocalConfigDraftIfPossible();
+    }
+
+    return constraint;
+}
+
+function isCwDurationPolicyError(data) {
+    return !!data && typeof data === "object" &&
+        data.policy === "cw_duration_repeat_interval" &&
+        data.field === "CW.Message";
+}
+
+function handleCwDurationPolicyFailure(messageOrData) {
+    const structured = isCwDurationPolicyError(messageOrData);
+    const message = typeof messageOrData === "string"
+        ? messageOrData
+        : (messageOrData && typeof messageOrData.message === "string"
+            ? messageOrData.message
+            : "");
+    const recognizedMessage = /^Configured (QRSS|FSKCW|DFCW) message duration of .+ exceeds repeat_every interval of .+\. Reduce the message length, shorten the unit length, or increase repeat_every\.$/.test(message.trim());
+    const constraint = currentCwDurationConstraint();
+
+    if ((!structured && !recognizedMessage) ||
+        !constraint.applicable || !constraint.overLimit) {
+        return false;
+    }
+
+    cwDurationPolicyLatched = true;
+    validateCwMessage();
+    updateCwDurationPolicyLatch({ markDirty: true });
+    return true;
 }
 
 function bindModeChangeGuardModal() {
@@ -2653,28 +2895,19 @@ function validatePage() {
         if (!validateCwStartMinute()) {
             invalidCount++;
         }
-        const cwMode = $('input[name="qrss_type"]:checked').val();
-        if (cwMode === "DFCW") {
-            if (!validatePositiveCwField("dfcw_intra_element_gap", "Enter a positive DFCW intra-element gap.")) {
-                invalidCount++;
-            }
-            if (!validatePositiveCwField("dfcw_inter_character_gap", "Enter a positive DFCW inter-character gap.")) {
-                invalidCount++;
-            }
-            if (!validatePositiveCwField("dfcw_inter_word_gap", "Enter a positive DFCW inter-word gap.")) {
-                invalidCount++;
-            }
-        } else {
-            if (!validatePositiveCwField("cw_intra_element_gap", "Enter a positive CW intra-element gap.")) {
-                invalidCount++;
-            }
-            if (!validatePositiveCwField("cw_inter_character_gap", "Enter a positive CW inter-character gap.")) {
-                invalidCount++;
-            }
-            if (!validatePositiveCwField("cw_inter_word_gap", "Enter a positive CW inter-word gap.")) {
-                invalidCount++;
-            }
+        if (!validateCwStartSecond()) {
+            invalidCount++;
         }
+        [
+            ["cw_intra_element_gap", "Enter a positive finite QRSS/FSKCW intra-element gap."],
+            ["cw_inter_character_gap", "Enter a positive finite QRSS/FSKCW inter-character gap."],
+            ["cw_inter_word_gap", "Enter a positive finite QRSS/FSKCW inter-word gap."],
+            ["dfcw_intra_element_gap", "Enter a positive finite DFCW intra-element gap."],
+            ["dfcw_inter_character_gap", "Enter a positive finite DFCW inter-character gap."],
+            ["dfcw_inter_word_gap", "Enter a positive finite DFCW inter-word gap."],
+        ].forEach(([fieldId, message]) => {
+            if (!validatePositiveCwField(fieldId, message)) invalidCount++;
+        });
         clearValidationState("#wspr_config");
     }
 
@@ -2700,6 +2933,7 @@ function validatePage() {
             activeSelectors.join(", ") + " .form-control:not(.form-check-input)"
         )
         .forEach((ctrl) => {
+            if (ctrl.dataset.cwTimingValue === "true") return;
             setIdentityValidity(ctrl);
 
             if (ctrl.checkValidity()) {
@@ -2768,6 +3002,8 @@ function syncSelectedCwModeControls() {
     const selectedMode = $('input[name="qrss_type"]:checked').val();
     const shiftField = document.getElementById("fsk_offset");
     const dfcwSelected = selectedMode === "DFCW";
+    const activeGroup = dfcwSelected ? "dfcw" : "conventional";
+    cwSpacingSelectionOverride[activeGroup] = null;
 
     // CW.Shift Hz is only used by FSKCW and DFCW.
     if (selectedMode === "QRSS") {
@@ -2776,10 +3012,9 @@ function syncSelectedCwModeControls() {
         $('#fsk_offset').prop('disabled', false);
     }
 
-    $(".cw-shared-gap-control").toggleClass("d-none", dfcwSelected);
-    $(".cw-shared-gap-control input").prop("disabled", dfcwSelected);
-    $(".dfcw-gap-control").toggleClass("d-none", !dfcwSelected);
-    $(".dfcw-gap-control input").prop("disabled", !dfcwSelected);
+    $(".cw-shared-gap-control").removeClass("d-none");
+    $(".dfcw-gap-control").removeClass("d-none");
+    syncCwTimingControls({ announce: true });
 
     validateCwShiftHz();
     updateCwMessageLengthEstimate();
@@ -3060,29 +3295,24 @@ function buildConfigPayload() {
     }
 
     // CW shared non-WSPR settings
-    let dot_length = parseFloat($('#dot_length').val());
+    let dot_length = Number(String($('#dot_length').val() ?? "").trim());
     let fsk_offset = parseInt($('#fsk_offset').val(), 10);
     let cw_base_frequency = parseFrequencyWithOptionalUnits($('#qrss_frequency').val());
     let tx_start_minute = parseInt($('#tx_start_minute').val(), 10);
+    let tx_start_second = Number(String($('#tx_start_second').val() ?? "").trim());
     let tx_repeat_every = parseInt($('#tx_repeat_every').val(), 10);
-    let cw_intra_element_gap = parseFloat($('#cw_intra_element_gap').val());
-    let cw_inter_character_gap = parseFloat($('#cw_inter_character_gap').val());
-    let cw_inter_word_gap = parseFloat($('#cw_inter_word_gap').val());
-    let dfcw_intra_element_gap = parseFloat($('#dfcw_intra_element_gap').val());
-    let dfcw_inter_character_gap = parseFloat($('#dfcw_inter_character_gap').val());
-    let dfcw_inter_word_gap = parseFloat($('#dfcw_inter_word_gap').val());
+    let cw_intra_element_gap = Number(String($('#cw_intra_element_gap').val() ?? "").trim());
+    let cw_inter_character_gap = Number(String($('#cw_inter_character_gap').val() ?? "").trim());
+    let cw_inter_word_gap = Number(String($('#cw_inter_word_gap').val() ?? "").trim());
+    let dfcw_intra_element_gap = Number(String($('#dfcw_intra_element_gap').val() ?? "").trim());
+    let dfcw_inter_character_gap = Number(String($('#dfcw_inter_character_gap').val() ?? "").trim());
+    let dfcw_inter_word_gap = Number(String($('#dfcw_inter_word_gap').val() ?? "").trim());
     let cw_message = String($('#qrss_message').val() || "").trim();
-    if (!Number.isFinite(dot_length) || dot_length <= 0) dot_length = 3.0;
     if (!Number.isInteger(fsk_offset) || fsk_offset <= 0) fsk_offset = 5;
     if (!Number.isFinite(cw_base_frequency) || cw_base_frequency <= 0) cw_base_frequency = 14096900.0;
     if (!Number.isInteger(tx_start_minute) || tx_start_minute < 0 || tx_start_minute > 59) tx_start_minute = 0;
+    if (!Number.isInteger(tx_start_second) || tx_start_second < 0 || tx_start_second > 59) tx_start_second = 5;
     if (!Number.isInteger(tx_repeat_every) || tx_repeat_every < 1) tx_repeat_every = 10;
-    if (!Number.isFinite(cw_intra_element_gap) || cw_intra_element_gap <= 0) cw_intra_element_gap = 1.0;
-    if (!Number.isFinite(cw_inter_character_gap) || cw_inter_character_gap <= 0) cw_inter_character_gap = 3.0;
-    if (!Number.isFinite(cw_inter_word_gap) || cw_inter_word_gap <= 0) cw_inter_word_gap = 7.0;
-    if (!Number.isFinite(dfcw_intra_element_gap) || dfcw_intra_element_gap <= 0) dfcw_intra_element_gap = 0.333333;
-    if (!Number.isFinite(dfcw_inter_character_gap) || dfcw_inter_character_gap <= 0) dfcw_inter_character_gap = 1.0;
-    if (!Number.isFinite(dfcw_inter_word_gap) || dfcw_inter_word_gap <= 0) dfcw_inter_word_gap = 3.0;
 
     // GPIO timing calibration
     let use_ntp = parseBool($("#use_ntp").is(":checked"));
@@ -3175,6 +3405,7 @@ function buildConfigPayload() {
         "DFCW Inter Character Gap": dfcw_inter_character_gap,
         "DFCW Inter Word Gap": dfcw_inter_word_gap,
         "Start Minute": tx_start_minute,
+        "Start Second": tx_start_second,
         "Repeat Minutes": tx_repeat_every,
     };
 
@@ -3213,6 +3444,10 @@ function setConfigSaveStatus(state, message = "", detail = "", options = {}) {
             typeof options.onDetailAction === "function"
                 ? options.onDetailAction
                 : null;
+        const detailActionControls =
+            typeof options.detailActionControls === "string"
+                ? options.detailActionControls.trim()
+                : "";
 
         detailNode.innerHTML = "";
         detailNode.hidden = !detail && !detailActionLabel;
@@ -3221,10 +3456,19 @@ function setConfigSaveStatus(state, message = "", detail = "", options = {}) {
         detailNode.removeAttribute("aria-label");
 
         if (detailActionLabel && onDetailAction) {
+            if (detail) {
+                const detailText = document.createElement("span");
+                detailText.textContent = `${detail} `;
+                detailNode.appendChild(detailText);
+            }
             const actionButton = document.createElement("button");
             actionButton.type = "button";
             actionButton.className = "btn btn-link btn-sm p-0 align-baseline";
             actionButton.textContent = detailActionLabel;
+            if (detailActionControls) {
+                actionButton.setAttribute("aria-controls", detailActionControls);
+                actionButton.setAttribute("aria-expanded", "false");
+            }
             actionButton.addEventListener("click", onDetailAction);
             detailNode.appendChild(actionButton);
         } else {
@@ -3273,7 +3517,11 @@ function syncConfigAutosaveBaseline() {
         lastFailedConfigMessage = "";
         configAutosaveDirty = false;
         removePersistedConfigDraft();
-        setConfigSaveStatus("", "", "");
+        if (cwDurationPolicyLatched) {
+            updateCwDurationPolicyLatch();
+        } else {
+            setConfigSaveStatus("", "", "");
+        }
         return;
     }
 
@@ -3290,6 +3538,11 @@ function syncConfigAutosaveBaseline() {
 
 function scheduleAutosave() {
     if (configAutosaveSuspended) {
+        return;
+    }
+
+    const durationConstraint = updateCwDurationPolicyLatch({ markDirty: true });
+    if (durationConstraint.applicable && durationConstraint.overLimit) {
         return;
     }
 
@@ -3310,6 +3563,11 @@ function flushAutosave() {
         return;
     }
 
+    const durationConstraint = updateCwDurationPolicyLatch({ markDirty: true });
+    if (durationConstraint.applicable && durationConstraint.overLimit) {
+        return;
+    }
+
     if (navigator.onLine === false) {
         configAutosaveDirty = true;
         persistLocalConfigDraftIfPossible();
@@ -3319,6 +3577,23 @@ function flushAutosave() {
     }
 
     if (!validatePage()) {
+        const inactiveGroup = inactiveInvalidCwTimingGroup();
+        if (inactiveGroup) {
+            const label = inactiveGroup === "dfcw" ? "DFCW spacing" : "QRSS/FSKCW spacing";
+            setConfigSaveStatus(
+                "invalid",
+                "Invalid - not saved",
+                `${label} contains an invalid preserved value.`,
+                {
+                    detailActionLabel: `Review ${label}`,
+                    detailActionControls: inactiveGroup === "dfcw"
+                        ? "cw_dfcw_gap_section"
+                        : "cw_conventional_gap_section",
+                    onDetailAction: () => revealCwTimingRepair(inactiveGroup),
+                }
+            );
+            return;
+        }
         setConfigSaveStatus(
             "invalid",
             "Invalid - not saved",
@@ -3405,6 +3680,14 @@ function flushAutosave() {
 
             const isPairedPlanningFailure =
                 isPairedPlanningUnavailableError(parsedError);
+
+            if (handleCwDurationPolicyFailure(parsedError)) {
+                debugConsole("warn", "Autosave rejected by CW duration policy.");
+                lastFailedConfigPayload = payloadJson;
+                lastFailedConfigMessage = message;
+                configAutosaveDirty = true;
+                return;
+            }
 
             debugConsole("error", "Autosave failed:", message);
             lastFailedConfigPayload = payloadJson;
@@ -3637,10 +3920,17 @@ function validateCwBaseFrequency() {
 
 function validateCwMessage() {
     const fld = document.getElementById("qrss_message");
-    const message = String(fld.value || "").trim();
-    const valid = message.length > 0;
+    const ordinary = cwMessageOrdinaryValidation(fld.value);
+    const constraint = currentCwDurationConstraint();
+    const durationInvalid = constraint.applicable && constraint.overLimit;
+    updateCwDurationPolicyLatch();
+    const valid = ordinary.valid && !durationInvalid;
 
-    fld.setCustomValidity(valid ? "" : "CW message is required.");
+    fld.setCustomValidity(
+        !ordinary.valid
+            ? ordinary.message
+            : (durationInvalid ? cwDurationPolicyDetail(constraint) : "")
+    );
     setFieldValidationState(fld, valid);
 
     return valid;
@@ -3650,16 +3940,16 @@ function validateCwDotSeconds() {
     const fld = document.getElementById("dot_length");
     const mode = selectedConfigMode();
 
-    if (mode === "WSPR" || fld.disabled) {
+    if (mode === "WSPR") {
         fld.setCustomValidity("");
         clearFieldValidationState(fld);
         return true;
     }
 
-    const value = Number.parseFloat(fld.value);
+    const value = Number(String(fld.value || "").trim());
     const valid = Number.isFinite(value) && value > 0;
 
-    fld.setCustomValidity(valid ? "" : "Enter a positive CW dot length.");
+    fld.setCustomValidity(valid ? "" : "Enter a positive finite CW base duration.");
     setFieldValidationState(fld, valid);
 
     return valid;
@@ -3729,8 +4019,8 @@ function validateCwStartMinute() {
     return valid;
 }
 
-function validatePositiveCwField(fieldId, errorMessage) {
-    const fld = document.getElementById(fieldId);
+function validateCwStartSecond() {
+    const fld = document.getElementById("tx_start_second");
     const mode = selectedConfigMode();
 
     if (mode === "WSPR" || !fld || fld.disabled) {
@@ -3741,7 +4031,29 @@ function validatePositiveCwField(fieldId, errorMessage) {
         return true;
     }
 
-    const value = Number.parseFloat(fld.value);
+    const raw = String(fld.value || "").trim();
+    const value = Number(raw);
+    const valid = /^\d+$/.test(raw) && Number.isInteger(value) && value >= 0 && value <= 59;
+
+    fld.setCustomValidity(valid ? "" : "Enter a CW start second from 0 through 59.");
+    setFieldValidationState(fld, valid);
+
+    return valid;
+}
+
+function validatePositiveCwField(fieldId, errorMessage) {
+    const fld = document.getElementById(fieldId);
+    const mode = selectedConfigMode();
+
+    if (mode === "WSPR" || !fld) {
+        if (fld) {
+            fld.setCustomValidity("");
+            clearFieldValidationState(fld);
+        }
+        return true;
+    }
+
+    const value = Number(String(fld.value || "").trim());
     const valid = Number.isFinite(value) && value > 0;
 
     fld.setCustomValidity(valid ? "" : errorMessage);
