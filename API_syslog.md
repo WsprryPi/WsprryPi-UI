@@ -48,7 +48,7 @@ use the same schema.**
   "type": "journal" | "internal",
   "playback": true | false,
   "__CURSOR": "s=...;i=...;b=...;m=...;t=...;x=..." | null,
-  "__REALTIME_TIMESTAMP": 1738198123456789,
+  "__REALTIME_TIMESTAMP": "1738198123456789",
   "PRIORITY": "0",
   "SYSLOG_IDENTIFIER": "wsprrypi",
   "MESSAGE": "Started WsprryPi.",
@@ -63,7 +63,7 @@ use the same schema.**
 | `type` | `journal` for real journald entries, `internal` for adapter-generated events |
 | `playback` | `true` when emitted during replay/backlog |
 | `__CURSOR` | Journald cursor; null for internal events |
-| `__REALTIME_TIMESTAMP` | Microseconds since Unix epoch |
+| `__REALTIME_TIMESTAMP` | Microseconds since Unix epoch, emitted as a decimal string so 32-bit PHP cannot overflow current timestamps |
 | `PRIORITY` | Syslog priority (`0` = emerg … `7` = debug) |
 | `MESSAGE` | Human-readable log message |
 
@@ -71,7 +71,7 @@ use the same schema.**
 
 ## Time & Timestamp Handling
 
-- Transport uses `__REALTIME_TIMESTAMP` (µs since Unix epoch).
+- Transport uses `__REALTIME_TIMESTAMP` (µs since Unix epoch) as a decimal string.
 - Consumers render timestamps as **ISO‑8601** strings.
 - Microsecond precision is preserved internally.
 - Formatting and timezone presentation are consumer responsibilities.

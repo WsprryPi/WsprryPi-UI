@@ -300,6 +300,75 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                     <legend>CW Control</legend>
                                     <p class="config-panel__summary">Choose the CW mode and timing first, then set frequency and repeat timing.</p>
 
+                                    <section class="cw-control-section" aria-labelledby="cw-modulation-heading">
+                                        <h3 id="cw-modulation-heading" class="cw-control-section__title">Modulation</h3>
+                                        <div id="cw_modulation_controls"></div>
+                                    </section>
+
+                                    <section class="cw-control-section" aria-labelledby="cw-timing-heading">
+                                        <h3 id="cw-timing-heading" class="cw-control-section__title">CW Timing</h3>
+                                        <p class="form-text mb-0">Select the shared base duration used by QRSS, FSKCW, and DFCW. Each modulation retains its own element and spacing behavior.</p>
+
+                                        <div class="cw-timing-selectors">
+                                            <fieldset class="cw-choice-group">
+                                                <legend class="form-label">Speed</legend>
+                                                <div class="d-flex flex-wrap gap-3" aria-describedby="cw-speed-hint">
+                                                    <?php foreach (['QRSS1', 'QRSS3', 'QRSS6', 'Advanced'] as $speed): ?>
+                                                        <div class="form-check">
+                                                            <input class="form-check-input" type="radio" name="cw_speed" id="cw_speed_<?= strtolower($speed) ?>" value="<?= $speed ?>">
+                                                            <label class="form-check-label" for="cw_speed_<?= strtolower($speed) ?>"><?= $speed ?></label>
+                                                        </div>
+                                                    <?php endforeach; ?>
+                                                </div>
+                                                <div id="cw-speed-hint" class="form-text">QRSS1, QRSS3, and QRSS6 select a shared one-, three-, or six-second base duration.</div>
+                                            </fieldset>
+
+                                            <fieldset class="cw-choice-group">
+                                                <legend class="form-label">Spacing</legend>
+                                                <div class="d-flex flex-wrap gap-3" aria-describedby="cw-spacing-hint">
+                                                    <?php foreach (['Standard', 'Advanced'] as $spacing): ?>
+                                                        <div class="form-check">
+                                                            <input class="form-check-input" type="radio" name="cw_spacing" id="cw_spacing_<?= strtolower($spacing) ?>" value="<?= $spacing ?>">
+                                                            <label class="form-check-label" for="cw_spacing_<?= strtolower($spacing) ?>"><?= $spacing ?></label>
+                                                        </div>
+                                                    <?php endforeach; ?>
+                                                </div>
+                                                <div id="cw-spacing-hint" class="form-text">Standard uses the selected modulation's established gap multipliers.</div>
+                                            </fieldset>
+                                        </div>
+
+                                        <div id="cw_dot_duration_control"></div>
+                                        <div id="cw_conventional_gap_section" class="cw-gap-section" aria-labelledby="cw-conventional-gap-title">
+                                            <div class="cw-repair-header" hidden>
+                                                <div>
+                                                    <h4 id="cw-conventional-gap-title" class="cw-repair-header__title">Review QRSS/FSKCW spacing</h4>
+                                                    <p class="form-text mb-0">Correct the preserved conventional spacing values before saving can continue.</p>
+                                                </div>
+                                                <button type="button" class="btn btn-outline-secondary btn-sm cw-repair-close" data-group="conventional">Close</button>
+                                            </div>
+                                        </div>
+                                        <div id="cw_dfcw_gap_section" class="cw-gap-section" aria-labelledby="cw-dfcw-gap-title">
+                                            <div class="cw-repair-header" hidden>
+                                                <div>
+                                                    <h4 id="cw-dfcw-gap-title" class="cw-repair-header__title">Review DFCW spacing</h4>
+                                                    <p class="form-text mb-0">Correct the preserved DFCW spacing values before saving can continue.</p>
+                                                </div>
+                                                <button type="button" class="btn btn-outline-secondary btn-sm cw-repair-close" data-group="dfcw">Close</button>
+                                            </div>
+                                        </div>
+                                        <p id="cw-mode-timing-explanation" class="cw-mode-explanation" aria-live="polite"></p>
+                                    </section>
+
+                                    <section class="cw-control-section" aria-labelledby="cw-frequency-heading">
+                                        <h3 id="cw-frequency-heading" class="cw-control-section__title">Frequency</h3>
+                                        <div id="cw_frequency_controls" class="row gx-2 gy-3 align-items-start"></div>
+                                    </section>
+
+                                    <section class="cw-control-section" aria-labelledby="cw-schedule-heading">
+                                        <h3 id="cw-schedule-heading" class="cw-control-section__title">Schedule</h3>
+                                        <div id="cw_schedule_controls" class="row gx-2 gy-3 align-items-start"></div>
+                                    </section>
+
                                     <div class="row gx-2 gy-3 align-items-start">
 
                                         <div class="col-12 col-lg-4">
@@ -437,6 +506,26 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                         </div>
 
                                         <div class="col-12 col-lg-4 config-stacked-field">
+                                            <label for="tx_start_second" class="form-label">Start second:</label>
+                                            <input
+                                                type="number"
+                                                class="form-control"
+                                                id="tx_start_second"
+                                                min="0"
+                                                max="59"
+                                                step="1"
+                                                inputmode="numeric"
+                                                aria-describedby="tx-start-second-hint"
+                                                data-bs-toggle="tooltip"
+                                                title="CW.Start Second: seconds after the selected start minute (0-59)"
+                                                value="5"
+                                                required />
+                                            <div id="tx-start-second-hint" class="form-text mt-2">
+                                                Start each scheduled CW transmission this many seconds after the selected start minute.
+                                            </div>
+                                        </div>
+
+                                        <div class="col-12 col-lg-4 config-stacked-field">
                                             <label for="tx_repeat_every" class="form-label">Repeat interval:</label>
                                             <input
                                                 type="number"
@@ -457,7 +546,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                     </div>
 
                                     <div class="row gx-2 gy-3 align-items-start mt-1">
-                                        <div class="col-12 col-lg-4 config-stacked-field">
+                                        <div class="col-12 col-lg-4 config-stacked-field cw-shared-gap-control">
                                             <label for="cw_intra_element_gap" class="form-label">Intra-Element Gap:</label>
                                             <input
                                                 type="number"
@@ -476,7 +565,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                             </div>
                                         </div>
 
-                                        <div class="col-12 col-lg-4 config-stacked-field">
+                                        <div class="col-12 col-lg-4 config-stacked-field cw-shared-gap-control">
                                             <label for="cw_inter_character_gap" class="form-label">Inter-Character Gap:</label>
                                             <input
                                                 type="number"
@@ -495,7 +584,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                             </div>
                                         </div>
 
-                                        <div class="col-12 col-lg-4 config-stacked-field">
+                                        <div class="col-12 col-lg-4 config-stacked-field cw-shared-gap-control">
                                             <label for="cw_inter_word_gap" class="form-label">Inter-Word Gap:</label>
                                             <input
                                                 type="number"
@@ -511,6 +600,71 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                 required />
                                             <div id="cw-inter-word-gap-hint" class="form-text mt-2">
                                                 Enter a positive timing multiplier for gaps between Morse words.
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="row gx-2 gy-3 align-items-start mt-1 dfcw-gap-control d-none">
+                                        <div class="col-12">
+                                            <div id="dfcw-gap-hint" class="form-text">
+                                                DFCW uses equal-length dot and dash symbols separated by frequency; these gap multipliers control the off gaps between symbols, characters, and words.
+                                            </div>
+                                        </div>
+
+                                        <div class="col-12 col-lg-4 config-stacked-field">
+                                            <label for="dfcw_intra_element_gap" class="form-label">DFCW Intra-Element Gap:</label>
+                                            <input
+                                                type="number"
+                                                class="form-control"
+                                                id="dfcw_intra_element_gap"
+                                                min="0.000000001"
+                                                step="any"
+                                                inputmode="decimal"
+                                                aria-describedby="dfcw-intra-gap-hint"
+                                                data-bs-toggle="tooltip"
+                                                title="CW.DFCW Intra Element Gap: multiplier of Dot Seconds for the short off gap between DFCW dot/dash symbols."
+                                                value="0.333333"
+                                                required />
+                                            <div id="dfcw-intra-gap-hint" class="form-text mt-2">
+                                                Multiplier of Dot Seconds for the short off gap between DFCW dot/dash symbols.
+                                            </div>
+                                        </div>
+
+                                        <div class="col-12 col-lg-4 config-stacked-field">
+                                            <label for="dfcw_inter_character_gap" class="form-label">DFCW Inter-Character Gap:</label>
+                                            <input
+                                                type="number"
+                                                class="form-control"
+                                                id="dfcw_inter_character_gap"
+                                                min="0.000000001"
+                                                step="any"
+                                                inputmode="decimal"
+                                                aria-describedby="dfcw-inter-character-gap-hint"
+                                                data-bs-toggle="tooltip"
+                                                title="CW.DFCW Inter Character Gap: multiplier of Dot Seconds for the off gap between DFCW characters."
+                                                value="1"
+                                                required />
+                                            <div id="dfcw-inter-character-gap-hint" class="form-text mt-2">
+                                                Multiplier of Dot Seconds for the off gap between DFCW characters.
+                                            </div>
+                                        </div>
+
+                                        <div class="col-12 col-lg-4 config-stacked-field">
+                                            <label for="dfcw_inter_word_gap" class="form-label">DFCW Inter-Word Gap:</label>
+                                            <input
+                                                type="number"
+                                                class="form-control"
+                                                id="dfcw_inter_word_gap"
+                                                min="0.000000001"
+                                                step="any"
+                                                inputmode="decimal"
+                                                aria-describedby="dfcw-inter-word-gap-hint"
+                                                data-bs-toggle="tooltip"
+                                                title="CW.DFCW Inter Word Gap: multiplier of Dot Seconds for the off gap between DFCW words."
+                                                value="3"
+                                                required />
+                                            <div id="dfcw-inter-word-gap-hint" class="form-text mt-2">
+                                                Multiplier of Dot Seconds for the off gap between DFCW words.
                                             </div>
                                         </div>
                                     </div>
@@ -533,13 +687,15 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                 autocomplete="off"
                                                 spellcheck="false"
                                                 aria-describedby="qrss-message-hint"
-                                                step="1"
                                                 data-bs-toggle="tooltip"
                                                 title="CW.Message sent by QRSS, FSKCW, or DFCW"
                                                 value="Hello"
                                                 required />
                                             <div id="qrss-message-hint" class="form-text mt-2">
                                                 Enter the exact CW message to send. This field cannot be empty.
+                                            </div>
+                                            <div id="cw_message_length_estimate" class="form-text mt-2" aria-live="polite">
+                                                Estimated Message Length: unavailable
                                             </div>
                                         </div>
                                     </div>
