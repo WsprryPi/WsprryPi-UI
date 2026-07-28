@@ -513,6 +513,7 @@ const configSchema = {
             "Shift Hz": { required: false, type: "number" },
             "Dot Seconds": { required: false, type: "number" },
             "Start Minute": { required: false, type: "number" },
+            "Start Second": { required: false, type: "number" },
             "Repeat Minutes": { required: false, type: "number" }
         }
     },
@@ -1674,6 +1675,7 @@ function populateConfig(callback = null) {
                 let dfcw_inter_character_gap = getConfigTimingValue(cw, "CW", "DFCW Inter Character Gap", 1.0);
                 let dfcw_inter_word_gap = getConfigTimingValue(cw, "CW", "DFCW Inter Word Gap", 3.0);
                 let tx_start_minute = getConfigIntValue(cw, "CW", "Start Minute", 0);
+                let tx_start_second = getConfigIntValue(cw, "CW", "Start Second", 5);
                 let tx_repeat_every = getConfigIntValue(cw, "CW", "Repeat Minutes", 10);
                 let cw_message = String(getConfigValue(cw, "CW", "Message", "") || "").trim();
                 const wsprFrequencyHz = parseConfiguredWsprFrequencyHz(frequencies);
@@ -1778,6 +1780,7 @@ function populateConfig(callback = null) {
                         synchronizeCwTimingAfterPopulation();
                     }
                     $("#tx_start_minute").val(tx_start_minute).trigger("change");
+                    $("#tx_start_second").val(tx_start_second).trigger("change");
                     $("#tx_repeat_every").val(tx_repeat_every).trigger("change");
                     $('#qrss_message').val(cw_message).trigger("change");
                     if (typeof updateCwMessageLengthEstimate === "function") {

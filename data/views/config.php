@@ -506,6 +506,26 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                         </div>
 
                                         <div class="col-12 col-lg-4 config-stacked-field">
+                                            <label for="tx_start_second" class="form-label">Start second:</label>
+                                            <input
+                                                type="number"
+                                                class="form-control"
+                                                id="tx_start_second"
+                                                min="0"
+                                                max="59"
+                                                step="1"
+                                                inputmode="numeric"
+                                                aria-describedby="tx-start-second-hint"
+                                                data-bs-toggle="tooltip"
+                                                title="CW.Start Second: seconds after the selected start minute (0-59)"
+                                                value="5"
+                                                required />
+                                            <div id="tx-start-second-hint" class="form-text mt-2">
+                                                Start each scheduled CW transmission this many seconds after the selected start minute.
+                                            </div>
+                                        </div>
+
+                                        <div class="col-12 col-lg-4 config-stacked-field">
                                             <label for="tx_repeat_every" class="form-label">Repeat interval:</label>
                                             <input
                                                 type="number"

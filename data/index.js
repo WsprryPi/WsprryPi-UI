@@ -296,6 +296,7 @@ function restorePersistedConfigDraft() {
     $("#dfcw_inter_word_gap").val(Number(cw["DFCW Inter Word Gap"] ?? 3.0)).trigger("change");
     synchronizeCwTimingAfterPopulation();
     $("#tx_start_minute").val(Number(cw["Start Minute"])).trigger("change");
+    $("#tx_start_second").val(Number(cw["Start Second"] ?? 5)).trigger("change");
     $("#tx_repeat_every").val(Number(cw["Repeat Minutes"])).trigger("change");
     $("#qrss_message").val(String(cw.Message || "")).trigger("change");
 
@@ -423,6 +424,7 @@ function bindIndexActions() {
     $("#fsk_offset").on("input blur", validateCwShiftHz);
     $("#tx_repeat_every").on("input blur", validateCwRepeatMinutes);
     $("#tx_start_minute").on("input blur", validateCwStartMinute);
+    $("#tx_start_second").on("input blur", validateCwStartSecond);
     $("#cw_intra_element_gap").on("input blur", function () {
         validatePositiveCwField(
             "cw_intra_element_gap",
@@ -782,7 +784,7 @@ function organizeCwControlLayout() {
     if (modeFieldset) document.getElementById("cw_modulation_controls").appendChild(modeFieldset);
     moveField("dot_length", "cw_dot_duration_control");
     ["fsk_offset", "qrss_frequency", "ppm_cw"].forEach((id) => moveField(id, "cw_frequency_controls"));
-    ["tx_start_minute", "tx_repeat_every"].forEach((id) => moveField(id, "cw_schedule_controls"));
+    ["tx_start_minute", "tx_start_second", "tx_repeat_every"].forEach((id) => moveField(id, "cw_schedule_controls"));
 
     const shared = document.getElementById("cw_intra_element_gap");
     const sharedRow = shared ? shared.closest(".row") : null;
@@ -2893,6 +2895,9 @@ function validatePage() {
         if (!validateCwStartMinute()) {
             invalidCount++;
         }
+        if (!validateCwStartSecond()) {
+            invalidCount++;
+        }
         [
             ["cw_intra_element_gap", "Enter a positive finite QRSS/FSKCW intra-element gap."],
             ["cw_inter_character_gap", "Enter a positive finite QRSS/FSKCW inter-character gap."],
@@ -3294,6 +3299,7 @@ function buildConfigPayload() {
     let fsk_offset = parseInt($('#fsk_offset').val(), 10);
     let cw_base_frequency = parseFrequencyWithOptionalUnits($('#qrss_frequency').val());
     let tx_start_minute = parseInt($('#tx_start_minute').val(), 10);
+    let tx_start_second = Number(String($('#tx_start_second').val() ?? "").trim());
     let tx_repeat_every = parseInt($('#tx_repeat_every').val(), 10);
     let cw_intra_element_gap = Number(String($('#cw_intra_element_gap').val() ?? "").trim());
     let cw_inter_character_gap = Number(String($('#cw_inter_character_gap').val() ?? "").trim());
@@ -3305,6 +3311,7 @@ function buildConfigPayload() {
     if (!Number.isInteger(fsk_offset) || fsk_offset <= 0) fsk_offset = 5;
     if (!Number.isFinite(cw_base_frequency) || cw_base_frequency <= 0) cw_base_frequency = 14096900.0;
     if (!Number.isInteger(tx_start_minute) || tx_start_minute < 0 || tx_start_minute > 59) tx_start_minute = 0;
+    if (!Number.isInteger(tx_start_second) || tx_start_second < 0 || tx_start_second > 59) tx_start_second = 5;
     if (!Number.isInteger(tx_repeat_every) || tx_repeat_every < 1) tx_repeat_every = 10;
 
     // GPIO timing calibration
@@ -3398,6 +3405,7 @@ function buildConfigPayload() {
         "DFCW Inter Character Gap": dfcw_inter_character_gap,
         "DFCW Inter Word Gap": dfcw_inter_word_gap,
         "Start Minute": tx_start_minute,
+        "Start Second": tx_start_second,
         "Repeat Minutes": tx_repeat_every,
     };
 
@@ -4006,6 +4014,28 @@ function validateCwStartMinute() {
     const valid = Number.isInteger(value) && value >= 0 && value <= 59;
 
     fld.setCustomValidity(valid ? "" : "Enter a CW start minute from 0 through 59.");
+    setFieldValidationState(fld, valid);
+
+    return valid;
+}
+
+function validateCwStartSecond() {
+    const fld = document.getElementById("tx_start_second");
+    const mode = selectedConfigMode();
+
+    if (mode === "WSPR" || !fld || fld.disabled) {
+        if (fld) {
+            fld.setCustomValidity("");
+            clearFieldValidationState(fld);
+        }
+        return true;
+    }
+
+    const raw = String(fld.value || "").trim();
+    const value = Number(raw);
+    const valid = /^\d+$/.test(raw) && Number.isInteger(value) && value >= 0 && value <= 59;
+
+    fld.setCustomValidity(valid ? "" : "Enter a CW start second from 0 through 59.");
     setFieldValidationState(fld, valid);
 
     return valid;

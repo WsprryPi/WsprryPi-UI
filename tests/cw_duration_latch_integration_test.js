@@ -239,7 +239,8 @@ async function browserTest() {
         const mode = selectedConfigMode();
         let valid = validateCwMessage() &&
             validateCwDotSeconds() &&
-            validateCwRepeatMinutes();
+            validateCwRepeatMinutes() &&
+            validateCwStartSecond();
         const activeIds = mode === "DFCW"
             ? ["dfcw_intra_element_gap", "dfcw_inter_character_gap", "dfcw_inter_word_gap"]
             : ["cw_intra_element_gap", "cw_inter_character_gap", "cw_inter_word_gap"];
@@ -270,6 +271,7 @@ async function browserTest() {
         field("qrss_message").value = "E";
         field("dot_length").value = "1";
         field("tx_repeat_every").value = "1";
+        field("tx_start_second").value = "5";
         field("cw_intra_element_gap").value = "1";
         field("cw_inter_character_gap").value = "3";
         field("cw_inter_word_gap").value = "7";
@@ -449,8 +451,48 @@ async function browserTest() {
     equal(dialogs.length, 2, "unrelated reload failure must open generic modal");
     equal(dialogs[1].message, "Unrelated backend failure.", "unrelated fallback message");
 
+    // 9: start-second drafts validate locally, preserve zero, and autosave after correction.
+    reset("DFCW");
+    equal(field("tx_start_second").type, "number", "start second input type");
+    equal(field("tx_start_second").min, "0", "start second minimum");
+    equal(field("tx_start_second").max, "59", "start second maximum");
+    equal(field("tx_start_second").step, "1", "start second step");
+    ok(field("tx_start_second").required, "start second must be required");
+    equal(
+        getConfigIntValue({}, "CW", "Start Second", 5),
+        5,
+        "missing start second must populate with fallback 5"
+    );
+    equal(
+        getConfigIntValue({ "Start Second": 0 }, "CW", "Start Second", 5),
+        0,
+        "population helper must preserve explicit zero"
+    );
+    ["QRSS", "FSKCW", "DFCW"].forEach((mode) => {
+        selectMode(mode);
+        field("tx_start_second").value = "59";
+        ok(validateCwStartSecond(), `${mode} must share valid start-second behavior`);
+    });
+    const durationBefore = field("cw_message_length_estimate").textContent;
+    setValue("tx_start_second", "5.5");
+    clock.tick(800);
+    equal(patches.length, 0, "fractional start second must block autosave");
+    equal(field("tx_start_second").value, "5.5", "invalid start-second draft must remain local");
+    equal(field("tx_start_second").getAttribute("aria-invalid"), "true", "invalid start second aria state");
+    setValue("tx_start_second", "0");
+    clock.tick(800);
+    equal(patches.length, 1, "valid start-second correction must resume autosave");
+    const savedPayload = JSON.parse(patches[0].options.data);
+    equal(savedPayload.CW["Start Second"], 0, "autosave payload must preserve explicit zero");
+    equal(field("cw_message_length_estimate").textContent, durationBefore, "start second must not alter duration estimate");
+    field("wspr_mode").checked = true;
+    field("qrss_mode").checked = false;
+    field("tx_start_second").value = "invalid";
+    ok(validateCwStartSecond(), "WSPR must ignore CW start-second validation");
+    ok(!field("tx_start_second").classList.contains("is-invalid"), "WSPR must clear start-second invalid styling");
+
     return {
-        scenarios: 8,
+        scenarios: 9,
         assertions: "passed",
         finalPatchCount: patches.length,
         finalDialogCount: dialogs.length,
@@ -516,10 +558,10 @@ async function main() {
             throw new Error(detail || result.exceptionDetails.text || "Browser test failed");
         }
         assert.deepEqual(result.result.value, {
-            scenarios: 8,
+            scenarios: 9,
             assertions: "passed",
-            finalPatchCount: 0,
-            finalDialogCount: 2,
+            finalPatchCount: 1,
+            finalDialogCount: 0,
         });
         console.log("cw_duration_latch_integration_test passed");
     } finally {
