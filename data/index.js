@@ -3536,6 +3536,20 @@ function syncConfigAutosaveBaseline() {
     setConfigSaveStatus("saved", "Saved", "");
 }
 
+function showConfigAutosavePendingStatus() {
+    const statusNode = document.getElementById("configSaveStatus");
+    const currentState = statusNode ? statusNode.dataset.state : "";
+    if (
+        currentState === "error" ||
+        currentState === "invalid" ||
+        currentState === "load-error"
+    ) {
+        return;
+    }
+
+    setConfigSaveStatus("pending", "Changes pending", "");
+}
+
 function scheduleAutosave() {
     if (configAutosaveSuspended) {
         return;
@@ -3548,6 +3562,7 @@ function scheduleAutosave() {
 
     configAutosaveDirty = true;
     persistLocalConfigDraftIfPossible();
+    showConfigAutosavePendingStatus();
     if (configAutosaveTimer) {
         clearTimeout(configAutosaveTimer);
     }
@@ -3641,7 +3656,17 @@ function flushAutosave() {
             lastFailedConfigPayload = "";
             lastFailedConfigMessage = "";
             pendingPersistedMode = "";
-            setConfigSaveStatus("saved", "Saved", "");
+            const completedPayloadIsCurrent =
+                payloadJson === currentConfigPayloadSnapshot();
+            if (
+                completedPayloadIsCurrent &&
+                !configAutosaveDirty &&
+                !configAutosavePendingAfterFlight
+            ) {
+                setConfigSaveStatus("saved", "Saved", "");
+            } else {
+                showConfigAutosavePendingStatus();
+            }
             clearBackendStatus("runtime");
             if (configAutosaveNeedsRuntimeRefresh && typeof getTxState === "function") {
                 configAutosaveNeedsRuntimeRefresh = false;

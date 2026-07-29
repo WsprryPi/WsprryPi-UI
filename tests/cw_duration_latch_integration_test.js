@@ -491,8 +491,66 @@ async function browserTest() {
     ok(validateCwStartSecond(), "WSPR must ignore CW start-second validation");
     ok(!field("tx_start_second").classList.contains("is-invalid"), "WSPR must clear start-second invalid styling");
 
+    // 10: a new edit immediately revokes stale Saved, then progresses normally.
+    reset();
+    syncConfigAutosaveBaseline();
+    equal(field("configSaveStatus").textContent, "Saved", "baseline must begin saved");
+    setValue("qrss_message", "T");
+    equal(field("configSaveStatus").textContent, "Changes pending", "edit must immediately revoke Saved");
+    equal(field("configSaveStatus").dataset.state, "pending", "pending status state");
+    ok(hasUnsavedLocalConfigChanges(), "debounced edit must be unsaved");
+    clock.tick(800);
+    ok(statusTransitions.some(({ message }) => message === "Saving..."), "request must enter Saving");
+    equal(field("configSaveStatus").textContent, "Saved", "successful current payload must show Saved");
+    equal(hasUnsavedLocalConfigChanges(), false, "successful current payload must be saved");
+
+    // 11: completion of an older in-flight payload cannot claim the newer edit is saved.
+    reset();
+    syncConfigAutosaveBaseline();
+    patchMode = "pending";
+    setValue("qrss_message", "T");
+    clock.tick(800);
+    equal(patches.length, 1, "first payload must begin one PATCH");
+    equal(field("configSaveStatus").textContent, "Saving...", "first payload must show Saving");
+    const firstPatch = pendingPatch;
+    setValue("qrss_message", "EE");
+    equal(field("configSaveStatus").textContent, "Changes pending", "newer edit must replace Saving with pending");
+    ok(hasUnsavedLocalConfigChanges(), "newer edit must remain unsaved while first request is in flight");
+    clock.tick(800);
+    equal(patches.length, 1, "newer payload must queue behind first request");
+    statusTransitions.length = 0;
+    patchMode = "success";
+    firstPatch.resolve();
+    equal(field("configSaveStatus").textContent, "Changes pending", "older completion must retain pending status");
+    ok(!statusTransitions.some(({ state }) => state === "saved"), "older completion must not enter Saved");
+    ok(hasUnsavedLocalConfigChanges(), "older completion must not clear unsaved state");
+    clock.tick(800);
+    equal(patches.length, 2, "newer payload must subsequently PATCH");
+    equal(field("configSaveStatus").textContent, "Saved", "only newest completion may show Saved");
+    equal(hasUnsavedLocalConfigChanges(), false, "newest completion must clear unsaved state");
+
+    // 12: invalid edits revoke stale Saved, then retain actionable validation feedback.
+    reset();
+    syncConfigAutosaveBaseline();
+    setValue("qrss_message", "");
+    equal(field("configSaveStatus").textContent, "Changes pending", "invalid edit must immediately revoke Saved");
+    clock.tick(800);
+    equal(field("configSaveStatus").textContent, "Invalid - not saved", "validation must replace pending feedback");
+    equal(field("configSaveStatus").dataset.state, "invalid", "invalid status state");
+    ok(hasUnsavedLocalConfigChanges(), "invalid edit must remain unsaved");
+
+    // 13: suspended initial population must not display pending feedback.
+    reset();
+    syncConfigAutosaveBaseline();
+    statusTransitions.length = 0;
+    suspendConfigAutosave(true);
+    setValue("qrss_message", "T");
+    equal(field("configSaveStatus").textContent, "Saved", "suspended population must preserve baseline status");
+    ok(!statusTransitions.some(({ state }) => state === "pending"), "suspended population must not enter pending");
+    suspendConfigAutosave(false);
+
     return {
-        scenarios: 9,
+        scenarios: 13,
         assertions: "passed",
         finalPatchCount: patches.length,
         finalDialogCount: dialogs.length,
@@ -558,9 +616,9 @@ async function main() {
             throw new Error(detail || result.exceptionDetails.text || "Browser test failed");
         }
         assert.deepEqual(result.result.value, {
-            scenarios: 9,
+            scenarios: 13,
             assertions: "passed",
-            finalPatchCount: 1,
+            finalPatchCount: 0,
             finalDialogCount: 0,
         });
         console.log("cw_duration_latch_integration_test passed");
