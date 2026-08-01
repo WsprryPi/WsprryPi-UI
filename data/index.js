@@ -2206,6 +2206,7 @@ function clickBandGpioEnabled() {
 function handleBandGpioInputChange() {
     refreshGpioConflictOptions();
     validateBandGpioFields();
+    scheduleAutosave();
 }
 
 function getDropdownButtonPin(buttonId) {
@@ -2440,7 +2441,8 @@ function validateBandGpioFields() {
 }
 
 function validateGpioConflictFields() {
-    const assignments = [];
+    const reservedAssignments = [];
+    const bandAssignments = [];
     ["ledDropdownButton", "shutdownDropdownButton", "ampDropdownButton"].forEach((buttonId) => {
         const field = document.getElementById(buttonId);
         if (field) {
@@ -2450,23 +2452,23 @@ function validateGpioConflictFields() {
         }
     });
 
-    function addAssignment(pin, field, label) {
+    function addReservedAssignment(pin, field, label) {
         if (Number.isInteger(pin)) {
-            assignments.push({ pin: String(pin), field, label });
+            reservedAssignments.push({ pin: String(pin), field, label });
         }
     }
 
-    addAssignment(
+    addReservedAssignment(
         $("#use_led").is(":checked") ? getLEDPin() : null,
         document.getElementById("ledDropdownButton"),
         "Transmit LED"
     );
-    addAssignment(
+    addReservedAssignment(
         $("#use_shutdown").is(":checked") ? getShutdownPin() : null,
         document.getElementById("shutdownDropdownButton"),
         "Shutdown Button"
     );
-    addAssignment(
+    addReservedAssignment(
         getUseAmp() ? getAmpPin() : null,
         document.getElementById("ampDropdownButton"),
         "Amp Control"
@@ -2477,36 +2479,85 @@ function validateGpioConflictFields() {
         if (!$row.find(".band-gpio-enabled").is(":checked")) {
             return;
         }
-        addAssignment(
-            parseInt($row.find(".band-gpio-input").val(), 10),
-            $row.find(".band-gpio-input").get(0),
-            `Band GPIO ${String($row.data("band") || "").trim()}`
-        );
+        const pin = parseInt($row.find(".band-gpio-input").val(), 10);
+        if (Number.isInteger(pin)) {
+            bandAssignments.push({
+                pin: String(pin),
+                field: $row.find(".band-gpio-input").get(0),
+                activeHigh: $row.find(".band-gpio-active-high").is(":checked"),
+            });
+        }
     });
 
-    const counts = assignments.reduce((memo, item) => {
-        memo[item.pin] = (memo[item.pin] || 0) + 1;
-        return memo;
-    }, {});
     let invalidCount = 0;
+    const reservedByPin = new Map();
 
-    assignments.forEach((item) => {
-        const valid = counts[item.pin] === 1;
+    reservedAssignments.forEach((assignment) => {
+        if (!reservedByPin.has(assignment.pin)) {
+            reservedByPin.set(assignment.pin, assignment);
+        }
+    });
+
+    reservedAssignments.forEach((assignment) => {
+        const conflictingAssignment = reservedAssignments.find((other) =>
+            other !== assignment && other.pin === assignment.pin
+        );
+        const valid = !conflictingAssignment;
         const message = valid
             ? ""
-            : `GPIO${item.pin} is already assigned to another Pi I/O control.`;
-        if (item.field) {
-            item.field.setCustomValidity(message);
-            if (item.field.tagName === "BUTTON") {
-                item.field.classList.toggle("is-invalid", !valid);
-                item.field.setAttribute("aria-invalid", valid ? "false" : "true");
-            } else {
-                setFieldValidationState(item.field, valid);
-            }
+            : `GPIO${assignment.pin} is already assigned to ${conflictingAssignment.label}.`;
+        if (assignment.field) {
+            assignment.field.setCustomValidity(message);
+            assignment.field.classList.toggle("is-invalid", !valid);
+            assignment.field.setAttribute("aria-invalid", valid ? "false" : "true");
         }
         if (!valid) {
             invalidCount++;
         }
+    });
+
+    bandAssignments.forEach((assignment) => {
+        const reservedAssignment = reservedByPin.get(assignment.pin);
+        const valid = !reservedAssignment;
+        const message = valid
+            ? ""
+            : `GPIO${assignment.pin} is reserved by ${reservedAssignment.label}.`;
+        if (assignment.field) {
+            assignment.field.setCustomValidity(message);
+            setFieldValidationState(assignment.field, valid);
+        }
+        if (!valid && reservedAssignment.field) {
+            reservedAssignment.field.setCustomValidity(message);
+            setFieldValidationState(reservedAssignment.field, false);
+        }
+        if (!valid) {
+            invalidCount++;
+        }
+    });
+
+    const bandsByPin = new Map();
+    bandAssignments.forEach((assignment) => {
+        const assignments = bandsByPin.get(assignment.pin) || [];
+        assignments.push(assignment);
+        bandsByPin.set(assignment.pin, assignments);
+    });
+
+    bandsByPin.forEach((assignments, pin) => {
+        const conflictingPolarity = assignments.some((assignment) =>
+            assignment.activeHigh !== assignments[0].activeHigh
+        );
+        if (!conflictingPolarity) {
+            return;
+        }
+
+        const message = `Bands sharing GPIO${pin} must use the same Active High setting.`;
+        assignments.forEach((assignment) => {
+            if (assignment.field) {
+                assignment.field.setCustomValidity(message);
+                setFieldValidationState(assignment.field, false);
+            }
+        });
+        invalidCount += assignments.length;
     });
 
     return invalidCount === 0;
