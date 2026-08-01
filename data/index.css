@@ -75,6 +75,11 @@
     white-space: normal;
 }
 
+.pin-dropdown-btn.is-invalid {
+    border-color: var(--bs-form-invalid-border-color);
+    color: var(--bs-form-invalid-color);
+}
+
 /* show exactly one message */
 .form-control.is-valid ~ .valid-feedback,
 .was-validated .form-control:valid ~ .valid-feedback,
