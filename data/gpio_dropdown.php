@@ -35,6 +35,8 @@ if (!function_exists('wsprrypi_safe_gpio_pins')) {
             23 => 'Pin 16',
             24 => 'Pin 18',
             25 => 'Pin 22',
+            26 => 'Pin 37',
+            27 => 'Pin 13',
         ];
     }
 }
