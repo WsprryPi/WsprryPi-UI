@@ -78,12 +78,32 @@ function now_micro(): string
     return sprintf('%d%06d', $sec, $usec);
 }
 
+final class ClientDisconnected extends RuntimeException {}
+
+function client_connection_open(): bool
+{
+    global $__clientDisconnected;
+
+    if (!$__clientDisconnected && connection_aborted()) {
+        $__clientDisconnected = true;
+    }
+
+    return !$__clientDisconnected;
+}
+
+function require_client_connection(): void
+{
+    if (!client_connection_open()) throw new ClientDisconnected('SSE client disconnected');
+}
+
 function flush_sse(): void
 {
     if (ob_get_level() > 0) {
         @ob_flush();
     }
     @flush();
+
+    require_client_connection();
 }
 
 /**
@@ -162,11 +182,19 @@ function emit_playback_event(string $eventName, bool $isPlayback): void
     emit_payload($payload, $eventName, null);
 }
 
-// Global holders for error handlers.
+// Global holders for error and shutdown handlers.
 $__internalUnitForErrors = null;
+$__activeProcess = null;
+$__clientDisconnected = false;
+$__cleanupActive = false;
 
 // Convert PHP errors into internal events. (Avoid echoing raw PHP warnings.)
-set_error_handler(function (int $errno, string $errstr, string $errfile, int $errline) use (&$__internalUnitForErrors): bool {
+set_error_handler(function (int $errno, string $errstr, string $errfile, int $errline): bool {
+    global $__internalUnitForErrors, $__cleanupActive, $__clientDisconnected;
+    if (!(error_reporting() & $errno) || $__cleanupActive || $__clientDisconnected) {
+        return true;
+    }
+
     $msg = '[php error] ' . $errstr . ' at ' . $errfile . ':' . (string)$errline;
     emit_internal($msg, '3', $__internalUnitForErrors, false);
     // Returning true prevents default handler output.
@@ -174,21 +202,33 @@ set_error_handler(function (int $errno, string $errstr, string $errfile, int $er
 });
 
 // Capture fatal errors on shutdown.
-register_shutdown_function(function () use (&$__internalUnitForErrors): void {
+register_shutdown_function(function (): void {
+    global $__internalUnitForErrors, $__activeProcess, $__cleanupActive, $__clientDisconnected;
+    $cleanupSucceeded = true;
+    if (is_array($__activeProcess)) {
+        $cleanup = proc_cleanup($__activeProcess);
+        $cleanupSucceeded = (bool)($cleanup['terminated'] ?? false);
+    }
+
     $err = error_get_last();
     if ($err === null) {
         return;
     }
 
     $fatalTypes = [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR];
-    if (!in_array($err['type'], $fatalTypes, true)) {
+    if (!in_array($err['type'], $fatalTypes, true) || !$cleanupSucceeded ||
+        $__cleanupActive || $__clientDisconnected || !client_connection_open()) {
         return;
     }
 
     $msg = '[php fatal] ' . ($err['message'] ?? 'unknown') .
         ' at ' . ($err['file'] ?? '?') . ':' . (string)($err['line'] ?? 0);
 
-    emit_internal($msg, '3', $__internalUnitForErrors, false);
+    try {
+        emit_internal($msg, '3', $__internalUnitForErrors, false);
+    } catch (ClientDisconnected $ignored) {
+        // Client disconnected between the safety check and flush.
+    }
 });
 
 // -----------------------------------------------------------------------------
@@ -307,24 +347,82 @@ function build_cmd(array $parts): string
     return implode(' ', array_map('escapeshellarg', $parts));
 }
 
-function proc_start(string $cmd): array
+function process_start_identity(int $pid): ?string
 {
-    $desc = [
-        0 => ['pipe', 'r'],
-        1 => ['pipe', 'w'],
-        2 => ['pipe', 'w'],
-    ];
+    if ($pid <= 1) return null;
+    $stat = @file_get_contents('/proc/' . (string)$pid . '/stat');
+    if (!is_string($stat)) return null;
+    $commEnd = strrpos($stat, ')');
+    if ($commEnd === false) return null;
+    $fields = preg_split('/\s+/', trim(substr($stat, $commEnd + 1)));
+    $startTime = $fields[19] ?? null;
+    return is_string($startTime) && preg_match('/^[0-9]+$/', $startTime)
+        ? $startTime
+        : null;
+}
 
-    $proc = proc_open($cmd, $desc, $pipes);
-    if (!is_resource($proc)) {
-        return ['ok' => false, 'stderr' => 'proc_open failed'];
-    }
+function owned_process_is_running(?array $identity): bool
+{
+    if (!is_array($identity)) return false;
+    $pid = $identity['pid'] ?? null;
+    $startTime = $identity['start'] ?? null;
+    return is_int($pid) && is_string($startTime) &&
+        process_start_identity($pid) === $startTime;
+}
 
+function proc_status(array &$started): array
+{
+    $proc = $started['proc'] ?? null;
+    if (!is_resource($proc)) return ['running' => false, 'exitcode' => $started['exitcode'] ?? null];
+    $status = proc_get_status($proc);
+    $exitcode = (int)($status['exitcode'] ?? -1);
+    if ($exitcode >= 0) $started['exitcode'] = $exitcode;
+    return $status;
+}
+
+function wait_for_owned_process(array &$started, float $timeoutSec): bool
+{
+    $deadline = microtime(true) + $timeoutSec;
+    do {
+        $status = proc_status($started);
+        if (!($status['running'] ?? false) &&
+            !owned_process_is_running($started['identity'] ?? null)) return true;
+        usleep(50000);
+    } while (microtime(true) < $deadline);
+
+    $status = proc_status($started);
+    return !($status['running'] ?? false) &&
+        !owned_process_is_running($started['identity'] ?? null);
+}
+
+function proc_start(array $parts): array
+{
+    global $__activeProcess;
+
+    $desc = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
+    $proc = proc_open($parts, $desc, $pipes);
+    if (!is_resource($proc)) return ['ok' => false, 'stderr' => 'proc_open failed'];
     stream_set_blocking($pipes[1], false);
     stream_set_blocking($pipes[2], false);
 
+    $status = proc_get_status($proc);
+    $pid = isset($status['pid']) ? (int)$status['pid'] : 0;
+    $started = [
+        'ok' => true,
+        'proc' => $proc,
+        'pipes' => $pipes,
+        'running' => (bool)($status['running'] ?? false),
+        'exitcode' => $status['exitcode'] ?? null,
+        'cleanup_result' => null,
+        'identity' => ['pid' => $pid, 'start' => process_start_identity($pid)],
+    ];
+    $__activeProcess = $started;
+
     usleep(150000);
     $status = proc_get_status($proc);
+    $started['running'] = (bool)($status['running'] ?? false);
+    $started['exitcode'] = $status['exitcode'] ?? null;
+    $__activeProcess = $started;
 
     // Replay (`journalctl ... -n N`) can legitimately exit immediately after
     // emitting its output. Follow mode (`journalctl -f`) must remain running.
@@ -332,45 +430,97 @@ function proc_start(string $cmd): array
     // drain stdout/stderr and close the process cleanly.
     if (!$status['running']) {
         $err = trim(stream_get_contents($pipes[2]));
-        if ($err === '') {
-            $err = 'process exited immediately';
-        }
-        return [
-            'ok' => false,
-            'stderr' => $err,
-            'proc' => $proc,
-            'pipes' => $pipes,
-            'running' => false,
-            'exited_immediately' => true,
-            'exitcode' => $status['exitcode'] ?? null,
-        ];
+        if ($err === '') $err = 'process exited immediately';
+        $started['ok'] = false;
+        $started['stderr'] = $err;
+        $started['exited_immediately'] = true;
+        return $started;
     }
 
+    return $started;
+}
+
+function close_process_pipes(array &$started): void
+{
+    foreach (($started['pipes'] ?? []) as $pipe) {
+        if (is_resource($pipe)) @fclose($pipe);
+    }
+    $started['pipes'] = [];
+}
+
+function cleanup_result(bool $terminated, string $method, ?int $exitcode, bool $alive, ?string $error): array
+{
     return [
-        'ok' => true,
-        'proc' => $proc,
-        'pipes' => $pipes,
-        'running' => true,
-        'exitcode' => $status['exitcode'] ?? null,
+        'terminated' => $terminated, 'termination' => $method,
+        'exitcode' => $exitcode, 'stillAlive' => $alive, 'error' => $error,
     ];
 }
 
-
-function proc_cleanup(array $started): void
+function proc_cleanup(array &$started): array
 {
-    $pipes = $started['pipes'] ?? null;
-    if (is_array($pipes)) {
-        foreach ($pipes as $p) {
-            if (is_resource($p)) {
-                fclose($p);
+    global $__activeProcess, $__cleanupActive;
+
+    $previous = $started['cleanup_result'] ?? null;
+    if (is_array($previous) && !empty($previous['terminated'])) return $previous;
+    if ($__cleanupActive) {
+        $alive = owned_process_is_running($started['identity'] ?? null);
+        return cleanup_result(false, 'none', $started['exitcode'] ?? null, $alive, 'cleanup is already active');
+    }
+
+    $__cleanupActive = true;
+    $termination = 'none';
+    $error = null;
+    $proc = $started['proc'] ?? null;
+    $status = proc_status($started);
+    $running = (bool)($status['running'] ?? false);
+
+    if ($running) {
+        // The proc resource itself owns the direct child, so graceful
+        // termination is safe even if /proc identity capture raced startup.
+        $termination = 'graceful';
+        @proc_terminate($proc, 15);
+        if (!wait_for_owned_process($started, 1.0)) {
+            if (!owned_process_is_running($started['identity'] ?? null)) {
+                $error = 'owned process identity unavailable before forced termination';
+            } else {
+                $termination = 'forced';
+                @proc_terminate($proc, 9);
+                if (!wait_for_owned_process($started, 1.0))
+                    $error = 'owned process remained alive after SIGKILL';
             }
         }
     }
 
-    $proc = $started['proc'] ?? null;
-    if (is_resource($proc)) {
-        proc_close($proc);
+    close_process_pipes($started);
+    $status = proc_status($started);
+    $stillAlive = (bool)($status['running'] ?? false) ||
+        owned_process_is_running($started['identity'] ?? null);
+    $terminated = !$stillAlive;
+    if ($terminated) $error = null;
+
+    if ($terminated && is_resource($proc)) {
+        $statusExitcode = (int)($status['exitcode'] ?? -1);
+        $closeExitcode = proc_close($proc);
+        if ($statusExitcode >= 0) $started['exitcode'] = $statusExitcode;
+        elseif ($closeExitcode >= 0) $started['exitcode'] = $closeExitcode;
+        $started['proc'] = null;
+        $__activeProcess = null;
+    } elseif ($stillAlive) {
+        $error = $error ?? 'owned process is still running after cleanup';
+        // Keep the live resource and identity owned for a shutdown retry. PHP
+        // cannot guarantee a bounded final resource destructor for a process
+        // stuck in an uninterruptible kernel state.
+        $__activeProcess = $started;
     }
+
+    $result = cleanup_result(
+        $terminated, $termination, $started['exitcode'] ?? null, $stillAlive, $error
+    );
+    $started['cleanup_result'] = $result;
+    if ($stillAlive) $__activeProcess = $started;
+    $__cleanupActive = false;
+
+    return $result;
 }
 
 function normalize_realtime_timestamp($value): ?string
@@ -425,13 +575,12 @@ function send_entry(array $entry, bool $isPlayback): ?string
 }
 
 function drain_process(
-    array $started,
+    array &$started,
     bool $followMode,
     ?string $internalUnit,
     int $heartbeatSec,
     bool $isPlayback
 ): array {
-    $proc = $started['proc'];
     $pipes = $started['pipes'];
 
     $stdoutBuf = '';
@@ -447,6 +596,8 @@ function drain_process(
     $errOpen = is_resource($pipes[2]);
 
     while (true) {
+        require_client_connection();
+
         $read = [];
         if ($outOpen && is_resource($pipes[1])) {
             $read[] = $pipes[1];
@@ -456,7 +607,7 @@ function drain_process(
         }
 
         // If the process is not running and both pipes are closed/EOF, we're done.
-        $status = proc_get_status($proc);
+        $status = proc_status($started);
         if (!$status['running'] && !$outOpen && !$errOpen) {
             break;
         }
@@ -496,7 +647,7 @@ function drain_process(
             }
 
             // Replay mode: if the process has exited, do a final drain and exit.
-            $status = proc_get_status($proc);
+            $status = proc_status($started);
             if (!$status['running']) {
                 if ($outOpen && is_resource($pipes[1])) {
                     $finalOut = stream_get_contents($pipes[1]);
@@ -608,19 +759,14 @@ function drain_process(
         }
     }
 
-    // Close any remaining pipes that are still open.
-    foreach ($pipes as $p) {
-        if (is_resource($p)) {
-            fclose($p);
-        }
-    }
-    $exitcode = proc_close($proc);
+    $cleanup = proc_cleanup($started);
 
     return [
         'lastCursor' => $lastCursor,
-        'exitcode' => $exitcode,
+        'exitcode' => $cleanup['exitcode'] ?? null,
         'entryCount' => $entryCount,
         'stderrText' => trim($stderrFull),
+        'cleanup' => $cleanup,
     ];
 }
 
@@ -682,13 +828,28 @@ function run_replay_command(
     emit_internal($label . ' starting', '7', $internalUnit, true);
     emit_internal($label . ' cmd: ' . build_cmd($parts), '7', $internalUnit, true);
 
-    $started = proc_start(build_cmd($parts));
+    $started = proc_start($parts);
+    require_client_connection();
+
     if ($started['ok'] || !empty($started['exited_immediately'])) {
         if (!$started['ok'] && !empty($started['exited_immediately'])) {
             emit_internal($label . ' exited quickly; draining output', '7', $internalUnit, true);
         }
 
         $res = drain_process($started, false, $internalUnit, $heartbeatSec, true);
+
+        if (empty($res['cleanup']['terminated'])) {
+            emit_internal(
+                $label . ' cleanup failed: ' . (string)($res['cleanup']['error'] ?? 'unknown error'),
+                '3',
+                $internalUnit,
+                false
+            );
+            return [
+                'ok' => false,
+                'result' => $res,
+            ];
+        }
 
         if (!$started['ok'] && (($res['exitcode'] ?? 0) !== 0)) {
             $stderrText = (string)($res['stderrText'] ?? ($started['stderr'] ?? ''));
@@ -712,7 +873,6 @@ function run_replay_command(
 
         return [
             'ok' => (($res['exitcode'] ?? 0) === 0),
-            'started' => $started,
             'result' => $res,
         ];
     }
@@ -724,20 +884,27 @@ function run_replay_command(
         false
     );
 
-    if (isset($started['proc']) || isset($started['pipes'])) {
-        proc_cleanup($started);
-    }
+    $cleanup = proc_cleanup($started);
 
-    emit_playback_event('playback_end', false);
+    if (empty($cleanup['terminated'])) {
+        emit_internal(
+            $label . ' cleanup failed: ' . (string)($cleanup['error'] ?? 'unknown error'),
+            '3',
+            $internalUnit,
+            false
+        );
+    } else {
+        emit_playback_event('playback_end', false);
+    }
 
     return [
         'ok' => false,
-        'started' => $started,
         'result' => [
             'lastCursor' => null,
             'exitcode' => $started['exitcode'] ?? 1,
             'entryCount' => 0,
             'stderrText' => (string)($started['stderr'] ?? ''),
+            'cleanup' => $cleanup,
         ],
     ];
 }
@@ -780,6 +947,9 @@ if ($playbackEnabled && $initialBacklog > 0) {
             $heartbeatSec,
             'journalctl replay from cursor'
         );
+        if (empty($replayOutcome['result']['cleanup']['terminated'])) {
+            exit;
+        }
 
         $cursorReplayEntries = (int)($replayOutcome['result']['entryCount'] ?? 0);
         $cursorReplayLastCursor = $replayOutcome['result']['lastCursor'] ?? null;
@@ -811,6 +981,9 @@ if ($playbackEnabled && $initialBacklog > 0) {
                 $heartbeatSec,
                 'journalctl replay current boot'
             );
+            if (empty($replayOutcome['result']['cleanup']['terminated'])) {
+                exit;
+            }
 
             $cursorForFollow = $replayOutcome['result']['lastCursor'] ?? null;
             if (!is_string($cursorForFollow) || $cursorForFollow === '') {
@@ -828,6 +1001,9 @@ if ($playbackEnabled && $initialBacklog > 0) {
             $heartbeatSec,
             'journalctl replay backlog'
         );
+        if (empty($replayOutcome['result']['cleanup']['terminated'])) {
+            exit;
+        }
 
         $cursorForFollow = $replayOutcome['result']['lastCursor'] ?? $cursorForFollow;
     }
@@ -838,6 +1014,8 @@ if ($playbackEnabled && $initialBacklog > 0) {
 emit_internal('journalctl follow loop entering', '7', $internalUnit, false);
 
 while (true) {
+    require_client_connection();
+
     $followParts = array_merge(
         [$journalctlPath, '--no-pager', '-o', 'json', '-f'],
         $journalFilters
@@ -850,13 +1028,24 @@ while (true) {
     emit_internal('journalctl follow starting', '7', $internalUnit, false);
     emit_internal('journalctl follow cmd: ' . build_cmd($followParts), '7', $internalUnit, false);
 
-    $started = proc_start(build_cmd($followParts));
+    $started = proc_start($followParts);
+    require_client_connection();
+
     if (!$started['ok']) {
         $followErr = (string)($started['stderr'] ?? '');
         emit_internal('journalctl follow failed: ' . $followErr, '3', $internalUnit, false);
 
-        if (isset($started['proc']) || isset($started['pipes'])) {
-            proc_cleanup($started);
+        $cleanup = proc_cleanup($started);
+
+        if (empty($cleanup['terminated'])) {
+            emit_internal(
+                'journalctl follow cleanup failed: ' .
+                    (string)($cleanup['error'] ?? 'unknown error'),
+                '3',
+                $internalUnit,
+                false
+            );
+            break;
         }
 
         if ($cursorForFollow !== null) {
@@ -874,6 +1063,16 @@ while (true) {
     }
 
     $res = drain_process($started, true, $internalUnit, $heartbeatSec, false);
+    if (empty($res['cleanup']['terminated'])) {
+        emit_internal(
+            'journalctl follow cleanup failed: ' .
+                (string)($res['cleanup']['error'] ?? 'unknown error'),
+            '3',
+            $internalUnit,
+            false
+        );
+        break;
+    }
     $cursorForFollow = $res['lastCursor'] ?? $cursorForFollow;
 
     emit_internal('journalctl follow restarted', '4', $internalUnit, false);
