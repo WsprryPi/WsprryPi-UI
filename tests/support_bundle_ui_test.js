@@ -46,6 +46,16 @@ assert.ok(!script.includes("upload"), "support bundle UI must not auto-upload");
 includes(script, "supportBundleDownloadInFlight", "duplicate downloads must be prevented");
 includes(script, "supportBundleCreateInFlight", "duplicate creation must be prevented");
 includes(script, "textContent", "server-derived values must use DOM-safe text assignment");
+includes(script, "let supportBundleModalOpener = null", "Support Bundle modal must retain its opener");
+includes(script, "event.currentTarget", "Support Bundle modal must retain the actual invoking element");
+includes(script, "supportBundleModalElement?.addEventListener(\"hidden.bs.modal\", restoreSupportBundleModalFocus)", "one hidden lifecycle listener must restore focus for every dismissal path");
+includes(script, "function isSupportBundleFocusTarget(element)", "focus restoration must verify that its target remains usable");
+includes(script, "element.isConnected", "a detached modal opener must not receive focus");
+includes(script, "!element.matches(\":disabled\")", "a disabled modal opener must not receive focus");
+includes(script, ": createSupportBundleButton", "a detached or disabled opener must fall back to the stable create button");
+includes(script, "supportBundleModalOpener = null", "modal opener state must be cleared after the hidden lifecycle");
+includes(script, "opener.focus({ preventScroll: true })", "focus must return only after the hidden lifecycle completes");
+assert.equal((script.match(/hidden\.bs\.modal/g) || []).length, 1, "repeated modal opens must not add duplicate focus lifecycle handlers");
 includes(styles, ".maintenance-pane--support", "Support Bundle must use the established Maintenance panel treatment");
 includes(styles, "@media (max-width: 767.98px)", "existing narrow full-width action behavior must remain available");
 

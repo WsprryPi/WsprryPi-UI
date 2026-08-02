@@ -297,6 +297,26 @@ document.addEventListener("DOMContentLoaded", () => {
     let supportBundleDownloadInFlight = false;
     let supportBundleDeleteInFlight = false;
     let supportBundlePageUnloading = false;
+    let supportBundleModalOpener = null;
+
+    function isSupportBundleFocusTarget(element) {
+        return element instanceof HTMLElement &&
+            element.isConnected &&
+            !element.matches(":disabled") &&
+            element.getAttribute("aria-disabled") !== "true" &&
+            element.tabIndex >= 0;
+    }
+
+    function restoreSupportBundleModalFocus() {
+        const opener = isSupportBundleFocusTarget(supportBundleModalOpener)
+            ? supportBundleModalOpener
+            : createSupportBundleButton;
+        supportBundleModalOpener = null;
+
+        if (isSupportBundleFocusTarget(opener)) {
+            opener.focus({ preventScroll: true });
+        }
+    }
 
     function supportBundleEndpoint(suffix = "") {
         return createEndpointDefinition(
@@ -554,9 +574,12 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    createSupportBundleButton.addEventListener("click", () => {
+    supportBundleModalElement?.addEventListener("hidden.bs.modal", restoreSupportBundleModalFocus);
+
+    createSupportBundleButton.addEventListener("click", (event) => {
         if (!supportBundleCreateInFlight && supportBundleJobId === "") {
             clearSupportBundleAlert();
+            supportBundleModalOpener = event.currentTarget;
             supportBundleModal.show();
         }
     });
