@@ -277,4 +277,297 @@ document.addEventListener("DOMContentLoaded", () => {
             postRepairVerb("restore", restoreButton);
         }
     });
+
+    const createSupportBundleButton = document.getElementById("createSupportBundleButton");
+    const confirmCreateSupportBundleButton = document.getElementById("confirmCreateSupportBundleButton");
+    const downloadSupportBundleButton = document.getElementById("downloadSupportBundleButton");
+    const deleteSupportBundleButton = document.getElementById("deleteSupportBundleButton");
+    const supportBundleProbeI2c = document.getElementById("supportBundleProbeI2c");
+    const supportBundleStatus = document.getElementById("supportBundleStatus");
+    const supportBundleAlert = document.getElementById("supportBundleAlert");
+    const supportBundleModalElement = document.getElementById("supportBundleModal");
+    const supportBundleModal = supportBundleModalElement
+        ? bootstrap.Modal.getOrCreateInstance(supportBundleModalElement)
+        : null;
+    const SUPPORT_BUNDLE_POLL_INTERVAL_MS = 2000;
+    const SUPPORT_BUNDLE_FILENAME_FALLBACK = "wsprrypi-support-bundle.tar.gz";
+    let supportBundleJobId = "";
+    let supportBundlePollTimer = null;
+    let supportBundleCreateInFlight = false;
+    let supportBundleDownloadInFlight = false;
+    let supportBundleDeleteInFlight = false;
+    let supportBundlePageUnloading = false;
+
+    function supportBundleEndpoint(suffix = "") {
+        return createEndpointDefinition(
+            "support bundles",
+            `${SUPPORT_BUNDLES_ENDPOINT.proxyUrl}${suffix}`,
+            `${SUPPORT_BUNDLES_ENDPOINT.directUrl}${suffix}`
+        );
+    }
+
+    function stopSupportBundlePolling() {
+        if (supportBundlePollTimer !== null) {
+            window.clearTimeout(supportBundlePollTimer);
+            supportBundlePollTimer = null;
+        }
+    }
+
+    function setSupportBundleStatus(state, message) {
+        supportBundleStatus.dataset.state = state;
+        supportBundleStatus.textContent = message;
+        supportBundleStatus.classList.remove("visually-hidden");
+    }
+
+    function clearSupportBundleAlert() {
+        supportBundleAlert.textContent = "";
+        supportBundleAlert.classList.add("d-none");
+    }
+
+    function showSupportBundleAlert(message) {
+        supportBundleAlert.textContent = message;
+        supportBundleAlert.classList.remove("d-none");
+    }
+
+    function setSupportBundleActions() {
+        const hasReadyDownload = supportBundleJobId !== "" &&
+            downloadSupportBundleButton.dataset.available === "true";
+        createSupportBundleButton.disabled = supportBundleCreateInFlight ||
+            supportBundleDownloadInFlight || supportBundleDeleteInFlight ||
+            (supportBundleJobId !== "" && supportBundlePollTimer !== null);
+        downloadSupportBundleButton.disabled = !hasReadyDownload || supportBundleDownloadInFlight;
+        deleteSupportBundleButton.disabled = !hasReadyDownload || supportBundleDeleteInFlight;
+    }
+
+    function setDownloadAvailability(available) {
+        downloadSupportBundleButton.dataset.available = available ? "true" : "false";
+        downloadSupportBundleButton.classList.toggle("d-none", !available);
+        if (!available) {
+            deleteSupportBundleButton.classList.add("d-none");
+        }
+        setSupportBundleActions();
+    }
+
+    function safeSupportBundleFilename(contentDisposition) {
+        if (typeof contentDisposition !== "string") {
+            return SUPPORT_BUNDLE_FILENAME_FALLBACK;
+        }
+        const match = contentDisposition.match(/(?:^|;)\s*filename="?([^";]+)"?/i);
+        const filename = match ? match[1].trim() : "";
+        if (!/^[A-Za-z0-9][A-Za-z0-9._-]*\.tar\.gz$/i.test(filename)) {
+            return SUPPORT_BUNDLE_FILENAME_FALLBACK;
+        }
+        return filename;
+    }
+
+    function genericSupportBundleFailure(action) {
+        const messages = {
+            create: "Support bundle creation could not start. Check the controller connection and try again.",
+            collect: "Support bundle collection did not complete. Try again when the controller is available.",
+            status: "Support bundle status could not be checked. Try again shortly.",
+            download: "The support bundle could not be downloaded. Try the download again.",
+            delete: "The Pi-side support bundle could not be removed. Your downloaded file is safe; the Pi-side copy will expire automatically within 24 hours."
+        };
+        return messages[action] || "The support bundle operation did not complete. Try again.";
+    }
+
+    function scheduleSupportBundlePoll(jobId) {
+        stopSupportBundlePolling();
+        if (supportBundlePageUnloading || jobId !== supportBundleJobId) {
+            return;
+        }
+        supportBundlePollTimer = window.setTimeout(() => {
+            supportBundlePollTimer = null;
+            pollSupportBundle(jobId);
+        }, SUPPORT_BUNDLE_POLL_INTERVAL_MS);
+        setSupportBundleActions();
+    }
+
+    async function pollSupportBundle(jobId) {
+        if (supportBundlePageUnloading || jobId !== supportBundleJobId) {
+            return;
+        }
+        try {
+            const response = await fetchWithEndpointFallback(
+                supportBundleEndpoint(`/${encodeURIComponent(jobId)}`),
+                { method: "GET", cache: "no-store" }
+            );
+            if (!response.ok) {
+                throw new Error("status request failed");
+            }
+            const snapshot = await response.json();
+            if (!snapshot || jobId !== supportBundleJobId) {
+                return;
+            }
+            if (snapshot.state === "queued") {
+                setSupportBundleStatus("queued", "Support bundle queued.");
+                scheduleSupportBundlePoll(jobId);
+                return;
+            }
+            if (snapshot.state === "running") {
+                setSupportBundleStatus("running", "Collecting diagnostic information.");
+                scheduleSupportBundlePoll(jobId);
+                return;
+            }
+            stopSupportBundlePolling();
+            if (snapshot.state === "succeeded" && snapshot.download_available === true) {
+                setSupportBundleStatus("ready", "Support bundle ready to download.");
+                setDownloadAvailability(true);
+                return;
+            }
+            setDownloadAvailability(false);
+            setSupportBundleStatus("failed", "Support bundle collection did not complete.");
+            showSupportBundleAlert(genericSupportBundleFailure("collect"));
+            supportBundleJobId = "";
+            setSupportBundleActions();
+        } catch {
+            stopSupportBundlePolling();
+            setDownloadAvailability(false);
+            setSupportBundleStatus("failed", "Support bundle status unavailable.");
+            showSupportBundleAlert(genericSupportBundleFailure("status"));
+            supportBundleJobId = "";
+            setSupportBundleActions();
+        }
+    }
+
+    async function createSupportBundle() {
+        if (supportBundleCreateInFlight || supportBundleJobId !== "") {
+            return;
+        }
+        supportBundleCreateInFlight = true;
+        clearSupportBundleAlert();
+        setSupportBundleActions();
+        try {
+            const response = await fetchWithEndpointFallback(SUPPORT_BUNDLES_ENDPOINT, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ probe_i2c: supportBundleProbeI2c.checked })
+            });
+            if (!response.ok) {
+                throw new Error("create request failed");
+            }
+            const snapshot = await response.json();
+            if (!snapshot || typeof snapshot.id !== "string" || snapshot.id === "") {
+                throw new Error("missing job id");
+            }
+            supportBundleJobId = snapshot.id;
+            setDownloadAvailability(false);
+            supportBundleModal.hide();
+            setSupportBundleStatus("queued", "Support bundle queued.");
+            scheduleSupportBundlePoll(supportBundleJobId);
+        } catch {
+            setSupportBundleStatus("failed", "Support bundle was not created.");
+            showSupportBundleAlert(genericSupportBundleFailure("create"));
+        } finally {
+            supportBundleCreateInFlight = false;
+            setSupportBundleActions();
+        }
+    }
+
+    function invokeBrowserDownload(blob, filename) {
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = objectUrl;
+        link.download = filename;
+        link.style.display = "none";
+        document.body.appendChild(link);
+        try {
+            link.click();
+        } finally {
+            link.remove();
+            window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+        }
+    }
+
+    async function deleteSupportBundle(jobId, afterDownload = false, filename = "") {
+        if (supportBundleDeleteInFlight || jobId !== supportBundleJobId) {
+            return false;
+        }
+        supportBundleDeleteInFlight = true;
+        setSupportBundleActions();
+        try {
+            const response = await fetchWithEndpointFallback(
+                supportBundleEndpoint(`/${encodeURIComponent(jobId)}`),
+                { method: "DELETE" }
+            );
+            if (!response.ok) {
+                throw new Error("delete request failed");
+            }
+            setDownloadAvailability(false);
+            deleteSupportBundleButton.classList.add("d-none");
+            supportBundleJobId = "";
+            setSupportBundleStatus(
+                "deleted",
+                afterDownload
+                    ? `Downloaded: ${filename}. Your browser chose the save location. Review the archive for sensitive information, then attach it to the relevant GitHub issue.`
+                    : "The Pi-side support bundle was deleted."
+            );
+            return true;
+        } catch {
+            setDownloadAvailability(true);
+            deleteSupportBundleButton.classList.remove("d-none");
+            setSupportBundleStatus(
+                "cleanup-pending",
+                afterDownload
+                    ? `Downloaded: ${filename}. Your browser chose the save location. The downloaded file is safe; the Pi-side copy will expire automatically within 24 hours.`
+                    : "The Pi-side support bundle is still retained."
+            );
+            showSupportBundleAlert(genericSupportBundleFailure("delete"));
+            return false;
+        } finally {
+            supportBundleDeleteInFlight = false;
+            setSupportBundleActions();
+        }
+    }
+
+    async function downloadSupportBundle() {
+        if (supportBundleDownloadInFlight || supportBundleJobId === "" ||
+            downloadSupportBundleButton.dataset.available !== "true") {
+            return;
+        }
+        const jobId = supportBundleJobId;
+        supportBundleDownloadInFlight = true;
+        clearSupportBundleAlert();
+        setSupportBundleStatus("downloading", "Downloading support bundle.");
+        setSupportBundleActions();
+        try {
+            const response = await fetchWithEndpointFallback(
+                supportBundleEndpoint(`/${encodeURIComponent(jobId)}/download`),
+                { method: "GET", cache: "no-store" }
+            );
+            if (!response.ok) {
+                throw new Error("download request failed");
+            }
+            const blob = await response.blob();
+            if (blob.size === 0 || jobId !== supportBundleJobId) {
+                throw new Error("incomplete download");
+            }
+            const filename = safeSupportBundleFilename(response.headers.get("Content-Disposition"));
+            invokeBrowserDownload(blob, filename);
+            await deleteSupportBundle(jobId, true, filename);
+        } catch {
+            setSupportBundleStatus("failed", "Support bundle download did not complete.");
+            showSupportBundleAlert(genericSupportBundleFailure("download"));
+        } finally {
+            supportBundleDownloadInFlight = false;
+            setSupportBundleActions();
+        }
+    }
+
+    createSupportBundleButton.addEventListener("click", () => {
+        if (!supportBundleCreateInFlight && supportBundleJobId === "") {
+            clearSupportBundleAlert();
+            supportBundleModal.show();
+        }
+    });
+    confirmCreateSupportBundleButton.addEventListener("click", createSupportBundle);
+    downloadSupportBundleButton.addEventListener("click", downloadSupportBundle);
+    deleteSupportBundleButton.addEventListener("click", () => {
+        deleteSupportBundle(supportBundleJobId);
+    });
+    window.addEventListener("pagehide", () => {
+        supportBundlePageUnloading = true;
+        stopSupportBundlePolling();
+    }, { once: true });
+    setDownloadAvailability(false);
 });

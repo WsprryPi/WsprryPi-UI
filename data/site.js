@@ -65,6 +65,10 @@ const REPAIR_PATH = normalizeSameOriginPath(
     PATHS.repairPath,
     `${APP_BASE_PATH}/config/repair`
 );
+const SUPPORT_BUNDLES_PATH = normalizeSameOriginPath(
+    PATHS.supportBundlesPath,
+    `${APP_BASE_PATH}/api/support-bundles`
+);
 const WEBSOCKET_PATH = normalizeSameOriginPath(
     PATHS.socketPath,
     `${APP_BASE_PATH}/socket`
@@ -88,6 +92,11 @@ const REPAIR_ENDPOINT = createEndpointDefinition(
     "config/repair",
     REPAIR_PATH,
     buildDirectRestFallbackUrl("/config/repair")
+);
+const SUPPORT_BUNDLES_ENDPOINT = createEndpointDefinition(
+    "support bundles",
+    SUPPORT_BUNDLES_PATH,
+    buildDirectRestFallbackUrl("/api/support-bundles")
 );
 const WEBSOCKET_ENDPOINT = createEndpointDefinition(
     "socket",

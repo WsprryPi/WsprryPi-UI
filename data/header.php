@@ -13,6 +13,7 @@ $pathConfig = [
     'configPath' => $basePath . '/config',
     'versionPath' => $basePath . '/version',
     'repairPath' => $basePath . '/config/repair',
+    'supportBundlesPath' => $basePath . '/api/support-bundles',
     'socketPath' => $basePath . '/socket',
     'logStreamPath' => $basePath . '/log_stream.php',
 ];

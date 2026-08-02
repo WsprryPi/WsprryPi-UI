@@ -135,11 +135,88 @@ require __DIR__ . '/../card_header.php';
                                 </button>
                             </div>
                         </section>
+
+                        <section
+                            id="supportBundlePanel"
+                            class="maintenance-pane maintenance-pane--support"
+                            aria-labelledby="supportBundlePanelTitle">
+                            <h2 id="supportBundlePanelTitle" class="maintenance-section-title h5 mb-0">Support Bundle</h2>
+                            <p class="maintenance-pane__body mb-0">
+                                Collect a diagnostic archive to review and attach to the relevant GitHub issue. Bundles can contain sensitive information.
+                            </p>
+                            <div
+                                id="supportBundleStatus"
+                                class="maintenance-support-status visually-hidden"
+                                role="status"
+                                aria-live="polite"
+                                aria-atomic="true">
+                            </div>
+                            <div
+                                id="supportBundleAlert"
+                                class="alert alert-danger d-none mb-0"
+                                role="alert"
+                                aria-live="assertive"
+                                aria-atomic="true">
+                            </div>
+                            <div class="maintenance-action maintenance-action--start maintenance-action--wrap">
+                                <button id="createSupportBundleButton" type="button" class="btn btn-primary">
+                                    Create Support Bundle
+                                </button>
+                                <button id="downloadSupportBundleButton" type="button" class="btn btn-outline-primary d-none" disabled>
+                                    Download support bundle
+                                </button>
+                                <button id="deleteSupportBundleButton" type="button" class="btn btn-outline-danger d-none" disabled>
+                                    Delete from Pi
+                                </button>
+                            </div>
+                        </section>
                     </div>
                 </section>
             </div>
 
             <div id="maintenanceOverlay" class="maintenance-overlay d-none"></div>
+
+            <div
+                class="modal fade"
+                id="supportBundleModal"
+                tabindex="-1"
+                aria-labelledby="supportBundleModalLabel"
+                aria-describedby="supportBundleModalDescription"
+                aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3 class="modal-title h5" id="supportBundleModalLabel">Create Support Bundle</h3>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p id="supportBundleModalDescription">
+                                Wsprry Pi will collect diagnostic information into an archive. Support bundles can contain sensitive information, so review the archive before sharing it.
+                            </p>
+                            <p class="mb-3">
+                                Passive I²C information is included in normal collection.
+                            </p>
+                            <div class="form-check">
+                                <input
+                                    id="supportBundleProbeI2c"
+                                    class="form-check-input"
+                                    type="checkbox"
+                                    aria-describedby="supportBundleProbeI2cHelp">
+                                <label class="form-check-label" for="supportBundleProbeI2c">
+                                    Actively probe I²C bus 1
+                                </label>
+                                <div id="supportBundleProbeI2cHelp" class="form-text">
+                                    Enabling this runs <code>i2cdetect -y 1</code> and actively probes I²C bus 1.
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button id="confirmCreateSupportBundleButton" type="button" class="btn btn-primary">Create Support Bundle</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
             <div
                 class="modal fade"
