@@ -45,15 +45,50 @@
                         ? 'index.php'
                         : 'index.php?page=' . rawurlencode($viewKey);
                     ?>
-                    <li class="nav-item">
-                        <a
-                            class="nav-link nav-link-primary<?= $isActive ? ' active' : '' ?>"
-                            href="<?= htmlspecialchars($href) ?>"
-                            <?= $isActive ? 'aria-current="page"' : '' ?>>
-                            <i class="fa-solid <?= htmlspecialchars($navMetadata['navIcon']) ?>"></i>
-                            <span class="ms-2"><?= htmlspecialchars($navMetadata['navLabel']) ?></span>
-                        </a>
-                    </li>
+                    <?php if ($viewKey === 'spots'): ?>
+                        <li class="nav-item dropdown">
+                            <button
+                                class="nav-link nav-link-primary dropdown-toggle<?= $isActive ? ' active' : '' ?>"
+                                id="spotsDropdown"
+                                type="button"
+                                data-bs-toggle="dropdown"
+                                aria-expanded="false">
+                                <i class="fa-solid <?= htmlspecialchars($navMetadata['navIcon']) ?>" aria-hidden="true"></i>
+                                <span class="ms-2"><?= htmlspecialchars($navMetadata['navLabel']) ?></span>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-start" aria-labelledby="spotsDropdown">
+                                <li>
+                                    <a
+                                        class="dropdown-item<?= $isActive ? ' active' : '' ?>"
+                                        href="<?= htmlspecialchars($href) ?>"
+                                        <?= $isActive ? 'aria-current="page"' : '' ?>>
+                                        WSPR spots
+                                    </a>
+                                </li>
+                                <li>
+                                    <a
+                                        class="dropdown-item"
+                                        href="https://swharden.com/qrss/plus/"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        aria-label="QRSS Plus (opens in a new tab)">
+                                        QRSS Plus
+                                        <i class="fa-solid fa-arrow-up-right-from-square ms-2" aria-hidden="true"></i>
+                                    </a>
+                                </li>
+                            </ul>
+                        </li>
+                    <?php else: ?>
+                        <li class="nav-item">
+                            <a
+                                class="nav-link nav-link-primary<?= $isActive ? ' active' : '' ?>"
+                                href="<?= htmlspecialchars($href) ?>"
+                                <?= $isActive ? 'aria-current="page"' : '' ?>>
+                                <i class="fa-solid <?= htmlspecialchars($navMetadata['navIcon']) ?>"></i>
+                                <span class="ms-2"><?= htmlspecialchars($navMetadata['navLabel']) ?></span>
+                            </a>
+                        </li>
+                    <?php endif; ?>
                 <?php endforeach; ?>
             </ul>
 
