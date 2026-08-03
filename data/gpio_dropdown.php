@@ -14,6 +14,7 @@ if (!function_exists('wsprrypi_safe_gpio_pins')) {
     function wsprrypi_safe_gpio_pins(): array
     {
         return [
+            4 => 'Pin 7',
             5 => 'Pin 29',
             6 => 'Pin 31',
             7 => 'Pin 26',
