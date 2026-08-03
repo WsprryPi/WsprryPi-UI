@@ -754,7 +754,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                         <select
                                             id="tx_pin"
                                             class="form-select"
-                                            aria-describedby="tx-pin-hint"
+                                            aria-describedby="tx-pin-hint tx-pin-error"
                                             data-bs-toggle="tooltip"
                                             title="Only GPIO4 and GPIO20 support GPCLK0 clock output on the 40-pin header.">
                                             <option value="4">GPIO4</option>
@@ -763,6 +763,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                         <div id="tx-pin-hint" class="form-text mt-2">
                                             Only GPIO4 and GPIO20 support GPCLK0 clock output on the 40-pin header.
                                         </div>
+                                        <div id="tx-pin-error" class="form-text text-danger mt-2" aria-live="polite" hidden></div>
                                     </div>
 
                                     <div class="col-12 col-lg-4">
@@ -909,7 +910,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                 type="button"
                                                 data-bs-toggle="dropdown"
                                                 aria-expanded="false"
-                                                aria-describedby="led-pin-hint"
+                                                aria-describedby="led-pin-hint led-pin-error"
                                                 title="GPIO18 (Pin 12 - TAPR LED)">
                                                 <?= htmlspecialchars($defaultLedGpio) ?>
                                             </button>
@@ -917,6 +918,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                             <div id="led-pin-hint" class="form-text mt-2">
                                                 Choose the GPIO pin used for the transmit LED output.
                                             </div>
+                                            <div id="led-pin-error" class="form-text text-danger mt-2" aria-live="polite" hidden></div>
                                         </div>
                                     </div>
 
@@ -944,7 +946,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                 type="button"
                                                 data-bs-toggle="dropdown"
                                                 aria-expanded="false"
-                                                aria-describedby="shutdown-pin-hint"
+                                                aria-describedby="shutdown-pin-hint shutdown-pin-error"
                                                 title="GPIO19 (Pin 35 - TAPR Shutdown)">
                                                 <?= htmlspecialchars($defaultShutdownGpio) ?>
                                             </button>
@@ -952,6 +954,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                             <div id="shutdown-pin-hint" class="form-text mt-2">
                                                 Choose the GPIO pin monitored for the shutdown button input.
                                             </div>
+                                            <div id="shutdown-pin-error" class="form-text text-danger mt-2" aria-live="polite" hidden></div>
                                         </div>
                                     </div>
                                 </div>
@@ -983,7 +986,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                 type="button"
                                                 data-bs-toggle="dropdown"
                                                 aria-expanded="false"
-                                                aria-describedby="amp-pin-hint amp-control-hint"
+                                                aria-describedby="amp-pin-hint amp-control-hint amp-pin-error"
                                                 disabled
                                                 title="Disabled">
                                             </button>
@@ -991,6 +994,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                             <div id="amp-pin-hint" class="form-text mt-2">
                                                 Choose the GPIO pin used for amplifier control.
                                             </div>
+                                            <div id="amp-pin-error" class="form-text text-danger mt-2" aria-live="polite" hidden></div>
                                         </div>
                                     </div>
 
@@ -1068,11 +1072,12 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                         $selectName = $selectId;
                                                         $selectClass = 'form-select form-select-sm band-gpio-input';
                                                         $selectDataBand = $band;
-                                                        $selectAttributes = 'disabled aria-label="Band GPIO pin for ' . htmlspecialchars($band, ENT_QUOTES) . '"';
+                                                        $selectAttributes = 'disabled aria-label="Band GPIO pin for ' . htmlspecialchars($band, ENT_QUOTES) . '" aria-describedby="band-gpio-hint band-gpio-gpio-' . htmlspecialchars($band, ENT_QUOTES) . '-error"';
                                                         $defaultGpio = '';
                                                         $selectPlaceholder = 'Select GPIO';
                                                         include __DIR__ . '/../gpio_dropdown.php';
                                                         ?>
+                                                        <div id="band-gpio-gpio-<?= htmlspecialchars($band) ?>-error" class="form-text text-danger mt-2" aria-live="polite" hidden></div>
                                                     </td>
                                                     <td data-label="Active High">
                                                         <div class="form-check mb-0">

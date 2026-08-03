@@ -361,6 +361,7 @@ function bindIndexActions() {
     // Bind the Use NTP Switch
     $("#use_ntp").on("change", clickUseNTP);
     $("#transmit_backend").on("change", clickTransmitBackend);
+    $("#tx_pin").on("change", clickTransmitPin);
     $("#ppm").on("input change", () => syncPpmFields("wspr"));
     $("#ppm_cw").on("input change", () => syncPpmFields("cw"));
 
@@ -2027,7 +2028,14 @@ function clickTransmitBackend() {
         .prop("disabled", gpioActive);
 
     syncCalibrationControls();
+    refreshGpioConflictOptions();
     validateTransmitterHardwareFields();
+    validatePage();
+    scheduleAutosave();
+}
+
+function clickTransmitPin() {
+    refreshGpioConflictOptions();
     validatePage();
     scheduleAutosave();
 }
@@ -2290,7 +2298,16 @@ function getReservedPiControlPins(excludeButtonId = "") {
 }
 
 function getReservedBandGpioPins() {
-    return getReservedPiControlPins();
+    const reservedPins = getReservedPiControlPins();
+    const rfOutputPin = getReservedGpioRfOutputPin();
+    if (Number.isInteger(rfOutputPin)) {
+        reservedPins.add(String(rfOutputPin));
+    }
+    return reservedPins;
+}
+
+function getReservedGpioRfOutputPin() {
+    return selectedTransmitBackend() === "gpio" ? getTxPin() : null;
 }
 
 function refreshPiControlDropdownOptions() {
@@ -2299,6 +2316,10 @@ function refreshPiControlDropdownOptions() {
 
     buttonIds.forEach((buttonId) => {
         const reservedPins = getReservedPiControlPins(buttonId);
+        const rfOutputPin = getReservedGpioRfOutputPin();
+        if (Number.isInteger(rfOutputPin)) {
+            reservedPins.add(String(rfOutputPin));
+        }
         bandPins.forEach((pin) => reservedPins.add(pin));
         const currentPin = getDropdownButtonPin(buttonId);
 
@@ -2314,6 +2335,22 @@ function refreshPiControlDropdownOptions() {
             $item.prop("disabled", shouldDisable);
             $item.toggleClass("disabled", shouldDisable);
         });
+    });
+}
+
+function refreshTransmitGpioOptions() {
+    const reservedPins = getReservedPiControlPins();
+    getSelectedBandGpioPins().forEach((pin) => reservedPins.add(pin));
+    const currentPin = getTxPin();
+
+    $("#tx_pin option").each(function () {
+        const $option = $(this);
+        const optionValue = String($option.val() || "");
+        const keepCurrentSelection =
+            Number.isInteger(currentPin) && String(currentPin) === optionValue;
+        const shouldDisable = reservedPins.has(optionValue) && !keepCurrentSelection;
+
+        $option.prop("disabled", shouldDisable);
     });
 }
 
@@ -2341,6 +2378,7 @@ function refreshBandGpioOptions() {
 function refreshGpioConflictOptions() {
     refreshPiControlDropdownOptions();
     refreshBandGpioOptions();
+    refreshTransmitGpioOptions();
 }
 
 function populateBandGpioForm(bandGpioConfig = {}) {
@@ -2446,10 +2484,13 @@ function validateGpioConflictFields() {
     ["ledDropdownButton", "shutdownDropdownButton", "ampDropdownButton"].forEach((buttonId) => {
         const field = document.getElementById(buttonId);
         if (field) {
-            field.setCustomValidity("");
-            field.classList.remove("is-invalid");
-            field.removeAttribute("aria-invalid");
+            setPinDropdownValidationState(field, "");
         }
+    });
+    const txPinField = document.getElementById("tx_pin");
+    clearStoredGpioConflictState(txPinField);
+    getBandGpioRows().each(function () {
+        clearStoredGpioConflictState($(this).find(".band-gpio-input").get(0));
     });
 
     function addReservedAssignment(pin, field, label) {
@@ -2491,6 +2532,8 @@ function validateGpioConflictFields() {
 
     let invalidCount = 0;
     const reservedByPin = new Map();
+    const rfOutputPin = getReservedGpioRfOutputPin();
+    const rfOutputPinText = Number.isInteger(rfOutputPin) ? String(rfOutputPin) : "";
 
     reservedAssignments.forEach((assignment) => {
         if (!reservedByPin.has(assignment.pin)) {
@@ -2502,14 +2545,18 @@ function validateGpioConflictFields() {
         const conflictingAssignment = reservedAssignments.find((other) =>
             other !== assignment && other.pin === assignment.pin
         );
-        const valid = !conflictingAssignment;
-        const message = valid
-            ? ""
-            : `GPIO${assignment.pin} is already assigned to ${conflictingAssignment.label}.`;
+        const conflictsWithRfOutput = assignment.pin === rfOutputPinText;
+        const valid = !conflictingAssignment && !conflictsWithRfOutput;
+        const message = conflictsWithRfOutput
+            ? `GPIO${assignment.pin} is reserved by GPIO RF Output.`
+            : valid
+                ? ""
+                : `GPIO${assignment.pin} is already assigned to ${conflictingAssignment.label}.`;
         if (assignment.field) {
-            assignment.field.setCustomValidity(message);
-            assignment.field.classList.toggle("is-invalid", !valid);
-            assignment.field.setAttribute("aria-invalid", valid ? "false" : "true");
+            setPinDropdownValidationState(assignment.field, message);
+        }
+        if (conflictsWithRfOutput && txPinField) {
+            setGpioConflictFieldState(txPinField, message);
         }
         if (!valid) {
             invalidCount++;
@@ -2517,18 +2564,28 @@ function validateGpioConflictFields() {
     });
 
     bandAssignments.forEach((assignment) => {
+        if (assignment.pin === rfOutputPinText) {
+            const message = `GPIO${assignment.pin} is reserved by GPIO RF Output.`;
+            if (assignment.field) {
+                setGpioConflictFieldState(assignment.field, message);
+            }
+            if (txPinField) {
+                setGpioConflictFieldState(txPinField, message);
+            }
+            invalidCount++;
+            return;
+        }
+
         const reservedAssignment = reservedByPin.get(assignment.pin);
         const valid = !reservedAssignment;
         const message = valid
             ? ""
             : `GPIO${assignment.pin} is reserved by ${reservedAssignment.label}.`;
         if (assignment.field) {
-            assignment.field.setCustomValidity(message);
-            setFieldValidationState(assignment.field, valid);
+            setGpioConflictFieldState(assignment.field, message);
         }
         if (!valid && reservedAssignment.field) {
-            reservedAssignment.field.setCustomValidity(message);
-            setFieldValidationState(reservedAssignment.field, false);
+            setPinDropdownValidationState(reservedAssignment.field, message);
         }
         if (!valid) {
             invalidCount++;
@@ -2553,8 +2610,7 @@ function validateGpioConflictFields() {
         const message = `Bands sharing GPIO${pin} must use the same Active High setting.`;
         assignments.forEach((assignment) => {
             if (assignment.field) {
-                assignment.field.setCustomValidity(message);
-                setFieldValidationState(assignment.field, false);
+                setGpioConflictFieldState(assignment.field, message);
             }
         });
         invalidCount += assignments.length;
@@ -2572,16 +2628,80 @@ function validateAmpControlFields() {
     const requiredMessage = "Select an Amp Pin before enabling Amp Control.";
     const valid = !getUseAmp() || Number.isInteger(getAmpPin());
     if (!valid) {
-        button.setCustomValidity(requiredMessage);
-        button.classList.add("is-invalid");
-        button.setAttribute("aria-invalid", "true");
-    } else if (button.validationMessage === requiredMessage) {
-        button.setCustomValidity("");
-        button.classList.remove("is-invalid");
-        button.setAttribute("aria-invalid", "false");
+        setPinDropdownValidationState(button, requiredMessage);
+    } else if (button.dataset.validationMessage === requiredMessage) {
+        setPinDropdownValidationState(button, "");
     }
 
     return valid;
+}
+
+function setPinDropdownValidationState(field, message) {
+    if (!field) {
+        return;
+    }
+
+    const normalizedMessage = String(message || "");
+    field.setCustomValidity(normalizedMessage);
+    field.dataset.validationMessage = normalizedMessage;
+    field.classList.toggle("is-invalid", normalizedMessage !== "");
+    field.setAttribute("aria-invalid", normalizedMessage === "" ? "false" : "true");
+
+    const feedback = document.getElementById(field.id.replace("DropdownButton", "-pin-error"));
+    if (feedback) {
+        feedback.textContent = normalizedMessage;
+        feedback.hidden = normalizedMessage === "";
+    }
+}
+
+function setGpioConflictFieldState(field, message) {
+    if (!field) {
+        return;
+    }
+    if (field.classList.contains("pin-dropdown-btn")) {
+        setPinDropdownValidationState(field, message);
+        return;
+    }
+
+    const normalizedMessage = String(message || "");
+    field.setCustomValidity(normalizedMessage);
+    if (normalizedMessage) {
+        field.dataset.gpioConflictMessage = normalizedMessage;
+    } else {
+        delete field.dataset.gpioConflictMessage;
+    }
+    if (normalizedMessage) {
+        setFieldValidationState(field, false);
+    } else {
+        clearFieldValidationState(field);
+    }
+
+    const feedbackId = field.id === "tx_pin" ? "tx-pin-error" : `${field.id}-error`;
+    const feedback = document.getElementById(feedbackId);
+    if (feedback) {
+        feedback.textContent = normalizedMessage;
+        feedback.hidden = normalizedMessage === "";
+    }
+}
+
+function clearStoredGpioConflictState(field) {
+    if (!field || !field.dataset.gpioConflictMessage) {
+        return;
+    }
+
+    const storedMessage = field.dataset.gpioConflictMessage;
+    if (field.validationMessage === storedMessage) {
+        field.setCustomValidity("");
+        clearFieldValidationState(field);
+    }
+    delete field.dataset.gpioConflictMessage;
+
+    const feedbackId = field.id === "tx_pin" ? "tx-pin-error" : `${field.id}-error`;
+    const feedback = document.getElementById(feedbackId);
+    if (feedback) {
+        feedback.textContent = "";
+        feedback.hidden = true;
+    }
 }
 
 function isPlaceholderCallsign(callsign) {
@@ -2821,9 +2941,12 @@ function invalidAutosaveDetailMessage() {
     const section = describeControlSection(invalidControl);
     const tab = describeControlTab(invalidControl);
     const validationMessage =
-        typeof invalidControl.validationMessage === "string"
-            ? invalidControl.validationMessage.trim()
-            : "";
+        String(
+            invalidControl.dataset.validationMessage ||
+            (typeof invalidControl.validationMessage === "string"
+                ? invalidControl.validationMessage
+                : "")
+        ).trim();
     let location = label;
     if (section) {
         location += ` in ${section}`;
@@ -3086,6 +3209,7 @@ function clickUseNTP() {
 function setTxPin(gpioNumber) {
     const normalizedPin = gpioNumber === 20 ? 20 : 4;
     $("#tx_pin").val(String(normalizedPin));
+    refreshGpioConflictOptions();
 }
 
 function getTxPin() {
