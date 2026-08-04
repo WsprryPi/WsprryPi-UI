@@ -7,120 +7,11 @@ const vm = require("node:vm");
 
 const uiRoot = path.resolve(__dirname, "..");
 const siteScript = fs.readFileSync(path.join(uiRoot, "data/site.js"), "utf8");
+const indexScript = fs.readFileSync(path.join(uiRoot, "data/index.js"), "utf8");
 const maintenanceView = fs.readFileSync(path.join(uiRoot, "data/views/maintenance.php"), "utf8");
 
-function findMatchingBrace(source, openingBraceIndex) {
-    let depth = 0;
-    let quote = "";
-    let escaped = false;
-    let lineComment = false;
-    let blockComment = false;
-    for (let index = openingBraceIndex; index < source.length; index += 1) {
-        const character = source[index];
-        const nextCharacter = source[index + 1];
-        if (lineComment) {
-            if (character === "\n") lineComment = false;
-            continue;
-        }
-        if (blockComment) {
-            if (character === "*" && nextCharacter === "/") {
-                blockComment = false;
-                index += 1;
-            }
-            continue;
-        }
-        if (quote) {
-            if (escaped) escaped = false;
-            else if (character === "\\") escaped = true;
-            else if (character === quote) quote = "";
-            continue;
-        }
-        if (character === "/" && nextCharacter === "/") {
-            lineComment = true;
-            index += 1;
-        } else if (character === "/" && nextCharacter === "*") {
-            blockComment = true;
-            index += 1;
-        } else if (["'", "\"", "`"].includes(character)) {
-            quote = character;
-        } else if (character === "{") {
-            depth += 1;
-        } else if (character === "}") {
-            depth -= 1;
-            if (depth === 0) return index;
-        }
-    }
-    throw new Error("Unterminated source block in data/site.js");
-}
-
-function extractFunctionSource(name) {
-    const declaration = `function ${name}(`;
-    const start = siteScript.indexOf(declaration);
-    assert.notEqual(start, -1, `${name} must remain available in data/site.js`);
-    const openingBrace = siteScript.indexOf("{", start + declaration.length);
-    return siteScript.slice(start, findMatchingBrace(siteScript, openingBrace) + 1);
-}
-
-const functionNames = [
-    "parseOperationFrequencyWithOptionalUnits",
-    "parseConfiguredWsprFrequencyHz",
-    "validateWsprBandCatalog",
-    "invalidTestToneSelection",
-    "createWsprBandTestToneSelection",
-    "createCustomRfTestToneSelection",
-    "createTestToneSelection",
-    "createTestToneSelectionPreview",
-    "currentValidatedTestToneCatalog",
-    "displayTestToneCatalog",
-    "configuredWsprCatalogBand",
-    "populateTestToneBandOptions",
-    "selectedTestToneMode",
-    "setSelectedTestToneMode",
-    "renderTestToneSelection",
-    "initializeTestToneSelectionControls",
-    "updateWsprBandCatalog",
-    "updateWsprBandCatalogUiState",
-    "clearWsprBandCatalogPendingRequest",
-    "invalidateWsprBandCatalogAuthorization",
-    "isCurrentWsprBandCatalogRequest",
-    "requestWsprBandCatalog",
-    "handleWsprBandCatalogResponse",
-    "normalizeTestToneMode",
-    "configuredTestToneFrequencyForMode",
-    "updateTestToneConfigContext",
-    "testToneDefaultTransmitFrequencyHz",
-    "formatTestToneFrequencyMhz",
-    "testToneFrequencyContextText",
-    "updateTestToneFrequencyContext",
-    "updateTestToneFrequencyInputDefault",
-    "testToneFrequencyOverridePayload",
-    "setTestToneExecutionResult",
-    "clearTestToneExecutionResult",
-    "validCommittedToneFrequency",
-    "committedTestToneSelectorText",
-    "committedTestToneExecutionText",
-    "isTestToneRuntimeActive",
-    "hasActiveManagedTransmissionForTestTone",
-    "hasEnabledManagedTransmissionForTestTone",
-    "clearUnresolvedTestToneStartContext",
-    "clearPendingTestToneStartRequest",
-    "quarantineTimedOutTestToneStartRequest",
-    "isTestToneStartQuarantinedForCurrentSocket",
-    "markPendingTestToneStartRequest",
-    "canStartTestTone",
-    "syncTestToneControlState",
-    "clickTestTone",
-    "sendTestToneStartPayload",
-    "onTestToneStart",
-    "onTestToneEnd",
-    "handleTestToneCommandResponse",
-    "bindTestToneControls",
-    "sendCommand",
-    "connectWebSocket",
-];
-
 assert.doesNotMatch(
-    extractFunctionSource("parseConfiguredWsprFrequencyHz"),
+    siteScript,
     /const\s+bandFrequencies\s*=/,
     "configured WSPR aliases must not retain a UI-owned frequency table"
 );
@@ -148,7 +39,7 @@ class FakeWebSocket {
         this.listeners = Object.create(null);
         this.sent = [];
         this.sendAttempts = 0;
-        this.throwOnSend = FakeWebSocket.throwOnNextSend;
+        this.throwOnSend = FakeWebSocket.throwOnNextSend ? 1 : 0;
         FakeWebSocket.throwOnNextSend = false;
         FakeWebSocket.instances.push(this);
     }
@@ -177,7 +68,8 @@ class FakeWebSocket {
 
     send(payload) {
         this.sendAttempts += 1;
-        if (this.throwOnSend) {
+        if (this.throwOnSend > 0) {
+            this.throwOnSend -= 1;
             throw new Error("mock send failure");
         }
         this.sent.push(JSON.parse(payload));
@@ -187,6 +79,30 @@ FakeWebSocket.instances = [];
 FakeWebSocket.throwOnNextSend = false;
 
 let modalShown = false;
+let guardModalShowCount = 0;
+const diagnostics = {
+    throwCount: 0,
+    calls: [],
+};
+function classList() {
+    const values = new Set();
+    return {
+        add(...names) { names.forEach((name) => values.add(name)); },
+        remove(...names) { names.forEach((name) => values.delete(name)); },
+        contains(name) { return values.has(name); },
+        toggle(name, force) {
+            if (force === undefined) {
+                values.has(name) ? values.delete(name) : values.add(name);
+            } else if (force) {
+                values.add(name);
+            } else {
+                values.delete(name);
+            }
+            return values.has(name);
+        },
+        toString() { return [...values].join(" "); },
+    };
+}
 function element(initial = {}) {
     return Object.assign({
         value: "",
@@ -194,61 +110,133 @@ function element(initial = {}) {
         disabled: false,
         textContent: "",
         options: [],
+        childNodes: [],
+        dataset: {},
+        style: {},
+        offsetWidth: 120,
+        classList: classList(),
         handlers: Object.create(null),
-        replaceChildren() {
+        setAttribute(name, value) {
+            this[name] = String(value);
+        },
+        removeAttribute(name) {
+            delete this[name];
+        },
+        cloneNode() {
+            return element({ textContent: this.textContent });
+        },
+        replaceChildren(...nodes) {
             this.options = [];
-            this.value = "";
+            this.childNodes = nodes;
+            if (nodes.length === 0) this.value = "";
         },
         appendChild(option) {
             this.options.push(option);
+            this.childNodes.push(option);
         },
     }, initial);
 }
-const elements = {
-    testToneStart: element({ disabled: true }),
-    testToneEnd: element({ disabled: true }),
-    testToneClose: element(),
-    testToneSourceBand: element(),
-    testToneSourceCustom: element(),
-    testToneBand: element({ disabled: true }),
-    testToneFrequencyHz: element(),
-    testToneFrequencyContext: element(),
-    testToneSelectionPreview: element(),
-    testToneSelectionError: element(),
-    testToneExecutionResult: element(),
-    test_tone: element(),
-    testToneModal: element({ classList: { contains: (name) => name === "show" && modalShown } }),
-};
-const buttons = {
-    "#test_tone": elements.test_tone,
-    "#testToneStart": elements.testToneStart,
-    "#testToneEnd": elements.testToneEnd,
-    "#testToneClose": elements.testToneClose,
-};
+let elements;
+let buttons;
+function resetElements() {
+    modalShown = false;
+    guardModalShowCount = 0;
+    elements = {
+        testToneStart: element({ disabled: true }),
+        testToneEnd: element({ disabled: true }),
+        testToneClose: element(),
+        testToneSourceBand: element(),
+        testToneSourceCustom: element(),
+        testToneBand: element({ disabled: true }),
+        testToneFrequencyHz: element(),
+        testToneFrequencyContext: element(),
+        testToneSelectionPreview: element(),
+        testToneSelectionError: element(),
+        testToneExecutionResult: element(),
+        test_tone: element(),
+        testToneModal: element({ classList: { contains: (name) => name === "show" && modalShown } }),
+        connIcon: element(),
+        connStatusText: element(),
+        confirmModal: element(),
+        confirmModalLabel: element(),
+        confirmModalBody: element(),
+        confirmCancelBtn: element(),
+        confirmActionBtn: element(),
+        modeChangeGuardModal: element({
+            querySelector(selector) {
+                return selector === ".btn-close" ? elements.modeChangeGuardCloseBtn : null;
+            },
+        }),
+        modeChangeGuardModalLabel: element(),
+        modeChangeGuardModalBody: element(),
+        modeChangeGuardConfirmBtn: element(),
+        modeChangeGuardCancelBtn: element(),
+        modeChangeGuardCloseBtn: element(),
+    };
+    buttons = {
+        "#test_tone": elements.test_tone,
+        "#testToneStart": elements.testToneStart,
+        "#testToneEnd": elements.testToneEnd,
+        "#testToneClose": elements.testToneClose,
+    };
+}
+resetElements();
+
 const timers = new Map();
+const intervals = new Map();
 const timerCallbacks = new Map();
 const clearedTimers = new Set();
+let timerGeneration = 0;
 let nextTimerId = 1;
-let throwOnNextDebugLog = false;
-function schedule(callback, delay) {
+function scheduleTimer(kind, callback, delay) {
     const id = nextTimerId++;
-    timers.set(id, { callback, delay });
-    timerCallbacks.set(id, callback);
+    const record = { callback, delay, generation: timerGeneration, kind, state: "active" };
+    (kind === "interval" ? intervals : timers).set(id, record);
+    timerCallbacks.set(id, record);
     return id;
 }
+function schedule(callback, delay) {
+    return scheduleTimer("timeout", callback, delay);
+}
+function scheduleInterval(callback, delay) {
+    return scheduleTimer("interval", callback, delay);
+}
 function clearSchedule(id) {
+    const record = timers.get(id) || intervals.get(id) || timerCallbacks.get(id);
+    if (record) record.state = "canceled";
     clearedTimers.add(id);
     timers.delete(id);
+    intervals.delete(id);
 }
 function runTimer(id) {
     const timer = timers.get(id);
-    assert.ok(timer, `timer ${id} must be pending before it runs`);
+    assert.ok(timer && timer.generation === timerGeneration,
+        `timer ${id} must be pending in the current scenario before it runs`);
     timers.delete(id);
+    timer.state = "fired";
     timer.callback();
+}
+function invokeRecordedTimer(id) {
+    const record = timerCallbacks.get(id);
+    if (!record || record.generation !== timerGeneration) return false;
+    record.callback();
+    return true;
+}
+function resetTimers() {
+    timerGeneration += 1;
+    timers.clear();
+    intervals.clear();
+    timerCallbacks.clear();
+    clearedTimers.clear();
+    nextTimerId = 1;
 }
 
 function jquery(selector) {
-    const targets = String(selector).split(",").map((value) => value.trim())
+    const targets = (selector === vmContext.window || selector?.window === selector)
+        ? [vmContext.window]
+        : selector && typeof selector === "object" && selector.handlers
+            ? [selector]
+        : String(selector).split(",").map((value) => value.trim())
         .map((value) => buttons[value] || elements[value.replace(/^#/, "")])
         .filter(Boolean);
     return {
@@ -259,160 +247,329 @@ function jquery(selector) {
             return this;
         },
         off(eventName) {
-            const event = String(eventName || "").split(".")[0];
             for (const target of targets) {
-                if (event) delete target.handlers[event];
-                else target.handlers = Object.create(null);
+                if (!eventName) {
+                    target.handlers = Object.create(null);
+                    continue;
+                }
+                for (const token of String(eventName).split(/\s+/).filter(Boolean)) {
+                    const [type, ...namespaces] = token.split(".");
+                    const namespace = namespaces.join(".");
+                    for (const registeredType of Object.keys(target.handlers)) {
+                        if (type && registeredType !== type) continue;
+                        target.handlers[registeredType] = target.handlers[registeredType].filter(
+                            (entry) => namespace && entry.namespace !== namespace
+                        );
+                        if (target.handlers[registeredType].length === 0) {
+                            delete target.handlers[registeredType];
+                        }
+                    }
+                }
             }
             return this;
         },
         on(eventName, handler) {
-            const event = String(eventName).split(".")[0];
-            for (const target of targets) target.handlers[event] = handler;
+            for (const token of String(eventName).split(/\s+/).filter(Boolean)) {
+                const [type, ...namespaces] = token.split(".");
+                const namespace = namespaces.join(".");
+                for (const target of targets) {
+                    (target.handlers[type] ||= []).push({ namespace, handler });
+                }
+            }
             return this;
         },
+        one(eventName, handler) {
+            return this.on(eventName, handler);
+        },
         is() { return false; },
-        text() { return this; },
+        text(value) {
+            if (arguments.length === 0) return targets[0]?.textContent;
+            for (const target of targets) target.textContent = value;
+            return this;
+        },
+        attr(name, value) {
+            if (arguments.length === 1) return targets[0]?.[name];
+            for (const target of targets) target.setAttribute(name, value);
+            return this;
+        },
+        toggleClass(name, force) {
+            for (const target of targets) target.classList.toggle(name, force);
+            return this;
+        },
     };
 }
 
-const context = {
+function dispatch(target, eventName, event = {}) {
+    const type = String(eventName).split(".")[0];
+    const handlers = [...(target.handlers[type] || [])];
+    for (const { handler } of handlers) {
+        handler.call(target, event);
+    }
+}
+
+function handlerCount(target, eventName) {
+    const type = String(eventName).split(".")[0];
+    return (target.handlers[type] || []).length;
+}
+
+const testConsole = {
+    log(...args) {
+        diagnostics.calls.push(args);
+        if (diagnostics.throwCount > 0) {
+            diagnostics.throwCount -= 1;
+            throw new Error("mock post-send diagnostic failure");
+        }
+    },
+    warn(...args) { this.log(...args); },
+    error(...args) { this.log(...args); },
+    debug(...args) { this.log(...args); },
+};
+
+let vmContext;
+let context = {
     Array,
     JSON,
     Math,
     Number,
     Object,
     String,
+    URL,
+    URLSearchParams,
     WeakSet,
     WebSocket: FakeWebSocket,
-    console,
+    CwTimingState: { MORSE_TABLE: {} },
+    console: testConsole,
     $: jquery,
+    navigator: { onLine: true },
     document: {
+        addEventListener() {},
         getElementById(id) {
             return elements[id] || null;
         },
         createElement() { return element(); },
+        querySelector() { return null; },
+        querySelectorAll() { return []; },
     },
-    bootstrap: { Modal: class { show() { modalShown = true; } } },
-    window: { setTimeout: schedule, clearTimeout: clearSchedule },
+    bootstrap: {
+        Modal: class {
+            static getOrCreateInstance() {
+                return new this();
+            }
+            show() {
+                modalShown = true;
+                guardModalShowCount += 1;
+            }
+            hide() {
+                modalShown = false;
+            }
+        },
+        Tooltip: class {
+            static getInstance() { return null; }
+            constructor() {}
+            setContent() {}
+        },
+    },
     recordedTimerCallbacks: timerCallbacks,
     setTimeout: schedule,
     clearTimeout: clearSchedule,
-    debugConsole() {
-        if (throwOnNextDebugLog) {
-            throwOnNextDebugLog = false;
-            throw new Error("mock post-send debug failure");
-        }
-    },
-    clearWebSocketReconnectTimer() {},
-    createEndpointDefinition(_name, endpoint) {
-        return { proxyUrl: endpoint, directUrl: endpoint };
-    },
-    warnWebSocketFallback() {},
-    warnWebSocketFallbackAttempt() {},
-    warnWebSocketFallbackFailure() {},
-    armOutageBannerIfReady() {},
-    setConnectionState() {},
-    syncConnectionAlert() {},
-    reloadAllData() {},
-    getTxState() {},
-    isRuntimeControlView: () => false,
-    clearOfflineDefaults() {},
-    toggleButtonLoading() {},
+    WSPRRYPI_TEST_HOOKS: { enabled: true },
+};
+context.window = context;
+context.window.setTimeout = schedule;
+context.window.clearTimeout = clearSchedule;
+context.window.setInterval = scheduleInterval;
+context.window.clearInterval = clearSchedule;
+context.location = context.window.location = {
+    origin: "http://test.invalid",
+    href: "http://test.invalid/maintenance.php",
+    protocol: "http:",
+    hostname: "test.invalid",
+};
+context.window.WSPRRYPI_PATHS = { socketPath: "/socket" };
+context.window.WSPRRYPI_VIEW = "";
+context.window.addEventListener = function addEventListener(type, listener) {
+    (this.handlers ||= Object.create(null))[type] = listener;
 };
 vm.createContext(context);
-vm.runInContext(`
-const WSPR_BAND_CATALOG_TIMEOUT_MS = 5000;
-const TEST_TONE_COMMAND_TIMEOUT_MS = 15000;
-const CANONICAL_WSPR_BAND_NAMES = Object.freeze(["2200m", "630m", "160m", "80m", "60m", "40m", "30m", "22m", "20m", "17m", "15m", "12m", "10m", "6m", "4m", "2m"]);
-const TEST_TONE_SELECTION_MODES = Object.freeze({ WSPR_BAND: "wspr_band", CUSTOM_RF: "custom_rf" });
-let ws;
-let websocketCurrentlyConnected = false;
-let websocketReconnectTimer = null;
-let websocketConnectedOnce = false;
-let communicationInterrupted = false;
-let reloadAfterReconnectPending = false;
-let systemPaused = false;
-let pendingTestToneStartRequest = false;
-let unresolvedTestToneStartContext = null;
-let pendingTestToneStartTimeoutHandle = null;
-let testToneStartQuarantinedSocket = null;
-let testToneStartQuarantinedConnectionGeneration = 0;
-let retainingTestToneStartContextForResponse = false;
-let currentRuntimeStatus = null;
-let currentRuntimeConfigStatus = { mode: "", transmitEnabled: false };
-let currentTestToneConfigContext = { mode: "WSPR", configuredFrequencyHz: 0, wsprFrequencyValue: "22m", cwBaseFrequencyHz: 0 };
-let currentTestToneSelection = { valid: false, error: "Select a Test Tone frequency source." };
-let wsprBandDialFrequenciesHz = Object.create(null);
-let wsprAudioOffsetHz = 0;
-let wsprBandCatalogConnectionGeneration = 0;
-let wsprBandCatalogRequestGeneration = 0;
-let wsprBandCatalogRequestedSockets = new WeakSet();
-let wsprBandCatalogPendingRequest = null;
-let wsprBandCatalogAuthorized = false;
-let wsprBandCatalogStatusMessage = "WSPR band catalog unavailable. Test Tone Start is disabled.";
-let blockedTestToneReason = "";
-function showTestToneBlockedModal(reason) { blockedTestToneReason = reason; }
-function clearWebSocketReconnectTimer() {
-    if (websocketReconnectTimer !== null) {
-        clearTimeout(websocketReconnectTimer);
-        websocketReconnectTimer = null;
+vmContext = context;
+vm.runInContext(siteScript, context, { filename: "data/site.js" });
+vm.runInContext(indexScript, context, { filename: "data/index.js" });
+
+const bridge = vmContext.WSPRRYPI_TEST_HOOKS.bridge;
+assert.ok(bridge, "the guarded production test bridge must install when explicitly enabled");
+assert.ok(vmContext.window.handlers.beforeunload,
+    "complete site.js evaluation must register its production unload lifecycle handler");
+assert.ok(vmContext.window.handlers.pagehide,
+    "complete site.js evaluation must register its production page-hide lifecycle handler");
+assert.ok(vmContext.window.handlers.load,
+    "complete site.js evaluation must register its production load handler");
+assert.match(siteScript,
+    /WSPRRYPI_TEST_HOOKS[\s\S]*hooks\.enabled !== true/,
+    "the test bridge must remain inert without an explicit enabled hook");
+
+const productionFunctionIdentities = Object.freeze({
+    showModeChangeGuardModal: vmContext.showModeChangeGuardModal,
+    getTxState: bridge.functions.getTxState,
+    setConnectionState: bridge.functions.setConnectionState,
+    syncConnectionAlert: bridge.functions.syncConnectionAlert,
+    armOutageBannerIfReady: bridge.functions.armOutageBannerIfReady,
+    reloadAllData: bridge.functions.reloadAllData,
+    toggleButtonLoading: bridge.functions.toggleButtonLoading,
+    debugConsole: bridge.functions.debugConsole,
+    showTestToneBlockedModal: bridge.functions.showTestToneBlockedModal,
+    onTestToneStart: bridge.functions.onTestToneStart,
+    onTestToneEnd: bridge.functions.onTestToneEnd,
+    handleTestToneCommandResponse: bridge.functions.handleTestToneCommandResponse,
+});
+
+const initializationTimerBaseline = Object.freeze({
+    timeouts: timers.size,
+    intervals: intervals.size,
+});
+assert.ok(initializationTimerBaseline.intervals > 0,
+    "complete script initialization must establish its polling-interval baseline before scenarios");
+// The harness executes lifecycle registration but never runs production polling.
+// Discard that immutable initialization baseline before the first scenario.
+resetTimers();
+
+function assertProductionFunctionIdentities() {
+    for (const [name, reference] of Object.entries(productionFunctionIdentities)) {
+        const current = name === "showModeChangeGuardModal"
+            ? vmContext.showModeChangeGuardModal
+            : bridge.functions[name];
+        assert.equal(current, reference,
+            `${name} must retain its production function identity for the full behavioral suite`);
     }
 }
-${functionNames.map(extractFunctionSource).join("\n")}
-globalThis.catalogSnapshot = () => ({
-    authorized: wsprBandCatalogAuthorized,
-    pending: wsprBandCatalogPendingRequest !== null,
-    message: wsprBandCatalogStatusMessage,
-    offset: wsprAudioOffsetHz,
-    catalog: Object.assign({}, wsprBandDialFrequenciesHz),
-    connectionGeneration: wsprBandCatalogConnectionGeneration,
-    requestGeneration: wsprBandCatalogRequestGeneration,
-    pendingRequestGeneration: wsprBandCatalogPendingRequest?.requestGeneration ?? null,
-    timeoutHandle: wsprBandCatalogPendingRequest?.timeoutHandle ?? null,
-});
-globalThis.openConnection = () => { const socket = connectWebSocket("ws://test"); socket.open(); return socket; };
-globalThis.parseConfiguredWsprFrequencyHz = parseConfiguredWsprFrequencyHz;
-globalThis.updateWsprBandCatalog = updateWsprBandCatalog;
-globalThis.validateWsprBandCatalog = validateWsprBandCatalog;
-globalThis.createTestToneSelection = createTestToneSelection;
-globalThis.createTestToneSelectionPreview = createTestToneSelectionPreview;
-globalThis.testToneDefaultTransmitFrequencyHz = testToneDefaultTransmitFrequencyHz;
-globalThis.testToneFrequencyContextText = testToneFrequencyContextText;
-globalThis.clickTestTone = clickTestTone;
-globalThis.setTestToneInterlocks = (active, enabled) => {
-    currentRuntimeStatus = active ? { txState: "transmitting" } : null;
-    currentRuntimeConfigStatus = { mode: "WSPR", transmitEnabled: enabled === true };
-};
-globalThis.syncTestToneControlState = syncTestToneControlState;
-globalThis.requestWsprBandCatalog = requestWsprBandCatalog;
-globalThis.initializeTestToneSelectionControls = initializeTestToneSelectionControls;
-globalThis.renderTestToneSelection = renderTestToneSelection;
-globalThis.setTestToneConfiguration = (mode, wsprFrequencyValue, cwBaseFrequencyHz) => {
-    updateTestToneConfigContext(mode, wsprFrequencyValue, cwBaseFrequencyHz);
-};
-globalThis.currentTestToneSelection = () => currentTestToneSelection;
-globalThis.onTestToneStart = onTestToneStart;
-globalThis.clearPendingTestToneStartRequest = clearPendingTestToneStartRequest;
-globalThis.markPendingTestToneStartRequest = markPendingTestToneStartRequest;
-globalThis.pendingTestToneStartSource = () => unresolvedTestToneStartContext?.frequencySource || "";
-globalThis.testToneStartSnapshot = () => ({
-    pending: pendingTestToneStartRequest,
-    source: unresolvedTestToneStartContext?.frequencySource || "",
-    hasUnresolvedContext: unresolvedTestToneStartContext !== null,
-    quarantined: testToneStartQuarantinedSocket === ws &&
-        testToneStartQuarantinedConnectionGeneration === wsprBandCatalogConnectionGeneration,
-    timeoutHandle: pendingTestToneStartTimeoutHandle,
-});
-globalThis.clearTestToneExecutionResult = clearTestToneExecutionResult;
-globalThis.handleTestToneCommandResponse = handleTestToneCommandResponse;
-globalThis.bindTestToneControls = bindTestToneControls;
-globalThis.blockedTestToneReason = () => blockedTestToneReason;
-globalThis.toneStartMessages = (socket = ws) => socket.sent.filter(
+
+function resetScenarioEnvironment() {
+    for (const socket of FakeWebSocket.instances) {
+        socket.readyState = 3;
+        socket.listeners = Object.create(null);
+    }
+    FakeWebSocket.instances = [];
+    FakeWebSocket.throwOnNextSend = false;
+    diagnostics.throwCount = 0;
+    diagnostics.calls.length = 0;
+    bridge.reset();
+    resetTimers();
+    resetElements();
+    bridge.clearConnectionRecoveryState();
+    bridge.setConfiguration("WSPR", "22m", 0);
+    bridge.functions.bindTestToneControls();
+    assert.equal(FakeWebSocket.instances.length, 0,
+        "each scenario must begin with no fake WebSocket instances");
+    assert.equal(timers.size, 0, "each scenario must begin with no active timeouts");
+    assert.equal(intervals.size, 0, "each scenario must begin with no active intervals");
+    assert.equal(bridge.inspect().catalog.authorized, false,
+        "each scenario must begin without catalog authorization");
+    assert.equal(bridge.inspect().testToneStart.quarantined, false,
+        "each scenario must begin without a Start quarantine");
+    assert.equal(handlerCount(elements.testToneStart, "click"), 1,
+        "each scenario must rebind exactly one production Start handler");
+    assert.equal(handlerCount(elements.testToneBand, "change"), 1,
+        "each scenario must rebind exactly one production band-change handler");
+    assertProductionFunctionIdentities();
+}
+
+let scenarioCount = 0;
+function runScenario(name, callback) {
+    scenarioCount += 1;
+    resetScenarioEnvironment();
+    try {
+        callback();
+    } catch (error) {
+        error.message = `Scenario ${scenarioCount} (${name}): ${error.message}`;
+        throw error;
+    }
+    for (const record of [...timers.values(), ...intervals.values()]) {
+        assert.equal(record.generation, timerGeneration,
+            "a scenario must not retain a timer record from an earlier generation");
+    }
+    for (const socket of FakeWebSocket.instances) {
+        assert.ok(socket.listeners && typeof socket.listeners === "object",
+            "a scenario must leave only live fake-socket listener records for its own generation");
+    }
+    assertProductionFunctionIdentities();
+}
+
+const harness = {
+    catalogSnapshot() {
+    const snapshot = bridge.inspect().catalog;
+    return {
+        ...snapshot,
+        catalog: snapshot.dialFrequenciesHz,
+    };
+    },
+    openConnection() {
+    bridge.clearConnectionRecoveryState();
+    const socket = bridge.functions.connectWebSocket("ws://test");
+    socket.open();
+    return socket;
+    },
+    parseConfiguredWsprFrequencyHz: bridge.functions.parseConfiguredWsprFrequencyHz,
+    updateWsprBandCatalog: bridge.functions.updateWsprBandCatalog,
+    validateWsprBandCatalog: bridge.functions.validateWsprBandCatalog,
+    createTestToneSelection: bridge.functions.createTestToneSelection,
+    createTestToneSelectionPreview: bridge.functions.createTestToneSelectionPreview,
+    testToneDefaultTransmitFrequencyHz: bridge.functions.testToneDefaultTransmitFrequencyHz,
+    testToneFrequencyContextText: bridge.functions.testToneFrequencyContextText,
+    clickTestTone: bridge.functions.clickTestTone,
+    setTestToneInterlocks: bridge.setRuntimeInterlocks,
+    syncTestToneControlState: bridge.functions.syncTestToneControlState,
+    requestWsprBandCatalog: bridge.functions.requestWsprBandCatalog,
+    initializeTestToneSelectionControls: bridge.functions.initializeTestToneSelectionControls,
+    renderTestToneSelection: bridge.functions.renderTestToneSelection,
+    setTestToneConfiguration: bridge.setConfiguration,
+    currentTestToneSelection: () => bridge.inspect().selection,
+    onTestToneStart: bridge.functions.onTestToneStart,
+    clearPendingTestToneStartRequest: bridge.functions.clearPendingTestToneStartRequest,
+    markPendingTestToneStartRequest: bridge.functions.markPendingTestToneStartRequest,
+    pendingTestToneStartSource: () => bridge.inspect().testToneStart.source,
+    testToneStartSnapshot: () => bridge.inspect().testToneStart,
+    clearTestToneExecutionResult: bridge.functions.clearTestToneExecutionResult,
+    handleTestToneCommandResponse: bridge.functions.handleTestToneCommandResponse,
+    bindTestToneControls: bridge.functions.bindTestToneControls,
+    toneStartMessages(socket) {
+        assert.ok(socket, "toneStartMessages requires the scenario-owned fake socket");
+        return socket.sent.filter(
     (message) => message.command === "tone_start"
-);
-globalThis.invokeRecordedTimer = (timerId) => recordedTimerCallbacks.get(timerId)?.();
-`, context, { filename: "data/site.js" });
+        );
+    },
+    invokeRecordedTimer,
+};
+context = harness;
+
+assert.equal(bridge.functions.onTestToneStart, context.onTestToneStart,
+    "the bridge must expose the real production Start handler reference");
+for (const value of [
+    bridge.inspect(),
+    bridge.hasCurrentSocket(),
+    bridge.currentSocketReadyState(),
+]) {
+    assert.equal(typeof value?.send, "undefined",
+        "bridge return values must not expose transport send access");
+    assert.equal(typeof value?.addEventListener, "undefined",
+        "bridge return values must not expose transport listener registration");
+    assert.equal(typeof value?.removeEventListener, "undefined",
+        "bridge return values must not expose transport listener removal");
+}
+assert.equal(typeof bridge.currentSocket, "undefined",
+    "the bridge must not expose the live socket object");
+
+const jqueryDuplicateProbe = element();
+let jqueryDuplicateProbeCalls = 0;
+jquery(jqueryDuplicateProbe)
+    .on("click.duplicateProbe", () => { jqueryDuplicateProbeCalls += 1; })
+    .on("click.duplicateProbe", () => { jqueryDuplicateProbeCalls += 1; });
+assert.equal(handlerCount(jqueryDuplicateProbe, "click"), 2,
+    "the jQuery mock must retain duplicate registrations until explicitly removed");
+dispatch(jqueryDuplicateProbe, "click");
+assert.equal(jqueryDuplicateProbeCalls, 2,
+    "the jQuery mock dispatch must invoke duplicate handlers in registration order");
+jquery(jqueryDuplicateProbe).off(".duplicateProbe");
+assert.equal(handlerCount(jqueryDuplicateProbe, "click"), 0,
+    "namespaced off must remove every matching duplicate registration");
 
 const canonicalBands = [
     "2200m", "630m", "160m", "80m", "60m", "40m", "30m", "22m",
@@ -436,7 +593,11 @@ function validCatalog(offset = 1500) {
 function assertStartDisabled(message) {
     assert.equal(buttons["#testToneStart"].disabled, true, message);
 }
+function commandMessages(socket, command) {
+    return socket.sent.filter((message) => message.command === command);
+}
 
+runScenario("pure catalog validation and selection helpers", () => {
 assert.equal(context.parseConfiguredWsprFrequencyHz("22m"), 0,
     "catalog aliases must remain unavailable before validation");
 assert.equal(context.parseConfiguredWsprFrequencyHz("14.0956MHz"), 14095600,
@@ -528,20 +689,34 @@ for (const [mode, value, catalog] of [
 }
 assert.equal(context.createTestToneSelectionPreview({ valid: false, error: "invalid selection" }).valid, false,
     "invalid selections must have an invalid preview");
+});
 
+runScenario("authorized connection, controls, semantic requests, and responses", () => {
 const first = context.openConnection();
-assert.deepEqual(first.sent, [{ command: "wspr_band_catalog" }], "every opened socket requests the catalog once");
+assert.deepEqual(commandMessages(first, "wspr_band_catalog"), [{ command: "wspr_band_catalog" }],
+    "every opened socket requests the catalog once");
+assert.deepEqual(commandMessages(first, "get_tx_state"), [{ command: "get_tx_state" }],
+    "the real getTxState function must read the open mock socket and request runtime state");
+assert.equal(elements.connStatusText.textContent, "Controller connected",
+    "the real connection-status function must update the mocked connection text");
+assert.equal(elements.connIcon.classList.contains("state-connected"), true,
+    "the real connection-status function must update the mocked connection icon state");
 const firstPending = context.catalogSnapshot();
 assert.equal(firstPending.pending, true, "catalog request is pending after open");
 assert.equal(firstPending.authorized, false, "open cannot authorize a catalog");
 assert.ok(timers.has(firstPending.timeoutHandle), "catalog timeout is armed on open");
 assertStartDisabled("Start stays disabled while catalog loads");
-context.clickTestTone.call({}, { preventDefault() {} });
+context.clickTestTone.call(elements.test_tone, { preventDefault() {} });
+assert.equal(elements.test_tone.disabled, true,
+    "the real loading helper must disable the clicked Test Tone button while the modal opens");
+assert.equal(elements.test_tone.style.width, "120px",
+    "the real loading helper must preserve the clicked button width in the mocked DOM");
 assertStartDisabled("opening the modal cannot enable Start before catalog authorization");
 
 assert.equal(context.requestWsprBandCatalog(first), false, "same-socket duplicate catalog request is refused");
 const afterDuplicateAttempt = context.catalogSnapshot();
-assert.equal(first.sent.length, 1, "duplicate request sends no second message");
+assert.equal(commandMessages(first, "wspr_band_catalog").length, 1,
+    "duplicate request sends no second catalog message");
 assert.equal(afterDuplicateAttempt.connectionGeneration, firstPending.connectionGeneration,
     "duplicate request does not increment the connection generation");
 assert.equal(afterDuplicateAttempt.requestGeneration, firstPending.requestGeneration,
@@ -601,11 +776,13 @@ assertStartDisabled("unavailable configuration keeps Start disabled");
 context.setTestToneConfiguration("WSPR", "20m", 0);
 context.initializeTestToneSelectionControls();
 context.bindTestToneControls();
-assert.equal(typeof elements.testToneStart.handlers.click, "function", "Start must be bound to the production handler");
-assert.equal(typeof elements.testToneSourceCustom.handlers.change, "function", "mode changes must be bound");
-assert.equal(typeof elements.testToneBand.handlers.change, "function", "band changes must be bound");
-assert.equal(typeof elements.testToneFrequencyHz.handlers.input, "function", "custom input must be bound");
-elements.testToneStart.handlers.click.call(elements.testToneStart, { preventDefault() {} });
+assert.equal(handlerCount(elements.testToneStart, "click"), 1, "Start must be bound exactly once");
+assert.equal(elements.testToneStart.handlers.click[0].handler, bridge.functions.onTestToneStart,
+    "the bound Start event must use the same production handler reference exposed by the bridge");
+assert.equal(handlerCount(elements.testToneSourceCustom, "change"), 1, "mode changes must be bound");
+assert.equal(handlerCount(elements.testToneBand, "change"), 1, "band changes must be bound");
+assert.equal(handlerCount(elements.testToneFrequencyHz, "input"), 1, "custom input must be bound");
+dispatch(elements.testToneStart, "click", { preventDefault() {} });
 assert.equal(JSON.stringify(context.toneStartMessages(first)), JSON.stringify([{
     command: "tone_start",
     frequency_source: "wspr_band",
@@ -620,11 +797,11 @@ context.clearPendingTestToneStartRequest();
 elements.testToneSourceBand.checked = false;
 elements.testToneSourceCustom.checked = true;
 elements.testToneFrequencyHz.value = "14097123";
-elements.testToneSourceCustom.handlers.change.call(elements.testToneSourceCustom, { preventDefault() {} });
-elements.testToneFrequencyHz.handlers.input.call(elements.testToneFrequencyHz, { preventDefault() {} });
+dispatch(elements.testToneSourceCustom, "change", { preventDefault() {} });
+dispatch(elements.testToneFrequencyHz, "input", { preventDefault() {} });
 assert.match(elements.testToneSelectionPreview.textContent, /No WSPR offset is applied/,
     "custom mode preview must state exact-RF offset behavior");
-elements.testToneStart.handlers.click.call(elements.testToneStart, { preventDefault() {} });
+dispatch(elements.testToneStart, "click", { preventDefault() {} });
 assert.equal(JSON.stringify(context.toneStartMessages(first)[1]), JSON.stringify({
     command: "tone_start",
     frequency_source: "custom_rf",
@@ -636,7 +813,7 @@ assert.equal(context.pendingTestToneStartSource(), "custom_rf",
     "the pending context must retain the exact semantic custom source that was sent");
 context.clearPendingTestToneStartRequest();
 elements.testToneFrequencyHz.value = "1.5";
-elements.testToneFrequencyHz.handlers.input.call(elements.testToneFrequencyHz, { preventDefault() {} });
+dispatch(elements.testToneFrequencyHz, "input", { preventDefault() {} });
 assertStartDisabled("invalid custom input disables Start");
 assert.match(elements.testToneSelectionError.textContent, /positive whole-number/i,
     "invalid custom input must be shown beside the selection controls");
@@ -667,7 +844,7 @@ const sendAttemptsBeforeThrow = first.sendAttempts;
 first.throwOnSend = true;
 let startExceptionEscaped = false;
 try {
-    elements.testToneStart.handlers.click.call(elements.testToneStart, { preventDefault() {} });
+    dispatch(elements.testToneStart, "click", { preventDefault() {} });
 } catch (error) {
     startExceptionEscaped = true;
 }
@@ -702,7 +879,7 @@ assert.equal(context.testToneStartSnapshot().quarantined, false,
 assert.doesNotMatch(elements.testToneExecutionResult.textContent, /outcome is unknown/i,
     "a canceled Start timer callback must not replace the send-failure message");
 first.throwOnSend = false;
-elements.testToneStart.handlers.click.call(elements.testToneStart, { preventDefault() {} });
+dispatch(elements.testToneStart, "click", { preventDefault() {} });
 assert.equal(context.toneStartMessages(first).length, sentBeforeThrow + 1,
     "a retry after synchronous send failure must use the normal semantic Start path");
 context.clearPendingTestToneStartRequest();
@@ -710,10 +887,11 @@ context.clearPendingTestToneStartRequest();
 selectBandForTimedStart("20m");
 const sentBeforePostSendDebugFailure = context.toneStartMessages(first).length;
 const sendAttemptsBeforePostSendDebugFailure = first.sendAttempts;
-throwOnNextDebugLog = true;
+bridge.setConsoleLogLevelForTest("debug");
+diagnostics.throwCount = 2;
 let postSendDebugExceptionEscaped = false;
 try {
-    elements.testToneStart.handlers.click.call(elements.testToneStart, { preventDefault() {} });
+    dispatch(elements.testToneStart, "click", { preventDefault() {} });
 } catch (error) {
     postSendDebugExceptionEscaped = true;
 }
@@ -723,6 +901,10 @@ assert.equal(first.sendAttempts, sendAttemptsBeforePostSendDebugFailure + 1,
     "a post-send diagnostic failure still has exactly one accepted WebSocket send");
 assert.equal(context.toneStartMessages(first).length, sentBeforePostSendDebugFailure + 1,
     "the accepted Start request must remain recorded when later diagnostics fail");
+assert.equal(diagnostics.throwCount, 0,
+    "the real debugConsole function must reach the throwing diagnostic dependency after send acceptance");
+assert.ok(diagnostics.calls.some((args) => args.some((value) => String(value).includes("Test tone start."))),
+    "the real debugConsole function must deliver the Start diagnostic to the preinstalled console mock");
 const postSendDebugPending = context.testToneStartSnapshot();
 assert.equal(postSendDebugPending.pending, true,
     "post-send diagnostics must not clear the pending Start state");
@@ -733,7 +915,7 @@ assert.ok(timers.has(postSendDebugPending.timeoutHandle),
 assertStartDisabled("post-send diagnostics must not permit another Start request");
 assert.doesNotMatch(elements.testToneExecutionResult.textContent, /could not be sent/i,
     "post-send diagnostics must not relabel an accepted request as unsent");
-elements.testToneStart.handlers.click.call(elements.testToneStart, { preventDefault() {} });
+dispatch(elements.testToneStart, "click", { preventDefault() {} });
 assert.equal(context.toneStartMessages(first).length, sentBeforePostSendDebugFailure + 1,
     "a second Start after post-send diagnostics must not send a duplicate request");
 first.message({
@@ -753,8 +935,8 @@ assert.equal(buttons["#testToneEnd"].disabled, false,
 context.handleTestToneCommandResponse({ command: "tone_end", stopped: true });
 
 selectBandForTimedStart("20m");
-throwOnNextDebugLog = true;
-elements.testToneStart.handlers.click.call(elements.testToneStart, { preventDefault() {} });
+diagnostics.throwCount = 2;
+dispatch(elements.testToneStart, "click", { preventDefault() {} });
 const postSendDebugTimeout = context.testToneStartSnapshot();
 assert.equal(postSendDebugTimeout.pending, true,
     "a second accepted post-send diagnostic failure must still enter pending state");
@@ -874,12 +1056,16 @@ assert.doesNotMatch(elements.testToneExecutionResult.textContent, /RF|GPIO|Selec
 
 context.markPendingTestToneStartRequest();
 context.handleTestToneCommandResponse({ command: "tone_start", started: false, blocked_by_active_transmission: true });
-assert.equal(context.blockedTestToneReason(), "active", "active-transmission rejection must preserve its existing workflow");
+assert.equal(elements.modeChangeGuardModalLabel.textContent, "Stop and disable transmissions",
+    "the real Test Tone guard-modal flow must populate the active-transmission title");
+assert.ok(guardModalShowCount > 0,
+    "the real Test Tone guard-modal flow must reach the preinstalled Bootstrap modal mock");
 assert.match(elements.testToneExecutionResult.textContent, /rejected by the controller/i,
     "missing rejection message must use a safe inline fallback");
 context.markPendingTestToneStartRequest();
 context.handleTestToneCommandResponse({ command: "tone_start", started: false, blocked_by_enabled_transmission: true, message: "Disable the schedule first." });
-assert.equal(context.blockedTestToneReason(), "enabled", "enabled-schedule rejection must preserve its existing workflow");
+assert.equal(elements.modeChangeGuardModalLabel.textContent, "Disable transmissions",
+    "the real Test Tone guard-modal flow must populate the enabled-schedule title");
 assert.equal(elements.testToneExecutionResult.textContent, "Disable the schedule first.",
     "blocked rejection must retain its backend message inline");
 
@@ -890,6 +1076,7 @@ assert.equal(context.requestWsprBandCatalog(first), false,
     "same-socket request remains refused after the original request completes");
 assert.equal(first.sent.filter((message) => message.command === "wspr_band_catalog").length, 1,
     "completed same-socket catalog request sends no new message");
+});
 
 function selectBandForTimedStart(band = "20m") {
     elements.testToneSourceBand.checked = true;
@@ -907,12 +1094,20 @@ function selectCustomForTimedStart(frequencyHz = "14097123") {
     context.syncTestToneControlState(false);
 }
 
-function startSelectedToneAndRunRealTimeout(expectedSource) {
-    const sentBefore = context.toneStartMessages(first).length;
-    elements.testToneStart.handlers.click.call(elements.testToneStart, { preventDefault() {} });
-    assert.equal(context.toneStartMessages(first).length, sentBefore + 1,
+function openAuthorizedConnection(offset = 2750) {
+    const socket = context.openConnection();
+    socket.message(validCatalog(offset));
+    assert.equal(context.catalogSnapshot().authorized, true,
+        "an explicit timeout scenario must start from its own authorized connection");
+    return socket;
+}
+
+function startSelectedToneAndRunRealTimeout(socket, expectedSource) {
+    const sentBefore = context.toneStartMessages(socket).length;
+    dispatch(elements.testToneStart, "click", { preventDefault() {} });
+    assert.equal(context.toneStartMessages(socket).length, sentBefore + 1,
         "the bound Start handler must send exactly one semantic request before timeout");
-    assert.equal(context.toneStartMessages(first).at(-1).frequency_source, expectedSource,
+    assert.equal(context.toneStartMessages(socket).at(-1).frequency_source, expectedSource,
         "the bound Start handler must retain the exact source it sent");
     const pending = context.testToneStartSnapshot();
     assert.equal(pending.pending, true, "a submitted Start request must enter pending state");
@@ -928,8 +1123,10 @@ function finishLateStartedTone() {
         "the test reset must restore inactive End state after the late result");
 }
 
+runScenario("timeout quarantine and late semantic responses", () => {
+const first = openAuthorizedConnection();
 selectBandForTimedStart("20m");
-const timedBandStart = startSelectedToneAndRunRealTimeout("wspr_band");
+const timedBandStart = startSelectedToneAndRunRealTimeout(first, "wspr_band");
 assert.equal(JSON.stringify(context.testToneStartSnapshot()), JSON.stringify({
     pending: false,
     source: "wspr_band",
@@ -940,7 +1137,7 @@ assert.equal(JSON.stringify(context.testToneStartSnapshot()), JSON.stringify({
 assertStartDisabled("a timed-out unresolved Start request must quarantine this socket");
 assert.match(elements.testToneExecutionResult.textContent, /timed out.*outcome is unknown.*response or reconnect/i,
     "timeout outcome guidance must be inline beside the Test Tone controls");
-elements.testToneStart.handlers.click.call(elements.testToneStart, { preventDefault() {} });
+dispatch(elements.testToneStart, "click", { preventDefault() {} });
 assert.equal(context.toneStartMessages(first).length, timedBandStart.sentBefore + 1,
     "a second Start attempt on the quarantined socket must send nothing");
 first.message({
@@ -972,7 +1169,7 @@ for (const [name, response] of [
     ["mismatched source", { command: "tone_start", started: true, frequency_source: "custom_rf" }],
 ]) {
     selectBandForTimedStart("20m");
-    startSelectedToneAndRunRealTimeout("wspr_band");
+    startSelectedToneAndRunRealTimeout(first, "wspr_band");
     context.handleTestToneCommandResponse(response);
     assert.match(elements.testToneExecutionResult.textContent, /started, but committed execution details were unavailable or invalid/i,
         `late ${name} must warn instead of being treated as a legacy result`);
@@ -982,7 +1179,7 @@ for (const [name, response] of [
 }
 
 selectCustomForTimedStart("14097123");
-startSelectedToneAndRunRealTimeout("custom_rf");
+startSelectedToneAndRunRealTimeout(first, "custom_rf");
 context.handleTestToneCommandResponse({
     command: "tone_start",
     started: true,
@@ -1000,7 +1197,7 @@ assert.equal(buttons["#testToneEnd"].disabled, false,
 finishLateStartedTone();
 
 selectCustomForTimedStart("14097123");
-startSelectedToneAndRunRealTimeout("custom_rf");
+startSelectedToneAndRunRealTimeout(first, "custom_rf");
 context.handleTestToneCommandResponse({
     command: "tone_start",
     started: false,
@@ -1020,9 +1217,12 @@ assert.equal(elements.testToneExecutionResult.textContent, "",
 assert.equal(buttons["#testToneEnd"].disabled, false,
     "a genuine legacy success remains truthfully active");
 finishLateStartedTone();
+});
 
+runScenario("disconnect reconnect and catalog failure lifecycle", () => {
+const first = openAuthorizedConnection();
 selectBandForTimedStart("20m");
-startSelectedToneAndRunRealTimeout("wspr_band");
+startSelectedToneAndRunRealTimeout(first, "wspr_band");
 
 first.close();
 assert.equal(context.catalogSnapshot().authorized, false, "disconnect revokes current authorization");
@@ -1038,7 +1238,8 @@ assert.equal(context.parseConfiguredWsprFrequencyHz("22m"), 13551500,
     "last-valid catalog remains available only for display/configuration continuity");
 
 const second = context.openConnection();
-assert.deepEqual(second.sent, [{ command: "wspr_band_catalog" }], "reconnect requests a fresh catalog");
+assert.deepEqual(commandMessages(second, "wspr_band_catalog"), [{ command: "wspr_band_catalog" }],
+    "reconnect requests a fresh catalog");
 assert.equal(context.catalogSnapshot().authorized, false, "reconnect begins unauthorized");
 first.message({ command: "tone_start", started: true });
 assert.equal(buttons["#testToneEnd"].disabled, true,
@@ -1057,7 +1258,8 @@ assertStartDisabled("backend error keeps Start disabled");
 second.close();
 
 const third = context.openConnection();
-assert.equal(third.sent.length, 1, "each new connection has its own catalog request");
+assert.equal(commandMessages(third, "wspr_band_catalog").length, 1,
+    "each new connection has its own catalog request");
 const thirdPending = context.catalogSnapshot();
 third.message({ command: "wspr_band_catalog", status: "ok", audio_offset_hz: 1500, bands: {} });
 assert.equal(context.catalogSnapshot().authorized, false, "invalid response never authorizes Start");
@@ -1088,6 +1290,8 @@ assert.ok(clearedTimers.has(fifthPending.timeoutHandle), "disconnect cancels the
 const sixth = context.openConnection();
 sixth.message(validCatalog(1500));
 assert.equal(context.catalogSnapshot().authorized, true, "fresh valid response restores authorization");
+assert.equal(bridge.inspect().catalog.authorized, true,
+    "catalog state changed by production socket callbacks must be visible through bridge inspection");
 assert.equal(buttons["#testToneStart"].disabled, false, "Start re-enables only after the new validation");
 assert.match(context.testToneFrequencyContextText(), /Configured frequency:/,
     "validated catalog restores normal frequency context");
@@ -1096,7 +1300,8 @@ sixth.close();
 const sendFailureTimer = nextTimerId;
 FakeWebSocket.throwOnNextSend = true;
 const seventh = context.openConnection();
-assert.equal(seventh.sent.length, 0, "throwing send does not emit a catalog request");
+assert.equal(commandMessages(seventh, "wspr_band_catalog").length, 0,
+    "throwing send does not emit a catalog request");
 assert.equal(context.catalogSnapshot().pending, false, "send failure clears pending state");
 assert.equal(context.catalogSnapshot().authorized, false, "send failure revokes authorization");
 assert.equal(timers.has(sendFailureTimer), false, "send failure clears its timer");
@@ -1106,5 +1311,106 @@ assertStartDisabled("send failure keeps Start disabled");
 seventh.message(validCatalog(1500));
 assert.equal(context.catalogSnapshot().authorized, false,
     "a response after send failure cannot authorize the failed request");
+});
+
+let staleScenarioTimerCallback = null;
+let staleScenarioSocket = null;
+let staleScenarioMessageCallback = null;
+runScenario("isolation source state", () => {
+    staleScenarioSocket = context.openConnection();
+    const pendingCatalog = context.catalogSnapshot();
+    staleScenarioTimerCallback = timerCallbacks.get(pendingCatalog.timeoutHandle)?.callback;
+    staleScenarioMessageCallback = staleScenarioSocket.listeners.message?.[0];
+    assert.equal(typeof staleScenarioTimerCallback, "function",
+        "the source scenario must retain the exact raw production catalog timeout callback");
+    assert.equal(typeof staleScenarioMessageCallback, "function",
+        "the source scenario must retain the exact raw production socket message callback");
+    elements.testToneExecutionResult.textContent = "scenario-local result";
+    diagnostics.throwCount = 1;
+    bridge.functions.showTestToneBlockedModal("active", "scenario-local modal");
+    assert.ok(guardModalShowCount > 0, "the source scenario must exercise the modal mock");
+});
+
+function isolationSnapshot(currentScenarioSocket) {
+    return JSON.stringify({
+        catalog: bridge.inspect().catalog,
+        testToneStart: bridge.inspect().testToneStart,
+        executionResult: elements.testToneExecutionResult.textContent,
+        startDisabled: elements.testToneStart.disabled,
+        endDisabled: elements.testToneEnd.disabled,
+        hasCurrentSocket: bridge.hasCurrentSocket(),
+        currentSocketReadyState: bridge.currentSocketReadyState(),
+        timers: [...timers.entries()].map(([id, record]) => ({
+            id,
+            delay: record.delay,
+            generation: record.generation,
+            kind: record.kind,
+            state: record.state,
+        })),
+        intervals: [...intervals.entries()].map(([id, record]) => ({
+            id,
+            delay: record.delay,
+            generation: record.generation,
+            kind: record.kind,
+            state: record.state,
+        })),
+        currentSocketMessages: currentScenarioSocket?.sent || [],
+    });
+}
+
+runScenario("isolation target state", () => {
+    const socket = openAuthorizedConnection();
+    selectBandForTimedStart("20m");
+    const beforeStaleCallbacks = isolationSnapshot(socket);
+    let staleTimerCallbackInvoked = false;
+    staleScenarioTimerCallback.call(undefined);
+    staleTimerCallbackInvoked = true;
+    assert.equal(staleTimerCallbackInvoked, true,
+        "the retained raw production timeout callback must execute after reset");
+    assert.equal(isolationSnapshot(socket), beforeStaleCallbacks,
+        "the stale production timeout callback must not mutate the next scenario");
+
+    bridge.setConsoleLogLevelForTest("debug");
+    const diagnosticsBeforeStaleSocket = diagnostics.calls.length;
+    let staleSocketCallbackInvoked = false;
+    staleScenarioMessageCallback.call(staleScenarioSocket, {
+        data: JSON.stringify(validCatalog(1500)),
+    });
+    staleSocketCallbackInvoked = true;
+    assert.equal(staleSocketCallbackInvoked, true,
+        "the retained raw production socket callback must execute after reset");
+    assert.equal(diagnostics.calls.length, diagnosticsBeforeStaleSocket + 2,
+        "the stale production socket callback must reach its pre-guard diagnostic dependency");
+    assert.equal(isolationSnapshot(socket), beforeStaleCallbacks,
+        "the stale production socket callback must not mutate the next scenario");
+    assert.equal(bridge.hasCurrentSocket(), true,
+        "a stale socket callback must not detach the current scenario socket");
+    assert.equal(bridge.currentSocketReadyState(), FakeWebSocket.OPEN,
+        "a stale socket callback must not alter the current socket state");
+    assert.equal(guardModalShowCount, 0, "Bootstrap modal records must reset per scenario");
+    assert.equal(diagnostics.throwCount, 0, "diagnostic throw injection must reset per scenario");
+    context.bindTestToneControls();
+    assert.equal(handlerCount(elements.testToneStart, "click"), 1,
+        "production rebinding must leave exactly one effective Start handler");
+    dispatch(elements.testToneStart, "click", { preventDefault() {} });
+    assert.equal(context.toneStartMessages(socket).length, 1,
+        "one rebound Start click must produce one request without accumulated handlers");
+});
+
+runScenario("bridge reset deterministic defaults", () => {
+assert.deepEqual(JSON.parse(JSON.stringify(bridge.inspect().catalog)), {
+    authorized: false,
+    pending: false,
+    message: "WSPR band catalog unavailable. Test Tone Start is disabled.",
+    offset: 0,
+    dialFrequenciesHz: {},
+    connectionGeneration: 0,
+    requestGeneration: 0,
+    pendingRequestGeneration: null,
+    timeoutHandle: null,
+}, "the narrow bridge reset must restore deterministic production catalog state between cases");
+assert.equal(bridge.inspect().testToneStart.hasUnresolvedContext, false,
+    "the narrow bridge reset must not retain production Start attribution state");
+});
 
 console.log("wspr_band_frequency_correlation_test passed");

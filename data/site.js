@@ -7120,3 +7120,143 @@ function showMessageDialog(options = {}) {
         onConfirm: options.onConfirm
     });
 }
+
+// This bridge is intentionally installed only by the focused Node harness. It
+// closes over the live script state so tests exercise the production functions
+// without recreating a parallel Test Tone state model.
+function installWsprryPiTestHooks() {
+    if (typeof globalThis === "undefined") {
+        return;
+    }
+
+    const hooks = globalThis.WSPRRYPI_TEST_HOOKS;
+    if (!hooks || hooks.enabled !== true) {
+        return;
+    }
+
+    const functions = Object.freeze({
+        parseConfiguredWsprFrequencyHz,
+        validateWsprBandCatalog,
+        createTestToneSelection,
+        createTestToneSelectionPreview,
+        updateWsprBandCatalog,
+        requestWsprBandCatalog,
+        connectWebSocket,
+        initializeTestToneSelectionControls,
+        renderTestToneSelection,
+        updateTestToneConfigContext,
+        testToneDefaultTransmitFrequencyHz,
+        testToneFrequencyContextText,
+        clickTestTone,
+        onTestToneStart,
+        onTestToneEnd,
+        handleTestToneCommandResponse,
+        bindTestToneControls,
+        syncTestToneControlState,
+        clearPendingTestToneStartRequest,
+        markPendingTestToneStartRequest,
+        clearTestToneExecutionResult,
+        getTxState,
+        setConnectionState,
+        syncConnectionAlert,
+        armOutageBannerIfReady,
+        reloadAllData,
+        toggleButtonLoading,
+        debugConsole,
+        showTestToneBlockedModal,
+    });
+
+    const inspect = () => Object.freeze({
+        catalog: Object.freeze({
+            authorized: wsprBandCatalogAuthorized,
+            pending: wsprBandCatalogPendingRequest !== null,
+            message: wsprBandCatalogStatusMessage,
+            offset: wsprAudioOffsetHz,
+            dialFrequenciesHz: Object.freeze({ ...wsprBandDialFrequenciesHz }),
+            connectionGeneration: wsprBandCatalogConnectionGeneration,
+            requestGeneration: wsprBandCatalogRequestGeneration,
+            pendingRequestGeneration: wsprBandCatalogPendingRequest?.requestGeneration ?? null,
+            timeoutHandle: wsprBandCatalogPendingRequest?.timeoutHandle ?? null,
+        }),
+        testToneStart: Object.freeze({
+            pending: pendingTestToneStartRequest,
+            source: unresolvedTestToneStartContext?.frequencySource || "",
+            hasUnresolvedContext: unresolvedTestToneStartContext !== null,
+            quarantined: ws !== null && isTestToneStartQuarantinedForCurrentSocket(),
+            timeoutHandle: pendingTestToneStartTimeoutHandle,
+        }),
+        selection: currentTestToneSelection,
+    });
+
+    const reset = () => {
+        clearPendingTestToneStartRequest();
+        clearWebSocketReconnectTimer();
+        clearWsprBandCatalogPendingRequest();
+        if (pendingTestToneStopDisableAction?.timeoutHandle) {
+            window.clearTimeout(pendingTestToneStopDisableAction.timeoutHandle);
+        }
+        pendingTestToneStopDisableAction = null;
+        CONSOLE_LOG_LEVEL = "log";
+        ws = null;
+        websocketCurrentlyConnected = false;
+        currentRuntimeStatus = null;
+        currentRuntimeConfigStatus = { mode: "", transmitEnabled: false };
+        currentTestToneConfigContext = {
+            mode: "",
+            configuredFrequencyHz: 0,
+            wsprFrequencyValue: "",
+            cwBaseFrequencyHz: 0,
+        };
+        currentTestToneSelection = invalidTestToneSelection(
+            "Select a Test Tone frequency source."
+        );
+        wsprBandDialFrequenciesHz = Object.create(null);
+        wsprAudioOffsetHz = 0;
+        wsprBandCatalogConnectionGeneration = 0;
+        wsprBandCatalogRequestGeneration = 0;
+        wsprBandCatalogRequestedSockets = new WeakSet();
+        wsprBandCatalogPendingRequest = null;
+        wsprBandCatalogAuthorized = false;
+        wsprBandCatalogStatusMessage =
+            "WSPR band catalog unavailable. Test Tone Start is disabled.";
+        retainingTestToneStartContextForResponse = false;
+    };
+
+    Object.defineProperty(hooks, "bridge", {
+        value: Object.freeze({
+            functions,
+            inspect,
+            reset,
+            setRuntimeInterlocks(active, enabled) {
+                currentRuntimeStatus = active ? { txState: "transmitting" } : null;
+                currentRuntimeConfigStatus = {
+                    mode: "WSPR",
+                    transmitEnabled: enabled === true,
+                };
+            },
+            setConfiguration(mode, wsprFrequencyValue, cwBaseFrequencyHz) {
+                updateTestToneConfigContext(mode, wsprFrequencyValue, cwBaseFrequencyHz);
+            },
+            clearConnectionRecoveryState() {
+                communicationInterrupted = false;
+                reloadAfterReconnectPending = false;
+            },
+            setConsoleLogLevelForTest(level) {
+                CONSOLE_LOG_LEVEL = typeof level === "string" ? level : "log";
+            },
+            hasCurrentSocket() {
+                return ws !== null && ws !== undefined;
+            },
+            currentSocketReadyState() {
+                return ws && typeof ws.readyState === "number"
+                    ? ws.readyState
+                    : null;
+            },
+        }),
+        enumerable: false,
+        configurable: false,
+        writable: false,
+    });
+}
+
+installWsprryPiTestHooks();
