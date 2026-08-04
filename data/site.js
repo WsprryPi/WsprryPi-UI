@@ -113,6 +113,15 @@ const WSPRNET_URL =
     "https://www.wsprnet.org/olddb?mode=html&band=all&limit=50&findreporter=&sort=date&findcall=";
 const TAB_STATE_STORAGE_PREFIX = "wsprrypi.activeTab";
 const TEST_TONE_COMMAND_TIMEOUT_MS = 15000;
+const WSPR_BAND_CATALOG_TIMEOUT_MS = 5000;
+const CANONICAL_WSPR_BAND_NAMES = Object.freeze([
+    "2200m", "630m", "160m", "80m", "60m", "40m", "30m", "22m",
+    "20m", "17m", "15m", "12m", "10m", "6m", "4m", "2m"
+]);
+const TEST_TONE_SELECTION_MODES = Object.freeze({
+    WSPR_BAND: "wspr_band",
+    CUSTOM_RF: "custom_rf"
+});
 const UPDATE_CHECK_CACHE_PREFIX = "wsprrypi.updateCheck";
 const UPDATE_CHECK_FAILURE_CACHE_PREFIX = "wsprrypi.updateCheckFailure";
 const UPDATE_CHECK_DISABLED_KEY = "wsprrypi.updateCheckDisabled";
@@ -345,7 +354,11 @@ let uiBuildVersionCheckRunning = false;
 let uiRefreshPromptActive = false;
 let pendingTestToneStopDisableAction = null;
 let pendingTestToneStartRequest = false;
+let unresolvedTestToneStartContext = null;
 let pendingTestToneStartTimeoutHandle = null;
+let testToneStartQuarantinedSocket = null;
+let testToneStartQuarantinedConnectionGeneration = 0;
+let retainingTestToneStartContextForResponse = false;
 let currentRuntimeStatus = null;
 let currentRuntimeConfigStatus = {
     mode: "",
@@ -353,8 +366,24 @@ let currentRuntimeConfigStatus = {
 };
 let currentTestToneConfigContext = {
     mode: "",
-    configuredFrequencyHz: 0
+    configuredFrequencyHz: 0,
+    wsprFrequencyValue: "",
+    cwBaseFrequencyHz: 0
 };
+let currentTestToneSelection = invalidTestToneSelection(
+    "Select a Test Tone frequency source."
+);
+let wsprBandDialFrequenciesHz = Object.create(null);
+let wsprAudioOffsetHz = 0;
+let wsprBandCatalogConnectionGeneration = 0;
+let wsprBandCatalogRequestGeneration = 0;
+// The backend catalog response has no correlation ID, so one catalog request is
+// intentionally supported per WebSocket connection. Same-socket refresh needs
+// protocol-level correlation before it can be made safe.
+let wsprBandCatalogRequestedSockets = new WeakSet();
+let wsprBandCatalogPendingRequest = null;
+let wsprBandCatalogAuthorized = false;
+let wsprBandCatalogStatusMessage = "WSPR band catalog unavailable. Test Tone Start is disabled.";
 let runtimeStatusRefreshTimer = null;
 let chromeOffsetSyncHandle = null;
 let lastNavbarOffset = null;
@@ -1687,11 +1716,10 @@ function populateConfig(callback = null) {
                 let tx_start_second = getConfigIntValue(cw, "CW", "Start Second", 5);
                 let tx_repeat_every = getConfigIntValue(cw, "CW", "Repeat Minutes", 10);
                 let cw_message = String(getConfigValue(cw, "CW", "Message", "") || "").trim();
-                const wsprFrequencyHz = parseConfiguredWsprFrequencyHz(frequencies);
                 const cwBaseFrequencyHz = Number.isFinite(cw_base_frequency)
                     ? cw_base_frequency
                     : 0;
-                updateTestToneConfigContext(mode, wsprFrequencyHz, cwBaseFrequencyHz);
+                updateTestToneConfigContext(mode, frequencies, cwBaseFrequencyHz);
                 updateTestToneFrequencyContext();
                 updateTestToneFrequencyInputDefault();
 
@@ -2079,26 +2107,6 @@ function parseOperationFrequencyWithOptionalUnits(rawValue) {
 }
 
 function parseConfiguredWsprFrequencyHz(rawValue) {
-    const bandFrequencies = {
-        lf: 136000,
-        "2200m": 136000,
-        mf: 474200,
-        "630m": 474200,
-        "160m": 1836600,
-        "80m": 3568600,
-        "60m": 5287200,
-        "40m": 7038600,
-        "30m": 10138700,
-        "22m": 14095600,
-        "20m": 14095600,
-        "17m": 18104600,
-        "15m": 21094600,
-        "12m": 24926100,
-        "10m": 28124600,
-        "6m": 50294500,
-        "4m": 70092500,
-        "2m": 144489000
-    };
     const tokens = String(rawValue || "")
         .replace(/,/g, " ")
         .trim()
@@ -2116,13 +2124,472 @@ function parseConfiguredWsprFrequencyHz(rawValue) {
             return numericFrequency;
         }
 
-        const aliasFrequency = bandFrequencies[baseToken.toLowerCase()];
+        const normalizedAlias = baseToken.toLowerCase();
+        const canonicalAlias = normalizedAlias === "lf"
+            ? "2200m"
+            : normalizedAlias === "mf"
+                ? "630m"
+                : normalizedAlias;
+        const aliasFrequency = wsprBandDialFrequenciesHz[canonicalAlias];
         if (Number.isFinite(aliasFrequency) && aliasFrequency > 0) {
             return aliasFrequency;
         }
     }
 
     return 0;
+}
+
+function validateWsprBandCatalog(response) {
+    if (!response || typeof response !== "object" || Array.isArray(response) ||
+        response.command !== "wspr_band_catalog" || response.status !== "ok") {
+        return null;
+    }
+
+    const audioOffsetHz = response.audio_offset_hz;
+    if (typeof audioOffsetHz !== "number" ||
+        !Number.isSafeInteger(audioOffsetHz) || audioOffsetHz < 0) {
+        return null;
+    }
+
+    if (!Array.isArray(response.bands) ||
+        response.bands.length !== CANONICAL_WSPR_BAND_NAMES.length) {
+        return null;
+    }
+
+    const nextCatalog = Object.create(null);
+    for (let index = 0; index < CANONICAL_WSPR_BAND_NAMES.length; index += 1) {
+        const entry = response.bands[index];
+        if (!entry || typeof entry !== "object" || Array.isArray(entry) ||
+            entry.band !== CANONICAL_WSPR_BAND_NAMES[index] ||
+            typeof entry.dial_frequency_hz !== "number" ||
+            !Number.isSafeInteger(entry.dial_frequency_hz) || entry.dial_frequency_hz <= 0 ||
+            typeof entry.tone_frequency_hz !== "number" ||
+            !Number.isSafeInteger(entry.tone_frequency_hz) || entry.tone_frequency_hz <= 0) {
+            return null;
+        }
+
+        const expectedToneFrequencyHz = entry.dial_frequency_hz + audioOffsetHz;
+        if (!Number.isSafeInteger(expectedToneFrequencyHz) ||
+            entry.tone_frequency_hz !== expectedToneFrequencyHz) {
+            return null;
+        }
+
+        nextCatalog[entry.band] = entry.dial_frequency_hz;
+    }
+
+    return {
+        audioOffsetHz,
+        dialFrequenciesHz: nextCatalog
+    };
+}
+
+function invalidTestToneSelection(error) {
+    return Object.freeze({
+        valid: false,
+        error
+    });
+}
+
+function createWsprBandTestToneSelection(band, catalog) {
+    if (typeof band !== "string" || !CANONICAL_WSPR_BAND_NAMES.includes(band)) {
+        return invalidTestToneSelection("Select a canonical WSPR band.");
+    }
+    if (!catalog || typeof catalog !== "object" ||
+        !Number.isSafeInteger(catalog.audioOffsetHz) || catalog.audioOffsetHz < 0 ||
+        !catalog.dialFrequenciesHz || typeof catalog.dialFrequenciesHz !== "object") {
+        return invalidTestToneSelection("A validated WSPR band catalog is required.");
+    }
+
+    const dialFrequencyHz = catalog.dialFrequenciesHz[band];
+    if (!Number.isSafeInteger(dialFrequencyHz) || dialFrequencyHz <= 0) {
+        return invalidTestToneSelection("The selected WSPR band is unavailable in the catalog.");
+    }
+
+    const toneFrequencyHz = dialFrequencyHz + catalog.audioOffsetHz;
+    if (!Number.isSafeInteger(toneFrequencyHz) || toneFrequencyHz <= 0) {
+        return invalidTestToneSelection("The selected WSPR band produces an unsafe tone frequency.");
+    }
+
+    return Object.freeze({
+        valid: true,
+        mode: TEST_TONE_SELECTION_MODES.WSPR_BAND,
+        band,
+        dialFrequencyHz,
+        audioOffsetHz: catalog.audioOffsetHz,
+        toneFrequencyHz,
+        payload: Object.freeze({
+            command: "tone_start",
+            frequency_source: TEST_TONE_SELECTION_MODES.WSPR_BAND,
+            band
+        })
+    });
+}
+
+function createCustomRfTestToneSelection(rawFrequencyHz) {
+    if (typeof rawFrequencyHz !== "string" || !/^[1-9]\d*$/.test(rawFrequencyHz)) {
+        return invalidTestToneSelection("Enter a positive whole-number RF frequency in Hz.");
+    }
+
+    const frequencyHz = Number(rawFrequencyHz);
+    if (!Number.isSafeInteger(frequencyHz) || frequencyHz <= 0) {
+        return invalidTestToneSelection("The RF frequency must be a safe whole-number Hz value.");
+    }
+
+    return Object.freeze({
+        valid: true,
+        mode: TEST_TONE_SELECTION_MODES.CUSTOM_RF,
+        frequencyHz,
+        payload: Object.freeze({
+            command: "tone_start",
+            frequency_source: TEST_TONE_SELECTION_MODES.CUSTOM_RF,
+            frequency_hz: frequencyHz
+        })
+    });
+}
+
+function createTestToneSelection(mode, value, catalog) {
+    if (mode === TEST_TONE_SELECTION_MODES.WSPR_BAND) {
+        return createWsprBandTestToneSelection(value, catalog);
+    }
+    if (mode === TEST_TONE_SELECTION_MODES.CUSTOM_RF) {
+        return createCustomRfTestToneSelection(value);
+    }
+    return invalidTestToneSelection("Select a Test Tone frequency source.");
+}
+
+function createTestToneSelectionPreview(selection) {
+    if (!selection || selection.valid !== true) {
+        return Object.freeze({
+            valid: false,
+            text: selection && selection.error
+                ? selection.error
+                : "Select a valid Test Tone frequency source."
+        });
+    }
+
+    if (selection.mode === TEST_TONE_SELECTION_MODES.WSPR_BAND) {
+        return Object.freeze({
+            valid: true,
+            mode: selection.mode,
+            band: selection.band,
+            dialFrequencyHz: selection.dialFrequencyHz,
+            audioOffsetHz: selection.audioOffsetHz,
+            toneFrequencyHz: selection.toneFrequencyHz,
+            text: `${selection.band}: WSPR dial ${selection.dialFrequencyHz} Hz + ${selection.audioOffsetHz} Hz offset = ${selection.toneFrequencyHz} Hz RF tone.`
+        });
+    }
+
+    if (selection.mode === TEST_TONE_SELECTION_MODES.CUSTOM_RF) {
+        return Object.freeze({
+            valid: true,
+            mode: selection.mode,
+            frequencyHz: selection.frequencyHz,
+            text: `${selection.frequencyHz} Hz exact RF. No WSPR offset is applied; the backend validates and resolves the band at start.`
+        });
+    }
+
+    return Object.freeze({
+        valid: false,
+        text: "Select a valid Test Tone frequency source."
+    });
+}
+
+function currentValidatedTestToneCatalog() {
+    if (!wsprBandCatalogAuthorized) {
+        return null;
+    }
+
+    return Object.freeze({
+        audioOffsetHz: wsprAudioOffsetHz,
+        dialFrequenciesHz: wsprBandDialFrequenciesHz
+    });
+}
+
+function displayTestToneCatalog() {
+    if (!Number.isSafeInteger(wsprAudioOffsetHz) || wsprAudioOffsetHz < 0 ||
+        !wsprBandDialFrequenciesHz || typeof wsprBandDialFrequenciesHz !== "object") {
+        return null;
+    }
+
+    return Object.freeze({
+        audioOffsetHz: wsprAudioOffsetHz,
+        dialFrequenciesHz: wsprBandDialFrequenciesHz
+    });
+}
+
+function configuredWsprCatalogBand(rawValue, catalog) {
+    if (!catalog || !catalog.dialFrequenciesHz) {
+        return "";
+    }
+
+    const tokens = String(rawValue || "")
+        .replace(/,/g, " ")
+        .trim()
+        .split(/\s+/)
+        .filter((token) => token.length > 0);
+    for (const token of tokens) {
+        const baseToken = token.split("@", 1)[0].trim();
+        const normalized = baseToken.toLowerCase();
+        const canonical = normalized === "lf"
+            ? "2200m"
+            : normalized === "mf"
+                ? "630m"
+                : normalized;
+        if (CANONICAL_WSPR_BAND_NAMES.includes(canonical) &&
+            Number.isSafeInteger(catalog.dialFrequenciesHz[canonical])) {
+            return canonical;
+        }
+
+        const numericFrequencyHz = parseOperationFrequencyWithOptionalUnits(baseToken);
+        if (!Number.isSafeInteger(numericFrequencyHz) || numericFrequencyHz <= 0) {
+            continue;
+        }
+        for (const band of CANONICAL_WSPR_BAND_NAMES) {
+            if (catalog.dialFrequenciesHz[band] === numericFrequencyHz) {
+                return band;
+            }
+        }
+    }
+
+    return "";
+}
+
+function populateTestToneBandOptions(catalog) {
+    const select = document.getElementById("testToneBand");
+    if (!select) {
+        return;
+    }
+
+    const previousValue = select.value;
+    select.replaceChildren();
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Select a WSPR band";
+    select.appendChild(placeholder);
+    if (catalog && catalog.dialFrequenciesHz) {
+        for (const band of CANONICAL_WSPR_BAND_NAMES) {
+            if (!Number.isSafeInteger(catalog.dialFrequenciesHz[band])) {
+                continue;
+            }
+            const option = document.createElement("option");
+            option.value = band;
+            option.textContent = band;
+            select.appendChild(option);
+        }
+    }
+    select.value = previousValue;
+}
+
+function selectedTestToneMode() {
+    if (document.getElementById("testToneSourceBand")?.checked) {
+        return TEST_TONE_SELECTION_MODES.WSPR_BAND;
+    }
+    if (document.getElementById("testToneSourceCustom")?.checked) {
+        return TEST_TONE_SELECTION_MODES.CUSTOM_RF;
+    }
+    return "";
+}
+
+function setSelectedTestToneMode(mode) {
+    const bandRadio = document.getElementById("testToneSourceBand");
+    const customRadio = document.getElementById("testToneSourceCustom");
+    if (bandRadio) {
+        bandRadio.checked = mode === TEST_TONE_SELECTION_MODES.WSPR_BAND;
+    }
+    if (customRadio) {
+        customRadio.checked = mode === TEST_TONE_SELECTION_MODES.CUSTOM_RF;
+    }
+}
+
+function renderTestToneSelection() {
+    const catalog = currentValidatedTestToneCatalog();
+    const mode = selectedTestToneMode();
+    const band = document.getElementById("testToneBand");
+    const frequency = document.getElementById("testToneFrequencyHz");
+    const previewNode = document.getElementById("testToneSelectionPreview");
+    const errorNode = document.getElementById("testToneSelectionError");
+
+    if (band) {
+        band.disabled = mode !== TEST_TONE_SELECTION_MODES.WSPR_BAND || !catalog;
+    }
+    if (frequency) {
+        frequency.disabled = mode !== TEST_TONE_SELECTION_MODES.CUSTOM_RF;
+    }
+
+    currentTestToneSelection = createTestToneSelection(
+        mode,
+        mode === TEST_TONE_SELECTION_MODES.WSPR_BAND ? band?.value : frequency?.value,
+        catalog
+    );
+    const preview = createTestToneSelectionPreview(currentTestToneSelection);
+    if (previewNode) {
+        previewNode.textContent = preview.text;
+    }
+    if (errorNode) {
+        errorNode.textContent = currentTestToneSelection.valid
+            ? ""
+            : (!catalog ? wsprBandCatalogStatusMessage : currentTestToneSelection.error);
+    }
+    syncTestToneControlState(isTestToneRuntimeActive());
+    return currentTestToneSelection;
+}
+
+function initializeTestToneSelectionControls() {
+    const catalog = currentValidatedTestToneCatalog();
+    populateTestToneBandOptions(catalog || displayTestToneCatalog());
+    if (!catalog) {
+        setSelectedTestToneMode("");
+        return renderTestToneSelection();
+    }
+
+    const configuredBand = currentTestToneConfigContext.mode === "WSPR"
+        ? configuredWsprCatalogBand(currentTestToneConfigContext.wsprFrequencyValue, catalog)
+        : "";
+    const band = document.getElementById("testToneBand");
+    const frequency = document.getElementById("testToneFrequencyHz");
+    if (configuredBand) {
+        setSelectedTestToneMode(TEST_TONE_SELECTION_MODES.WSPR_BAND);
+        if (band) {
+            band.value = configuredBand;
+        }
+    } else {
+        const configuredFrequencyHz = testToneDefaultTransmitFrequencyHz();
+        if (Number.isSafeInteger(configuredFrequencyHz) && configuredFrequencyHz > 0) {
+            setSelectedTestToneMode(TEST_TONE_SELECTION_MODES.CUSTOM_RF);
+            if (frequency) {
+                frequency.value = String(configuredFrequencyHz);
+            }
+        } else {
+            setSelectedTestToneMode("");
+        }
+    }
+    return renderTestToneSelection();
+}
+
+function updateWsprBandCatalog(response) {
+    const validatedCatalog = validateWsprBandCatalog(response);
+    if (!validatedCatalog) {
+        debugConsole("warn", "WSPR band catalog response was invalid:", response);
+        return false;
+    }
+
+    wsprBandDialFrequenciesHz = validatedCatalog.dialFrequenciesHz;
+    wsprAudioOffsetHz = validatedCatalog.audioOffsetHz;
+    updateTestToneConfigContext(
+        currentTestToneConfigContext.mode,
+        currentTestToneConfigContext.wsprFrequencyValue,
+        currentTestToneConfigContext.cwBaseFrequencyHz
+    );
+    updateTestToneFrequencyContext();
+    updateTestToneFrequencyInputDefault();
+    return true;
+}
+
+function updateWsprBandCatalogUiState() {
+    updateTestToneFrequencyContext();
+    const modal = document.getElementById("testToneModal");
+    if (modal?.classList?.contains("show")) {
+        initializeTestToneSelectionControls();
+        return;
+    }
+    syncTestToneControlState(isTestToneRuntimeActive());
+}
+
+function clearWsprBandCatalogPendingRequest(request = wsprBandCatalogPendingRequest) {
+    if (!request || wsprBandCatalogPendingRequest !== request) {
+        return false;
+    }
+
+    window.clearTimeout(request.timeoutHandle);
+    wsprBandCatalogPendingRequest = null;
+    return true;
+}
+
+function invalidateWsprBandCatalogAuthorization(
+    message,
+    request = wsprBandCatalogPendingRequest
+) {
+    clearWsprBandCatalogPendingRequest(request);
+    wsprBandCatalogAuthorized = false;
+    wsprBandCatalogStatusMessage = message;
+    updateWsprBandCatalogUiState();
+}
+
+function isCurrentWsprBandCatalogRequest(request, socket) {
+    return !!request &&
+        wsprBandCatalogPendingRequest === request &&
+        request.socket === socket &&
+        ws === socket &&
+        request.connectionGeneration === wsprBandCatalogConnectionGeneration &&
+        socket.readyState === WebSocket.OPEN;
+}
+
+function requestWsprBandCatalog(socket = ws) {
+    if (!socket || socket.readyState !== WebSocket.OPEN ||
+        wsprBandCatalogRequestedSockets.has(socket)) {
+        debugConsole("debug", "WSPR band catalog request is already settled for this connection.");
+        return false;
+    }
+
+    wsprBandCatalogConnectionGeneration += 1;
+    wsprBandCatalogRequestGeneration += 1;
+    wsprBandCatalogRequestedSockets.add(socket);
+
+    let request;
+    const timeoutHandle = window.setTimeout(() => {
+        if (!isCurrentWsprBandCatalogRequest(request, socket)) {
+            return;
+        }
+        invalidateWsprBandCatalogAuthorization(
+            "WSPR band catalog request timed out. Test Tone Start is disabled.",
+            request
+        );
+    }, WSPR_BAND_CATALOG_TIMEOUT_MS);
+    request = Object.freeze({
+        socket,
+        connectionGeneration: wsprBandCatalogConnectionGeneration,
+        requestGeneration: wsprBandCatalogRequestGeneration,
+        timeoutHandle
+    });
+    wsprBandCatalogPendingRequest = request;
+    wsprBandCatalogAuthorized = false;
+    wsprBandCatalogStatusMessage = "Loading WSPR band catalog. Test Tone Start is disabled.";
+    updateWsprBandCatalogUiState();
+
+    try {
+        socket.send(JSON.stringify({ command: "wspr_band_catalog" }));
+    } catch (error) {
+        debugConsole("warn", "Unable to request WSPR band catalog:", error);
+        invalidateWsprBandCatalogAuthorization(
+            "WSPR band catalog request could not be sent. Test Tone Start is disabled.",
+            request
+        );
+        return false;
+    }
+    return request;
+}
+
+function handleWsprBandCatalogResponse(response, socket, request) {
+    if (!isCurrentWsprBandCatalogRequest(request, socket)) {
+        debugConsole("debug", "Ignoring stale or duplicate WSPR band catalog response.");
+        return false;
+    }
+
+    if (!updateWsprBandCatalog(response)) {
+        invalidateWsprBandCatalogAuthorization(
+            response && response.status !== "ok"
+                ? "WSPR band catalog is unavailable from the controller. Test Tone Start is disabled."
+                : "WSPR band catalog response is invalid. Test Tone Start is disabled.",
+            request
+        );
+        return false;
+    }
+
+    clearWsprBandCatalogPendingRequest(request);
+    wsprBandCatalogAuthorized = true;
+    wsprBandCatalogStatusMessage = "";
+    updateWsprBandCatalogUiState();
+    return true;
 }
 
 function normalizeTestToneMode(mode) {
@@ -2138,14 +2605,19 @@ function configuredTestToneFrequencyForMode(mode, wsprFrequencyHz, cwBaseFrequen
     return Number.isFinite(frequencyHz) && frequencyHz > 0 ? frequencyHz : 0;
 }
 
-function updateTestToneConfigContext(mode, wsprFrequencyHz, cwBaseFrequencyHz) {
+function updateTestToneConfigContext(mode, wsprFrequencyValue, cwBaseFrequencyHz) {
+    const wsprFrequencyHz = parseConfiguredWsprFrequencyHz(wsprFrequencyValue);
     currentTestToneConfigContext = {
         mode: normalizeTestToneMode(mode),
         configuredFrequencyHz: configuredTestToneFrequencyForMode(
             mode,
             wsprFrequencyHz,
             cwBaseFrequencyHz
-        )
+        ),
+        wsprFrequencyValue: String(wsprFrequencyValue || ""),
+        cwBaseFrequencyHz: Number.isFinite(Number(cwBaseFrequencyHz))
+            ? Number(cwBaseFrequencyHz)
+            : 0
     };
 }
 
@@ -2158,7 +2630,7 @@ function testToneDefaultTransmitFrequencyHz() {
     }
 
     const transmitFrequencyHz = currentTestToneConfigContext.mode === "WSPR"
-        ? configuredFrequencyHz + 1500
+        ? configuredFrequencyHz + wsprAudioOffsetHz
         : configuredFrequencyHz;
 
     return Number.isFinite(transmitFrequencyHz) && transmitFrequencyHz > 0
@@ -2189,6 +2661,11 @@ function formatTestToneFrequencyMhz(frequencyHz) {
 }
 
 function testToneFrequencyContextText() {
+    if (!wsprBandCatalogAuthorized) {
+        return wsprBandCatalogStatusMessage ||
+            "WSPR band catalog unavailable. Test Tone Start is disabled.";
+    }
+
     const configured = formatTestToneFrequencyMhz(
         currentTestToneConfigContext.configuredFrequencyHz
     );
@@ -2198,10 +2675,10 @@ function testToneFrequencyContextText() {
 
     if (currentTestToneConfigContext.mode === "WSPR") {
         const detected = formatTestToneFrequencyMhz(
-            currentTestToneConfigContext.configuredFrequencyHz + 1500
+            currentTestToneConfigContext.configuredFrequencyHz + wsprAudioOffsetHz
         );
         if (detected) {
-            return `Configured frequency: ${configured}. WSPR uses USB dial-frequency semantics, so the test tone should be detected 1500 Hz higher at ${detected}.`;
+            return `Configured frequency: ${configured}. WSPR uses USB dial-frequency semantics, so the test tone should be detected ${wsprAudioOffsetHz} Hz higher at ${detected}.`;
         }
     }
 
@@ -2218,25 +2695,106 @@ function updateTestToneFrequencyContext() {
 }
 
 function testToneFrequencyOverridePayload() {
-    const input = document.getElementById("testToneFrequencyHz");
-    if (!input) {
+    if (!currentTestToneSelection || currentTestToneSelection.valid !== true ||
+        !currentTestToneSelection.payload) {
         return {};
     }
 
-    const rawValue = String(input.value || "").trim();
-    if (!/^\d+$/.test(rawValue)) {
-        return {};
+    const payload = currentTestToneSelection.payload;
+    if (payload.frequency_source === TEST_TONE_SELECTION_MODES.WSPR_BAND &&
+        typeof payload.band === "string") {
+        return {
+            frequency_source: TEST_TONE_SELECTION_MODES.WSPR_BAND,
+            band: payload.band
+        };
+    }
+    if (payload.frequency_source === TEST_TONE_SELECTION_MODES.CUSTOM_RF &&
+        Number.isSafeInteger(payload.frequency_hz) && payload.frequency_hz > 0) {
+        return {
+            frequency_source: TEST_TONE_SELECTION_MODES.CUSTOM_RF,
+            frequency_hz: payload.frequency_hz
+        };
+    }
+    return {};
+}
+
+function setTestToneExecutionResult(message, state = "") {
+    const node = document.getElementById("testToneExecutionResult");
+    if (!node) {
+        return;
     }
 
-    const frequencyHz = Number(rawValue);
-    if (
-        !Number.isSafeInteger(frequencyHz) ||
-        frequencyHz <= 0
-    ) {
-        return {};
+    node.textContent = typeof message === "string" ? message : "";
+    node.className = state
+        ? `small mb-0 mt-2 text-${state}`
+        : "small mb-0 mt-2";
+}
+
+function clearTestToneExecutionResult() {
+    setTestToneExecutionResult("");
+}
+
+function validCommittedToneFrequency(value) {
+    return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
+function committedTestToneSelectorText(response) {
+    if (response.selector_gpio_enabled === false) {
+        return { valid: true, text: "Selector: disabled." };
+    }
+    if (response.selector_gpio_enabled !== true ||
+        !Number.isSafeInteger(response.selector_gpio) || response.selector_gpio < 0 ||
+        typeof response.selector_gpio_active_high !== "boolean") {
+        return { valid: false };
     }
 
-    return { frequency_hz: frequencyHz };
+    return {
+        valid: true,
+        text: `Selector: GPIO ${response.selector_gpio}, ${response.selector_gpio_active_high ? "active high" : "active low"}.`
+    };
+}
+
+function committedTestToneExecutionText(response, expectedFrequencySource = "") {
+    if (!response || typeof response !== "object" || response.started !== true ||
+        !Object.values(TEST_TONE_SELECTION_MODES).includes(expectedFrequencySource)) {
+        return { applicable: false, valid: false };
+    }
+
+    if (response.frequency_source !== expectedFrequencySource) {
+        return { applicable: true, valid: false };
+    }
+
+    const selector = committedTestToneSelectorText(response);
+    if (expectedFrequencySource === TEST_TONE_SELECTION_MODES.WSPR_BAND) {
+        const expectedRf = response.dial_frequency_hz + response.audio_offset_hz;
+        if (!CANONICAL_WSPR_BAND_NAMES.includes(response.band) ||
+            !validCommittedToneFrequency(response.dial_frequency_hz) ||
+            !Number.isSafeInteger(response.audio_offset_hz) || response.audio_offset_hz < 0 ||
+            !validCommittedToneFrequency(response.actual_rf_frequency_hz) ||
+            !Number.isSafeInteger(expectedRf) || expectedRf !== response.actual_rf_frequency_hz ||
+            !selector.valid) {
+            return { applicable: true, valid: false };
+        }
+        return {
+            applicable: true,
+            valid: true,
+            text: `Started ${response.band}: committed WSPR dial ${response.dial_frequency_hz} Hz + ${response.audio_offset_hz} Hz offset = ${response.actual_rf_frequency_hz} Hz RF. ${selector.text}`
+        };
+    }
+
+    if (expectedFrequencySource === TEST_TONE_SELECTION_MODES.CUSTOM_RF) {
+        if (!CANONICAL_WSPR_BAND_NAMES.includes(response.band) ||
+            !validCommittedToneFrequency(response.actual_rf_frequency_hz) || !selector.valid) {
+            return { applicable: true, valid: false };
+        }
+        return {
+            applicable: true,
+            valid: true,
+            text: `Started ${response.band}: committed exact RF ${response.actual_rf_frequency_hz} Hz. No WSPR offset was applied. ${selector.text}`
+        };
+    }
+
+    return { applicable: false, valid: false };
 }
 
 function renderRuntimeStatus(status) {
@@ -2896,14 +3454,21 @@ function connectWebSocket(endpoint, reconnectDelay = 5000, attemptIndex = 0) {
         scheduleReconnectFromProxy();
         return ws;
     }
+    const socket = ws;
+    let catalogRequest = null;
+
     // On open: update UI and log
-    ws.addEventListener("open", () => {
+    socket.addEventListener("open", () => {
         opened = true;
         debugConsole("debug", "WebSocket ▶️ open");
         websocketCurrentlyConnected = true;
         websocketConnectedOnce = true;
         armOutageBannerIfReady();
         setConnectionState("connected");
+        const requestedCatalog = requestWsprBandCatalog(socket);
+        if (requestedCatalog) {
+            catalogRequest = requestedCatalog;
+        }
 
         const $reload = $("#systemModal .reload-btn");
         if ($reload.is(":visible")) {
@@ -2929,7 +3494,7 @@ function connectWebSocket(endpoint, reconnectDelay = 5000, attemptIndex = 0) {
 
     // On message: Try to parse JSON and react to “transmitting” or
     // "tx_state" state
-    ws.addEventListener("message", (ev) => {
+    socket.addEventListener("message", (ev) => {
         debugConsole("debug", "WebSocket ◀️ message:", ev.data);
         let msg;
         try {
@@ -2949,8 +3514,13 @@ function connectWebSocket(endpoint, reconnectDelay = 5000, attemptIndex = 0) {
 
         if (msg.command === "tone_start" || msg.command === "tone_end") {
             if (typeof handleTestToneCommandResponse === "function") {
-                handleTestToneCommandResponse(msg);
+                handleTestToneCommandResponse(msg, socket);
             }
+            return;
+        }
+
+        if (msg.command === "wspr_band_catalog") {
+            handleWsprBandCatalogResponse(msg, socket, catalogRequest);
             return;
         }
 
@@ -3062,7 +3632,7 @@ function connectWebSocket(endpoint, reconnectDelay = 5000, attemptIndex = 0) {
     });
 
     // On error: Log and treat as a disconnection
-    ws.addEventListener("error", (err) => {
+    socket.addEventListener("error", (err) => {
         if (!opened && beginWebSocketFallback(getWebSocketFailureReason(err, "network error"))) {
             return;
         }
@@ -3074,17 +3644,25 @@ function connectWebSocket(endpoint, reconnectDelay = 5000, attemptIndex = 0) {
             return;
         }
 
+        if (ws !== socket) {
+            return;
+        }
         debugConsole("error", "WebSocket ❌ error", err);
         clearPendingTestToneStartRequest();
         communicationInterrupted = true;
         reloadAfterReconnectPending = true;
         websocketCurrentlyConnected = false;
+        if (ws === socket) {
+            invalidateWsprBandCatalogAuthorization(
+                "WSPR band catalog unavailable while reconnecting. Test Tone Start is disabled."
+            );
+        }
         setConnectionState("disconnected");
         syncConnectionAlert();
     });
 
     // On close: Schedule a reconnect
-    ws.addEventListener("close", (ev) => {
+    socket.addEventListener("close", (ev) => {
         const reason = getWebSocketFailureReason(ev, "close before open");
 
         if (!opened && beginWebSocketFallback(reason)) {
@@ -3098,10 +3676,18 @@ function connectWebSocket(endpoint, reconnectDelay = 5000, attemptIndex = 0) {
             return;
         }
 
+        if (ws !== socket) {
+            return;
+        }
         debugConsole(
             "debug",
             `WebSocket 🔌 closed (code=${ev.code}), reconnecting in ${reconnectDelay}ms`
         );
+        if (ws === socket) {
+            invalidateWsprBandCatalogAuthorization(
+                "WSPR band catalog unavailable while disconnected or reconnecting. Test Tone Start is disabled."
+            );
+        }
         clearPendingTestToneStartRequest();
         communicationInterrupted = true;
         reloadAfterReconnectPending = true;
@@ -5707,6 +6293,11 @@ function bindTestToneControls() {
     $("#test_tone").off(".testTone").on("click.testTone", clickTestTone);
     $("#testToneStart").off(".testTone").on("click.testTone", onTestToneStart);
     $("#testToneEnd").off(".testTone").on("click.testTone", onTestToneEnd);
+    $("#testToneSourceBand, #testToneSourceCustom")
+        .off("change.testTone")
+        .on("change.testTone", renderTestToneSelection);
+    $("#testToneBand").off("change.testTone").on("change.testTone", renderTestToneSelection);
+    $("#testToneFrequencyHz").off("input.testTone").on("input.testTone", renderTestToneSelection);
     $modalEl.off("hidden.bs.modal.testTone").on("hidden.bs.modal.testTone", onTestToneEnd);
 }
 
@@ -5744,17 +6335,73 @@ function hasEnabledManagedTransmissionForTestTone() {
     );
 }
 
+function clearUnresolvedTestToneStartContext() {
+    unresolvedTestToneStartContext = null;
+    testToneStartQuarantinedSocket = null;
+    testToneStartQuarantinedConnectionGeneration = 0;
+}
+
 function clearPendingTestToneStartRequest() {
+    const discardUnresolvedContext = arguments[0] !== false &&
+        retainingTestToneStartContextForResponse !== true;
+    const wasPending = pendingTestToneStartRequest;
     pendingTestToneStartRequest = false;
     if (pendingTestToneStartTimeoutHandle) {
         window.clearTimeout(pendingTestToneStartTimeoutHandle);
         pendingTestToneStartTimeoutHandle = null;
     }
+    if (discardUnresolvedContext) {
+        clearUnresolvedTestToneStartContext();
+    }
+    if (wasPending) {
+        syncTestToneControlState(false);
+    }
+}
+
+function quarantineTimedOutTestToneStartRequest() {
+    const context = unresolvedTestToneStartContext;
+    if (!context || context.socket !== ws ||
+        context.connectionGeneration !== wsprBandCatalogConnectionGeneration) {
+        clearUnresolvedTestToneStartContext();
+        return;
+    }
+
+    // tone_start has no request ID. Once the timeout leaves its outcome unknown,
+    // this socket cannot safely issue another Start until it reconnects or replies.
+    testToneStartQuarantinedSocket = context.socket;
+    testToneStartQuarantinedConnectionGeneration = context.connectionGeneration;
+    setTestToneExecutionResult(
+        "Test Tone start timed out and the controller outcome is unknown. Wait for a response or reconnect before trying again.",
+        "warning"
+    );
+    syncTestToneControlState(false);
+}
+
+function isTestToneStartQuarantinedForCurrentSocket() {
+    return testToneStartQuarantinedSocket === ws &&
+        testToneStartQuarantinedConnectionGeneration === wsprBandCatalogConnectionGeneration;
 }
 
 function markPendingTestToneStartRequest() {
+    const payload = arguments[0] || null;
     clearPendingTestToneStartRequest();
     pendingTestToneStartRequest = true;
+    const frequencySource = payload &&
+        Object.values(TEST_TONE_SELECTION_MODES).includes(payload.frequency_source)
+        ? payload.frequency_source
+        : "";
+    unresolvedTestToneStartContext = Object.freeze({
+        frequencySource,
+        socket: ws,
+        connectionGeneration: wsprBandCatalogConnectionGeneration,
+    });
+    if (frequencySource) {
+        pendingTestToneStartTimeoutHandle = window.setTimeout(() => {
+            clearPendingTestToneStartRequest(false);
+            quarantineTimedOutTestToneStartRequest();
+        }, TEST_TONE_COMMAND_TIMEOUT_MS);
+        return;
+    }
     pendingTestToneStartTimeoutHandle = window.setTimeout(() => {
         clearPendingTestToneStartRequest();
     }, TEST_TONE_COMMAND_TIMEOUT_MS);
@@ -5928,8 +6575,26 @@ function disableScheduledTransmissionsForTestTone(reason, actionButton = null) {
         });
 }
 
+function canStartTestTone() {
+    return !!(
+        ws &&
+        ws.readyState === WebSocket.OPEN &&
+        websocketCurrentlyConnected === true &&
+        wsprBandCatalogAuthorized === true &&
+        wsprBandCatalogPendingRequest === null &&
+        pendingTestToneStartRequest === false &&
+        !isTestToneStartQuarantinedForCurrentSocket() &&
+        currentTestToneSelection &&
+        currentTestToneSelection.valid === true &&
+        currentTestToneSelection.payload &&
+        !hasActiveManagedTransmissionForTestTone() &&
+        !hasEnabledManagedTransmissionForTestTone()
+    );
+}
+
 function syncTestToneControlState(toneActive) {
-    $("#testToneStart").prop("disabled", toneActive === true);
+    const shouldEnableStart = toneActive !== true && canStartTestTone();
+    $("#testToneStart").prop("disabled", !shouldEnableStart);
     $("#testToneEnd").prop("disabled", toneActive !== true);
     $("#testToneClose").prop("disabled", false);
 }
@@ -5996,9 +6661,8 @@ function clickTestTone(e) {
     setTimeout(() => {
         toggleButtonLoading(btn, false);
     }, 500);
-    syncTestToneControlState(false);
+    initializeTestToneSelectionControls();
     updateTestToneFrequencyContext();
-    updateTestToneFrequencyInputDefault();
     const modalEl = document.getElementById("testToneModal");
     const modal = new bootstrap.Modal(modalEl);
     modal.show();
@@ -6006,7 +6670,11 @@ function clickTestTone(e) {
 
 function onTestToneStart(e) {
     e.preventDefault();
-    clearPendingTestToneStartRequest();
+    renderTestToneSelection();
+    if (!canStartTestTone()) {
+        syncTestToneControlState(false);
+        return;
+    }
     if (hasActiveManagedTransmissionForTestTone()) {
         showTestToneBlockedModal("active");
         syncTestToneControlState(false);
@@ -6019,27 +6687,96 @@ function onTestToneStart(e) {
     }
 
     const btn = this;
+    clearTestToneExecutionResult();
     toggleButtonLoading(btn, true);
     syncTestToneControlState(false);
     $("#testToneStart").prop("disabled", true);
     $("#testToneEnd").prop("disabled", true);
-    debugConsole("debug", "Test tone start.");
-    markPendingTestToneStartRequest();
     const toneStartPayload = {
         command: "tone_start",
         ...testToneFrequencyOverridePayload()
     };
-    if (!sendCommand(toneStartPayload)) {
+    markPendingTestToneStartRequest(toneStartPayload);
+
+    // Retain the existing shared-sender false-return path for the narrow race
+    // where the socket closes after Start gating but before the local send
+    // boundary below. It cannot transmit because the socket is already closed.
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        try {
+            if (!sendCommand(toneStartPayload)) {
+                clearPendingTestToneStartRequest();
+                toggleButtonLoading(btn, false);
+                setTestToneExecutionResult(
+                    "Test Tone start could not be sent. Check the controller connection and try again.",
+                    "danger"
+                );
+                syncTestToneControlState(false);
+                return;
+            }
+        } catch (error) {
+            clearPendingTestToneStartRequest();
+            toggleButtonLoading(btn, false);
+            setTestToneExecutionResult(
+                "Test Tone start could not be sent. Check the controller connection and try again.",
+                "danger"
+            );
+            syncTestToneControlState(false);
+            return;
+        }
+    }
+
+    const sent = sendTestToneStartPayload(toneStartPayload);
+    if (!sent.accepted) {
+        debugConsole("warn", "Test Tone start could not be sent:", sent.error);
         clearPendingTestToneStartRequest();
         toggleButtonLoading(btn, false);
+        setTestToneExecutionResult(
+            "Test Tone start could not be sent. Check the controller connection and try again.",
+            "danger"
+        );
         syncTestToneControlState(false);
         return;
     }
+
+    try {
+        debugConsole("debug", "Test tone start.", sent.json);
+    } catch (error) {
+        // Sending already succeeded. Diagnostic failures must not relabel or
+        // clear this pending controller request.
+    }
+}
+
+/**
+ * Send a Test Tone Start request with an explicit acceptance boundary.
+ *
+ * Serialization and WebSocket.send() are the only operations that can make a
+ * Start request definitely unsent. Once send() returns, callers must retain
+ * their pending request context even if later diagnostics fail.
+ */
+function sendTestToneStartPayload(payload) {
+    let json;
+    try {
+        json = JSON.stringify(payload);
+    } catch (error) {
+        return { accepted: false, error };
+    }
+
+    const socket = ws;
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+        return { accepted: false };
+    }
+
+    try {
+        socket.send(json);
+    } catch (error) {
+        return { accepted: false, error };
+    }
+
+    return { accepted: true, json };
 }
 
 function onTestToneEnd(e) {
     e.preventDefault();
-    clearPendingTestToneStartRequest();
     if (!isTestToneRuntimeActive()) {
         syncTestToneControlState(false);
         return;
@@ -6058,6 +6795,10 @@ function onTestToneEnd(e) {
 }
 
 function handleTestToneCommandResponse(message) {
+    const responseSocket = arguments[1] || ws;
+    if (responseSocket !== ws) {
+        return;
+    }
     const response = message && typeof message === "object" ? message : {};
     const command = typeof response.command === "string" ? response.command : "";
     const startButton = document.getElementById("testToneStart");
@@ -6072,11 +6813,33 @@ function handleTestToneCommandResponse(message) {
 
     if (command === "tone_start") {
         const locallyRequested = pendingTestToneStartRequest === true;
+        const pendingStartContext = unresolvedTestToneStartContext &&
+            unresolvedTestToneStartContext.socket === responseSocket &&
+            unresolvedTestToneStartContext.connectionGeneration === wsprBandCatalogConnectionGeneration
+            ? unresolvedTestToneStartContext
+            : null;
+        retainingTestToneStartContextForResponse = true;
         clearPendingTestToneStartRequest();
         if (response.started === true) {
             syncTestToneControlState(true);
+            const committed = committedTestToneExecutionText(
+                response,
+                pendingStartContext?.frequencySource
+            );
+            if (committed.applicable) {
+                setTestToneExecutionResult(
+                    committed.valid
+                        ? committed.text
+                        : "Test Tone started, but committed execution details were unavailable or invalid.",
+                    committed.valid ? "success" : "warning"
+                );
+            }
         } else {
             syncTestToneControlState(false);
+            const rejectionMessage = typeof response.message === "string" && response.message.trim()
+                ? response.message.trim()
+                : "Test Tone start was rejected by the controller.";
+            setTestToneExecutionResult(rejectionMessage, "danger");
             if (locallyRequested && response.blocked_by_active_transmission === true) {
                 showTestToneBlockedModal("active");
             } else if (locallyRequested && response.blocked_by_enabled_transmission === true) {
@@ -6093,6 +6856,8 @@ function handleTestToneCommandResponse(message) {
                 debugConsole("error", "Test tone start rejected:", response);
             }
         }
+        clearUnresolvedTestToneStartContext();
+        retainingTestToneStartContextForResponse = false;
     } else if (command === "tone_end") {
         syncTestToneControlState(false);
         if (response.stopped !== true) {
@@ -6355,3 +7120,143 @@ function showMessageDialog(options = {}) {
         onConfirm: options.onConfirm
     });
 }
+
+// This bridge is intentionally installed only by the focused Node harness. It
+// closes over the live script state so tests exercise the production functions
+// without recreating a parallel Test Tone state model.
+function installWsprryPiTestHooks() {
+    if (typeof globalThis === "undefined") {
+        return;
+    }
+
+    const hooks = globalThis.WSPRRYPI_TEST_HOOKS;
+    if (!hooks || hooks.enabled !== true) {
+        return;
+    }
+
+    const functions = Object.freeze({
+        parseConfiguredWsprFrequencyHz,
+        validateWsprBandCatalog,
+        createTestToneSelection,
+        createTestToneSelectionPreview,
+        updateWsprBandCatalog,
+        requestWsprBandCatalog,
+        connectWebSocket,
+        initializeTestToneSelectionControls,
+        renderTestToneSelection,
+        updateTestToneConfigContext,
+        testToneDefaultTransmitFrequencyHz,
+        testToneFrequencyContextText,
+        clickTestTone,
+        onTestToneStart,
+        onTestToneEnd,
+        handleTestToneCommandResponse,
+        bindTestToneControls,
+        syncTestToneControlState,
+        clearPendingTestToneStartRequest,
+        markPendingTestToneStartRequest,
+        clearTestToneExecutionResult,
+        getTxState,
+        setConnectionState,
+        syncConnectionAlert,
+        armOutageBannerIfReady,
+        reloadAllData,
+        toggleButtonLoading,
+        debugConsole,
+        showTestToneBlockedModal,
+    });
+
+    const inspect = () => Object.freeze({
+        catalog: Object.freeze({
+            authorized: wsprBandCatalogAuthorized,
+            pending: wsprBandCatalogPendingRequest !== null,
+            message: wsprBandCatalogStatusMessage,
+            offset: wsprAudioOffsetHz,
+            dialFrequenciesHz: Object.freeze({ ...wsprBandDialFrequenciesHz }),
+            connectionGeneration: wsprBandCatalogConnectionGeneration,
+            requestGeneration: wsprBandCatalogRequestGeneration,
+            pendingRequestGeneration: wsprBandCatalogPendingRequest?.requestGeneration ?? null,
+            timeoutHandle: wsprBandCatalogPendingRequest?.timeoutHandle ?? null,
+        }),
+        testToneStart: Object.freeze({
+            pending: pendingTestToneStartRequest,
+            source: unresolvedTestToneStartContext?.frequencySource || "",
+            hasUnresolvedContext: unresolvedTestToneStartContext !== null,
+            quarantined: ws !== null && isTestToneStartQuarantinedForCurrentSocket(),
+            timeoutHandle: pendingTestToneStartTimeoutHandle,
+        }),
+        selection: currentTestToneSelection,
+    });
+
+    const reset = () => {
+        clearPendingTestToneStartRequest();
+        clearWebSocketReconnectTimer();
+        clearWsprBandCatalogPendingRequest();
+        if (pendingTestToneStopDisableAction?.timeoutHandle) {
+            window.clearTimeout(pendingTestToneStopDisableAction.timeoutHandle);
+        }
+        pendingTestToneStopDisableAction = null;
+        CONSOLE_LOG_LEVEL = "log";
+        ws = null;
+        websocketCurrentlyConnected = false;
+        currentRuntimeStatus = null;
+        currentRuntimeConfigStatus = { mode: "", transmitEnabled: false };
+        currentTestToneConfigContext = {
+            mode: "",
+            configuredFrequencyHz: 0,
+            wsprFrequencyValue: "",
+            cwBaseFrequencyHz: 0,
+        };
+        currentTestToneSelection = invalidTestToneSelection(
+            "Select a Test Tone frequency source."
+        );
+        wsprBandDialFrequenciesHz = Object.create(null);
+        wsprAudioOffsetHz = 0;
+        wsprBandCatalogConnectionGeneration = 0;
+        wsprBandCatalogRequestGeneration = 0;
+        wsprBandCatalogRequestedSockets = new WeakSet();
+        wsprBandCatalogPendingRequest = null;
+        wsprBandCatalogAuthorized = false;
+        wsprBandCatalogStatusMessage =
+            "WSPR band catalog unavailable. Test Tone Start is disabled.";
+        retainingTestToneStartContextForResponse = false;
+    };
+
+    Object.defineProperty(hooks, "bridge", {
+        value: Object.freeze({
+            functions,
+            inspect,
+            reset,
+            setRuntimeInterlocks(active, enabled) {
+                currentRuntimeStatus = active ? { txState: "transmitting" } : null;
+                currentRuntimeConfigStatus = {
+                    mode: "WSPR",
+                    transmitEnabled: enabled === true,
+                };
+            },
+            setConfiguration(mode, wsprFrequencyValue, cwBaseFrequencyHz) {
+                updateTestToneConfigContext(mode, wsprFrequencyValue, cwBaseFrequencyHz);
+            },
+            clearConnectionRecoveryState() {
+                communicationInterrupted = false;
+                reloadAfterReconnectPending = false;
+            },
+            setConsoleLogLevelForTest(level) {
+                CONSOLE_LOG_LEVEL = typeof level === "string" ? level : "log";
+            },
+            hasCurrentSocket() {
+                return ws !== null && ws !== undefined;
+            },
+            currentSocketReadyState() {
+                return ws && typeof ws.readyState === "number"
+                    ? ws.readyState
+                    : null;
+            },
+        }),
+        enumerable: false,
+        configurable: false,
+        writable: false,
+    });
+}
+
+installWsprryPiTestHooks();

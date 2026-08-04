@@ -239,9 +239,43 @@ require __DIR__ . '/../card_header.php';
                             <p id="testToneFrequencyContext" class="mb-0">
                                 Configured frequency: unavailable.
                             </p>
+                            <fieldset class="mt-3 mb-0">
+                                <legend class="form-label mb-2">Frequency source</legend>
+                                <div class="d-flex flex-wrap gap-3">
+                                    <div class="form-check">
+                                        <input
+                                            class="form-check-input"
+                                            type="radio"
+                                            name="testToneFrequencySource"
+                                            id="testToneSourceBand"
+                                            value="wspr_band">
+                                        <label class="form-check-label" for="testToneSourceBand">
+                                            WSPR band
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input
+                                            class="form-check-input"
+                                            type="radio"
+                                            name="testToneFrequencySource"
+                                            id="testToneSourceCustom"
+                                            value="custom_rf">
+                                        <label class="form-check-label" for="testToneSourceCustom">
+                                            Custom RF frequency
+                                        </label>
+                                    </div>
+                                </div>
+                            </fieldset>
+                            <div class="mt-3">
+                                <label for="testToneBand" class="form-label">WSPR band</label>
+                                <select id="testToneBand" class="form-select" disabled>
+                                    <option value="">Select a WSPR band</option>
+                                </select>
+                            </div>
                             <div class="mt-3">
                                 <label for="testToneFrequencyHz" class="form-label">
-                                    Test tone transmit frequency, Hz
+                                    Custom RF frequency, Hz
+                                    <span class="visually-hidden">Test tone transmit frequency, Hz.</span>
                                 </label>
                                 <input
                                     type="number"
@@ -251,6 +285,16 @@ require __DIR__ . '/../card_header.php';
                                     min="1"
                                     step="1">
                             </div>
+                            <p id="testToneSelectionPreview" class="small mb-0 mt-3" aria-live="polite">
+                                Select a frequency source.
+                            </p>
+                            <p id="testToneSelectionError" class="small text-danger mb-0 mt-2" role="alert"></p>
+                            <p
+                                id="testToneExecutionResult"
+                                class="small mb-0 mt-2"
+                                role="status"
+                                aria-live="polite"
+                                aria-atomic="true"></p>
                         </div>
                         <div class="modal-footer">
                             <button
