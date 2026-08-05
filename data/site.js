@@ -1469,6 +1469,30 @@ function clearConfigLoadFailureState() {
 }
 
 // Data Load
+function createOperationConfigSnapshot({
+    mode,
+    transmit,
+    transmitBackend,
+    enableOnBoot,
+    callsign,
+    gridsquare,
+    wsprFrequencyValue,
+    cwBaseFrequencyHz,
+    cwOffsetHz,
+}) {
+    return {
+        mode,
+        transmit,
+        transmitBackend,
+        enableOnBoot,
+        callsign,
+        gridsquare,
+        wsprFrequencyHz: parseConfiguredWsprFrequencyHz(wsprFrequencyValue),
+        cwBaseFrequencyHz,
+        cwOffsetHz,
+    };
+}
+
 function populateConfig(callback = null) {
     if (populateConfigRunning) return;
     populateConfigRunning = true;
@@ -1877,17 +1901,17 @@ function populateConfig(callback = null) {
                         updateRuntimeControlConfigStatus(mode, transmit);
                     }
                     if (typeof handleOperationConfigSnapshot === "function") {
-                        handleOperationConfigSnapshot({
+                        handleOperationConfigSnapshot(createOperationConfigSnapshot({
                             mode,
                             transmit,
                             transmitBackend,
                             enableOnBoot,
                             callsign,
                             gridsquare,
-                            wsprFrequencyHz,
+                            wsprFrequencyValue: frequencies,
                             cwBaseFrequencyHz,
                             cwOffsetHz: fsk_offset,
-                        });
+                        }));
                     }
                     if (typeof clearOfflineDefaults === "function") {
                         clearOfflineDefaults();
@@ -7226,6 +7250,7 @@ function installWsprryPiTestHooks() {
     }
 
     const functions = Object.freeze({
+        createOperationConfigSnapshot,
         parseConfiguredWsprFrequencyHz,
         validateWsprBandCatalog,
         createTestToneSelection,

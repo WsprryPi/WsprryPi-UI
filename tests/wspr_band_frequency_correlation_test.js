@@ -510,6 +510,7 @@ const harness = {
     socket.open();
     return socket;
     },
+    createOperationConfigSnapshot: bridge.functions.createOperationConfigSnapshot,
     parseConfiguredWsprFrequencyHz: bridge.functions.parseConfiguredWsprFrequencyHz,
     updateWsprBandCatalog: bridge.functions.updateWsprBandCatalog,
     validateWsprBandCatalog: bridge.functions.validateWsprBandCatalog,
@@ -602,6 +603,21 @@ function commandMessages(socket, command) {
 }
 
 runScenario("pure catalog validation and selection helpers", () => {
+const operationSnapshotBeforeCatalog = context.createOperationConfigSnapshot({
+    mode: "WSPR",
+    transmit: false,
+    transmitBackend: "si5351",
+    enableOnBoot: "Never",
+    callsign: "NXXX",
+    gridsquare: "ZZ99",
+    wsprFrequencyValue: "22m",
+    cwBaseFrequencyHz: 14096900,
+    cwOffsetHz: 5,
+});
+assert.equal(operationSnapshotBeforeCatalog.wsprFrequencyHz, 0,
+    "Operation config loading must use a safe unavailable WSPR frequency before catalog validation");
+assert.equal(operationSnapshotBeforeCatalog.cwBaseFrequencyHz, 14096900,
+    "Operation config loading must preserve the configured CW base frequency");
 assert.equal(context.parseConfiguredWsprFrequencyHz("22m"), 0,
     "catalog aliases must remain unavailable before validation");
 assert.equal(context.parseConfiguredWsprFrequencyHz("14.0956MHz"), 14095600,
@@ -647,6 +663,20 @@ for (const band of canonicalBands) {
         `${band} selection must apply the catalog offset exactly once`);
     assert.equal(Object.isFrozen(selection.payload), true, `${band} payload must be immutable`);
 }
+context.updateWsprBandCatalog(validCatalog(2750));
+const operationSnapshotAfterCatalog = context.createOperationConfigSnapshot({
+    mode: "WSPR",
+    transmit: false,
+    transmitBackend: "si5351",
+    enableOnBoot: "Never",
+    callsign: "NXXX",
+    gridsquare: "ZZ99",
+    wsprFrequencyValue: "22m",
+    cwBaseFrequencyHz: 14096900,
+    cwOffsetHz: 5,
+});
+assert.equal(operationSnapshotAfterCatalog.wsprFrequencyHz, 13551500,
+    "Operation config loading must resolve the configured WSPR band from the validated catalog");
 assert.equal(JSON.stringify(selectionCatalog), selectionCatalogBefore,
     "selection must not mutate the validated catalog input");
 
