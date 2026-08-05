@@ -623,7 +623,13 @@ legend {
 
     .config-wspr-top-row,
     .config-wspr-secondary-row {
+        grid-template-columns: minmax(0, 1fr);
         gap: 0.65rem 0.85rem;
+    }
+
+    .config-wspr-top-row .form-label,
+    .config-wspr-secondary-row .form-label {
+        white-space: normal;
     }
 
     .config-wspr-top-row__field--wide,
@@ -969,7 +975,7 @@ legend {
         flex: 1 1 100%;
     }
 
-    .config-wspr-top-row__toggle {
+    .config-wspr-top-row__field--toggle {
         min-height: 0;
     }
 
