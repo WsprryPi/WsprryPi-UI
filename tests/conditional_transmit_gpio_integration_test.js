@@ -370,12 +370,28 @@ async function main() {
         }, "Setup page in Chromium");
         client = new CdpClient(page.webSocketDebuggerUrl);
         await client.open();
+        await client.send("Page.navigate", {
+            url: `http://127.0.0.1:${phpPort}/index.php?page=config`,
+        });
         await waitFor(async () => {
             const result = await client.send("Runtime.evaluate", {
-                expression: "typeof refreshGpioConflictOptions === 'function' && document.readyState === 'complete'",
+                expression: `({
+                    ready: typeof refreshGpioConflictOptions === "function" &&
+                        document.readyState === "complete",
+                    state: document.readyState,
+                    title: document.title,
+                    url: location.href,
+                    targetUrl: ${JSON.stringify(page.url)},
+                    refreshType: typeof refreshGpioConflictOptions,
+                    scheduleType: typeof scheduleAutosave,
+                    scripts: [...document.scripts].map((script) => script.src),
+                })`,
                 returnByValue: true,
             });
-            return result.result.value === true;
+            if (!result.result.value.ready) {
+                throw new Error(JSON.stringify(result.result.value));
+            }
+            return true;
         }, "GPIO configuration scripts");
 
         const result = await client.send("Runtime.evaluate", {
