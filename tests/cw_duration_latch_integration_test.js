@@ -264,6 +264,7 @@ async function browserTest() {
         configAutosavePendingAfterFlight = false;
         configAutosaveDirty = false;
         lastSavedConfigPayload = "";
+        persistedStationIdentity = null;
         lastFailedConfigPayload = "";
         lastFailedConfigMessage = "";
         cwDurationPolicyLatched = false;
@@ -549,8 +550,41 @@ async function browserTest() {
     ok(!statusTransitions.some(({ state }) => state === "pending"), "suspended population must not enter pending");
     suspendConfigAutosave(false);
 
+    // 14: invalid station identity remains local while an unrelated valid
+    // setting is persisted with explicit partial-save feedback.
+    reset();
+    const focusedValidatePage = validatePage;
+    validatePage = (options = {}) => options.allowInvalidStationIdentity === true;
+    field("wspr_mode").checked = true;
+    field("qrss_mode").checked = false;
+    field("callsign").value = "NXXX";
+    field("gridsquare").value = "ZZ99";
+    persistedStationIdentity = { callsign: "NXXX", gridsquare: "ZZ99" };
+    lastSavedConfigPayload = JSON.stringify(buildConfigPayload());
+    setValue("callsign", "BAD CALL");
+    field("use_led").checked = !field("use_led").checked;
+    field("use_led").dispatchEvent(new Event("change", { bubbles: true }));
+    clock.tick(800);
+    equal(patches.length, 1, "unrelated valid change must PATCH despite invalid identity draft");
+    const partialSavePayload = JSON.parse(patches[0].options.data);
+    equal(partialSavePayload.WSPR["Call Sign"], "NXXX", "PATCH must retain persisted callsign");
+    equal(partialSavePayload.WSPR["Grid Square"], "ZZ99", "PATCH must retain persisted locator");
+    equal(
+        partialSavePayload.Operation["Use LED"],
+        field("use_led").checked,
+        "PATCH must include the unrelated LED change"
+    );
+    equal(field("configSaveStatus").textContent, "Other changes saved", "partial-save status");
+    includes(
+        field("configSaveStatusDetail").textContent,
+        "not valid for transmission",
+        "partial-save detail must preserve the transmission safety boundary"
+    );
+    ok(hasUnsavedLocalConfigChanges(), "invalid identity draft must remain visibly unsaved");
+    validatePage = focusedValidatePage;
+
     return {
-        scenarios: 13,
+        scenarios: 14,
         assertions: "passed",
         finalPatchCount: patches.length,
         finalDialogCount: dialogs.length,
@@ -616,9 +650,9 @@ async function main() {
             throw new Error(detail || result.exceptionDetails.text || "Browser test failed");
         }
         assert.deepEqual(result.result.value, {
-            scenarios: 13,
+            scenarios: 14,
             assertions: "passed",
-            finalPatchCount: 0,
+            finalPatchCount: 1,
             finalDialogCount: 0,
         });
         console.log("cw_duration_latch_integration_test passed");

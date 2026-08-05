@@ -217,7 +217,8 @@
     color: color-mix(in srgb, var(--bs-primary) 76%, var(--bs-body-color) 24%);
 }
 
-.config-save-status[data-state="invalid"] {
+.config-save-status[data-state="invalid"],
+.config-save-status[data-state="warning"] {
     color: color-mix(in srgb, var(--bs-warning) 72%, var(--bs-body-color) 28%);
 }
 
