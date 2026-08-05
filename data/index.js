@@ -11,6 +11,7 @@ let configAutosaveInFlight = false;
 let configAutosavePendingAfterFlight = false;
 let configAutosaveDirty = false;
 let lastSavedConfigPayload = "";
+let persistedStationIdentity = null;
 let lastFailedConfigPayload = "";
 let lastFailedConfigMessage = "";
 let cwDurationPolicyLatched = false;
@@ -117,9 +118,9 @@ function bindConfigNetworkHandlers() {
     });
 }
 
-function currentConfigPayloadSnapshot() {
+function currentConfigPayloadSnapshot(options = {}) {
     try {
-        return JSON.stringify(buildConfigPayload());
+        return JSON.stringify(buildConfigPayload(options));
     } catch {
         return "";
     }
@@ -166,7 +167,11 @@ function removePersistedConfigDraft() {
 }
 
 function persistLocalConfigDraftIfPossible() {
-    if (systemPaused || typeof validatePage !== "function" || !validatePage()) {
+    if (
+        systemPaused ||
+        typeof validatePage !== "function" ||
+        !validatePage({ allowInvalidStationIdentity: true })
+    ) {
         return;
     }
 
@@ -3037,7 +3042,7 @@ function handleConfigSaveStatusDetailKeydown(event) {
     navigateToFirstInvalidConfigControl();
 }
 
-function validatePage() {
+function validatePage(options = {}) {
     let invalidCount = 0;
     const activeSelectors = ["#global_runtime_control"];
     const mode = selectedConfigMode();
@@ -3110,11 +3115,14 @@ function validatePage() {
             if (ctrl.dataset.cwTimingValue === "true") return;
             setIdentityValidity(ctrl);
 
+            const isStationIdentity = ctrl.id === "callsign" || ctrl.id === "gridsquare";
             if (ctrl.checkValidity()) {
                 setFieldValidationState(ctrl, true);
             } else {
                 setFieldValidationState(ctrl, false);
-                invalidCount++;
+                if (!(options.allowInvalidStationIdentity && isStationIdentity)) {
+                    invalidCount++;
+                }
             }
         });
 
@@ -3430,7 +3438,7 @@ function getAmpPin() {
     return getDropdownButtonPin("ampDropdownButton");
 }
 
-function buildConfigPayload() {
+function buildConfigPayload(options = {}) {
     // Mode: WSPR uses WSPR fields; QRSS/FSKCW/DFCW use the shared CW section.
     let mode = selectedConfigMode();
 
@@ -3461,6 +3469,14 @@ function buildConfigPayload() {
     }
     let callsign = trimIdentityValue($("#callsign").val());
     let gridsquare = trimIdentityValue($("#gridsquare").val());
+    if (
+        options.preservePersistedInvalidIdentity === true &&
+        stationIdentityIsInvalid() &&
+        persistedStationIdentity
+    ) {
+        callsign = persistedStationIdentity.callsign;
+        gridsquare = persistedStationIdentity.gridsquare;
+    }
     let dbm = parseInt($("#dbm").val());
     let frequencies = String($("#frequencies").val() || "").trim();
     let useoffset = parseBool($("#useoffset").is(":checked"));
@@ -3677,6 +3693,31 @@ function setConfigSaveStatus(state, message = "", detail = "", options = {}) {
     }
 }
 
+function stationIdentityIsInvalid() {
+    if (selectedConfigMode() !== "WSPR") {
+        return false;
+    }
+
+    const callsign = trimIdentityValue($("#callsign").val());
+    const gridSquare = trimIdentityValue($("#gridsquare").val());
+    return !isLightweightCallsign(callsign) ||
+        isPlaceholderCallsign(callsign) ||
+        !isLightweightGridSquare(gridSquare) ||
+        isPlaceholderGridSquare(gridSquare);
+}
+
+function setInvalidIdentitySaveStatus(message) {
+    setConfigSaveStatus(
+        "warning",
+        message,
+        "The station identity remains local and is not valid for transmission. Fix Call Sign and Grid locator before transmitting.",
+        {
+            detailActionLabel: "Review station identity",
+            onDetailAction: navigateToFirstInvalidConfigControl,
+        }
+    );
+}
+
 function suspendConfigAutosave(suspended) {
     configAutosaveSuspended = !!suspended;
     if (configAutosaveSuspended && configAutosaveTimer) {
@@ -3686,7 +3727,10 @@ function suspendConfigAutosave(suspended) {
 }
 
 function syncConfigAutosaveBaseline() {
-    if (typeof validatePage !== "function" || !validatePage()) {
+    if (
+        typeof validatePage !== "function" ||
+        !validatePage({ allowInvalidStationIdentity: true })
+    ) {
         lastSavedConfigPayload = "";
         lastFailedConfigPayload = "";
         lastFailedConfigMessage = "";
@@ -3700,6 +3744,10 @@ function syncConfigAutosaveBaseline() {
         return;
     }
 
+    persistedStationIdentity = {
+        callsign: trimIdentityValue($("#callsign").val()),
+        gridsquare: trimIdentityValue($("#gridsquare").val()),
+    };
     const payloadJson = JSON.stringify(buildConfigPayload());
     lastSavedConfigPayload = payloadJson;
     lastFailedConfigPayload = "";
@@ -3708,7 +3756,11 @@ function syncConfigAutosaveBaseline() {
     configAutosavePendingAfterFlight = false;
     pendingPersistedMode = "";
     removePersistedConfigDraft();
-    setConfigSaveStatus("saved", "Saved", "");
+    if (stationIdentityIsInvalid()) {
+        setInvalidIdentitySaveStatus("Station identity needs attention");
+    } else {
+        setConfigSaveStatus("saved", "Saved", "");
+    }
 }
 
 function showConfigAutosavePendingStatus() {
@@ -3766,7 +3818,7 @@ function flushAutosave() {
         return;
     }
 
-    if (!validatePage()) {
+    if (!validatePage({ allowInvalidStationIdentity: true })) {
         const inactiveGroup = inactiveInvalidCwTimingGroup();
         if (inactiveGroup) {
             const label = inactiveGroup === "dfcw" ? "DFCW spacing" : "QRSS/FSKCW spacing";
@@ -3792,13 +3844,20 @@ function flushAutosave() {
         return;
     }
 
-    const payloadJson = JSON.stringify(buildConfigPayload());
+    const invalidStationIdentity = stationIdentityIsInvalid();
+    const payloadJson = JSON.stringify(buildConfigPayload({
+        preservePersistedInvalidIdentity: invalidStationIdentity,
+    }));
 
     if (payloadJson === lastSavedConfigPayload) {
         configAutosaveDirty = false;
         lastFailedConfigPayload = "";
         lastFailedConfigMessage = "";
-        setConfigSaveStatus("saved", "Saved", "");
+        if (invalidStationIdentity) {
+            setInvalidIdentitySaveStatus("Identity change not saved");
+        } else {
+            setConfigSaveStatus("saved", "Saved", "");
+        }
         return;
     }
 
@@ -3832,13 +3891,23 @@ function flushAutosave() {
             lastFailedConfigMessage = "";
             pendingPersistedMode = "";
             const completedPayloadIsCurrent =
-                payloadJson === currentConfigPayloadSnapshot();
+                payloadJson === currentConfigPayloadSnapshot({
+                    preservePersistedInvalidIdentity: invalidStationIdentity,
+                });
             if (
                 completedPayloadIsCurrent &&
                 !configAutosaveDirty &&
                 !configAutosavePendingAfterFlight
             ) {
-                setConfigSaveStatus("saved", "Saved", "");
+                if (invalidStationIdentity) {
+                    setInvalidIdentitySaveStatus("Other changes saved");
+                } else {
+                    persistedStationIdentity = {
+                        callsign: trimIdentityValue($("#callsign").val()),
+                        gridsquare: trimIdentityValue($("#gridsquare").val()),
+                    };
+                    setConfigSaveStatus("saved", "Saved", "");
+                }
             } else {
                 showConfigAutosavePendingStatus();
             }

@@ -640,13 +640,9 @@
     }
 
     function formatUnitFixed16(unit) {
-        // Fixed-width unit column: 16 characters.
-        // - If shorter, pad spaces on the right.
-        // - If longer, truncate to 15 chars and use an ellipsis as the 16th char.
         const s = (unit ?? "").toString();
         if (!s) return "";
-        if (s.length > 16) return s.slice(0, 15) + "…";
-        return s.padEnd(16, " ");
+        return s;
     }
 
     function priorityToLabel(priorityStr) {
