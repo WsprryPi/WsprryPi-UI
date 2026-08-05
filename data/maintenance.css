@@ -273,6 +273,12 @@
     padding: 0.5rem 1rem;
 }
 
+#testToneModal .modal-footer .btn:disabled {
+    cursor: not-allowed;
+    filter: saturate(0.35);
+    opacity: 0.42;
+}
+
 #globalToastContainer {
     top: clamp(5rem, 18dvh, 12.5rem);
     left: 50%;
