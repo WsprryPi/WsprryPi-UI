@@ -2437,7 +2437,7 @@ function renderTestToneSelection() {
     if (errorNode) {
         errorNode.textContent = currentTestToneSelection.valid
             ? ""
-            : (!catalog ? wsprBandCatalogStatusMessage : currentTestToneSelection.error);
+            : (!catalog ? "" : currentTestToneSelection.error);
     }
     syncTestToneControlState(isTestToneRuntimeActive());
     return currentTestToneSelection;
