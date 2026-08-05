@@ -1371,6 +1371,11 @@ startSelectedToneAndRunRealTimeout(first, "wspr_band");
 first.close();
 assert.equal(context.catalogSnapshot().authorized, false, "disconnect revokes current authorization");
 assertStartDisabled("last-valid catalog must not authorize Start after disconnect");
+assert.match(context.testToneFrequencyContextText(), /catalog unavailable/i,
+    "catalog loss remains visible once in the modal frequency context");
+context.renderTestToneSelection();
+assert.equal(elements.testToneSelectionError.textContent, "",
+    "catalog loss must not be duplicated in the selection error region");
 assert.equal(JSON.stringify(context.testToneStartSnapshot()), JSON.stringify({
     pending: false,
     source: "",
