@@ -9,6 +9,7 @@ const uiRoot = path.resolve(__dirname, "..");
 const siteScript = fs.readFileSync(path.join(uiRoot, "data/site.js"), "utf8");
 const indexScript = fs.readFileSync(path.join(uiRoot, "data/index.js"), "utf8");
 const maintenanceView = fs.readFileSync(path.join(uiRoot, "data/views/maintenance.php"), "utf8");
+const maintenanceStyles = fs.readFileSync(path.join(uiRoot, "data/maintenance.css"), "utf8");
 
 assert.doesNotMatch(
     siteScript,
@@ -28,6 +29,8 @@ for (const id of [
 }
 assert.match(maintenanceView, /id="testToneExecutionResult"[\s\S]*role="status"[\s\S]*aria-live="polite"/,
     "execution results must be announced separately from the requested preview");
+assert.match(maintenanceStyles, /#testToneModal \.modal-footer \.btn:disabled[\s\S]*opacity:/,
+    "Test Tone action buttons must visibly distinguish disabled state");
 
 class FakeWebSocket {
     static OPEN = 1;
@@ -527,6 +530,7 @@ const harness = {
     markPendingTestToneStartRequest: bridge.functions.markPendingTestToneStartRequest,
     pendingTestToneStartSource: () => bridge.inspect().testToneStart.source,
     testToneStartSnapshot: () => bridge.inspect().testToneStart,
+    testToneLifecycleSnapshot: () => bridge.inspect().testToneLifecycle,
     clearTestToneExecutionResult: bridge.functions.clearTestToneExecutionResult,
     handleTestToneCommandResponse: bridge.functions.handleTestToneCommandResponse,
     bindTestToneControls: bridge.functions.bindTestToneControls,
@@ -817,6 +821,8 @@ dispatch(elements.testToneFrequencyHz, "input", { preventDefault() {} });
 assertStartDisabled("invalid custom input disables Start");
 assert.match(elements.testToneSelectionError.textContent, /positive whole-number/i,
     "invalid custom input must be shown beside the selection controls");
+assert.equal(elements.testToneSelectionPreview.textContent, "",
+    "invalid selection guidance must render only once in the alert region");
 context.syncTestToneControlState(true);
 assert.equal(buttons["#testToneEnd"].disabled, false,
     "End remains available for an active tone despite invalid current selection");
@@ -928,8 +934,8 @@ first.message({
     actual_rf_frequency_hz: 14097100,
     selector_gpio_enabled: false,
 });
-assert.match(elements.testToneExecutionResult.textContent, /Started 20m: committed WSPR dial 14095600 Hz \+ 1500 Hz offset = 14097100 Hz RF/,
-    "a response after post-send diagnostics must remain attributed to the accepted request");
+assert.match(elements.testToneExecutionResult.textContent, /committed 14\.097100 MHz RF \(requested values differed\)/i,
+    "a response after post-send diagnostics must remain attributed and disclose changed execution values");
 assert.equal(buttons["#testToneEnd"].disabled, false,
     "End remains available after an accepted request receives its normal response");
 context.handleTestToneCommandResponse({ command: "tone_end", stopped: true });
@@ -956,7 +962,7 @@ context.handleTestToneCommandResponse({
     message: "Timed-out test reset rejection.",
 });
 
-context.markPendingTestToneStartRequest({ frequency_source: "wspr_band" });
+context.markPendingTestToneStartRequest({ frequency_source: "wspr_band", band: "20m" });
 first.message({
     command: "tone_start",
     started: true,
@@ -969,14 +975,14 @@ first.message({
     selector_gpio: 17,
     selector_gpio_active_high: true,
 });
-assert.match(elements.testToneExecutionResult.textContent, /Started 20m: committed WSPR dial 14095600 Hz \+ 2750 Hz offset = 14098350 Hz RF/,
-    "band success must display backend-committed dial, offset, and RF values");
+assert.match(elements.testToneExecutionResult.textContent, /started at the requested 14\.098350 MHz RF/i,
+    "matching band success must confirm execution without repeating the preview equation");
 assert.match(elements.testToneExecutionResult.textContent, /GPIO 17, active high/,
     "band success must display committed active-high selector metadata");
 assert.match(elements.testToneExecutionResult.className, /text-success/, "committed success must be styled as a status");
 assert.equal(buttons["#testToneEnd"].disabled, false, "End remains usable after a successful start");
 
-context.markPendingTestToneStartRequest({ frequency_source: "custom_rf" });
+context.markPendingTestToneStartRequest({ frequency_source: "custom_rf", frequency_hz: 14097123 });
 context.handleTestToneCommandResponse({
     command: "tone_start",
     started: true,
@@ -987,8 +993,8 @@ context.handleTestToneCommandResponse({
     selector_gpio: 18,
     selector_gpio_active_high: false,
 });
-assert.match(elements.testToneExecutionResult.textContent, /Started 20m: committed exact RF 14097123 Hz\. No WSPR offset was applied/,
-    "custom success must display backend-committed exact RF without a dial or offset");
+assert.match(elements.testToneExecutionResult.textContent, /started at the requested exact 14\.097123 MHz RF on 20m/i,
+    "matching custom success must confirm exact RF without repeating raw input");
 assert.match(elements.testToneExecutionResult.textContent, /GPIO 18, active low/,
     "custom success must display committed active-low selector metadata");
 assert.doesNotMatch(elements.testToneExecutionResult.textContent, /WSPR dial/, "custom success must omit dial metadata");
@@ -1150,7 +1156,7 @@ first.message({
     actual_rf_frequency_hz: 14098350,
     selector_gpio_enabled: false,
 });
-assert.match(elements.testToneExecutionResult.textContent, /Started 20m: committed WSPR dial 14095600 Hz \+ 2750 Hz offset = 14098350 Hz RF/,
+assert.match(elements.testToneExecutionResult.textContent, /started at the requested 14\.098350 MHz RF/i,
     "a late valid band response must be attributed to its timed-out semantic request");
 assert.equal(buttons["#testToneEnd"].disabled, false,
     "End remains available after a late backend-confirmed start");
@@ -1190,7 +1196,7 @@ context.handleTestToneCommandResponse({
     selector_gpio: 18,
     selector_gpio_active_high: false,
 });
-assert.match(elements.testToneExecutionResult.textContent, /Started 20m: committed exact RF 14097123 Hz\. No WSPR offset was applied/,
+assert.match(elements.testToneExecutionResult.textContent, /started at the requested exact 14\.097123 MHz RF on 20m/i,
     "a late valid custom response must retain its exact RF semantics");
 assert.equal(buttons["#testToneEnd"].disabled, false,
     "End remains available after a late valid custom start");
@@ -1219,6 +1225,144 @@ assert.equal(buttons["#testToneEnd"].disabled, false,
 finishLateStartedTone();
 });
 
+runScenario("timed Start recovery End preserves and settles quarantine", () => {
+const first = openAuthorizedConnection();
+selectBandForTimedStart("20m");
+startSelectedToneAndRunRealTimeout(first, "wspr_band");
+assert.equal(context.testToneLifecycleSnapshot().state, "unknown",
+    "a timed Start must retain an unknown lifecycle until the controller confirms an outcome");
+assert.equal(context.testToneStartSnapshot().quarantined, true,
+    "a timed Start must quarantine its current socket");
+assert.equal(buttons["#testToneStart"].disabled, true,
+    "a timed Start must keep Start disabled");
+assert.equal(buttons["#testToneEnd"].disabled, false,
+    "a timed Start must leave End available for recovery");
+
+dispatch(elements.testToneEnd, "click", { preventDefault() {} });
+assert.equal(commandMessages(first, "tone_end").length, 1,
+    "recovery End must be sent on the quarantined socket");
+first.message({ command: "tone_end", stopped: true });
+assert.equal(context.testToneLifecycleSnapshot().state, "idle",
+    "a confirmed recovery End must settle the lifecycle");
+assert.equal(JSON.stringify(context.testToneStartSnapshot()), JSON.stringify({
+    pending: false,
+    source: "",
+    hasUnresolvedContext: false,
+    quarantined: false,
+    timeoutHandle: null,
+}), "only a confirmed same-socket End may release the timed Start context and quarantine");
+assert.equal(buttons["#testToneStart"].disabled, false,
+    "a confirmed recovery End must restore Start when the catalog, selection, and interlocks permit it");
+
+startSelectedToneAndRunRealTimeout(first, "wspr_band");
+dispatch(elements.testToneEnd, "click", { preventDefault() {} });
+first.message({ command: "tone_end", stopped: false, message: "Controller rejected End." });
+assert.equal(context.testToneLifecycleSnapshot().state, "active",
+    "a rejected End must retain possible active-tone state");
+assert.equal(context.testToneStartSnapshot().quarantined, true,
+    "a rejected End must retain the timed Start quarantine");
+assert.equal(buttons["#testToneStart"].disabled, true,
+    "a rejected End must keep Start disabled");
+assert.equal(buttons["#testToneEnd"].disabled, false,
+    "a rejected End must leave recovery End available");
+
+dispatch(elements.testToneEnd, "click", { preventDefault() {} });
+const timedEnd = context.testToneLifecycleSnapshot().endTimeoutHandle;
+assert.ok(timers.has(timedEnd), "a recovery End must use the production End timeout");
+runTimer(timedEnd);
+assert.equal(context.testToneLifecycleSnapshot().state, "unknown",
+    "a timed-out End must retain the unknown outcome");
+assert.equal(context.testToneStartSnapshot().quarantined, true,
+    "a timed-out End must retain the timed Start quarantine");
+assert.equal(buttons["#testToneEnd"].disabled, false,
+    "a timed-out End must remain available for recovery");
+
+first.close();
+const second = openAuthorizedConnection();
+const replacementSnapshot = JSON.stringify({
+    start: context.testToneStartSnapshot(),
+    lifecycle: context.testToneLifecycleSnapshot(),
+    startDisabled: buttons["#testToneStart"].disabled,
+    endDisabled: buttons["#testToneEnd"].disabled,
+});
+first.message({ command: "tone_end", stopped: true });
+assert.equal(JSON.stringify({
+    start: context.testToneStartSnapshot(),
+    lifecycle: context.testToneLifecycleSnapshot(),
+    startDisabled: buttons["#testToneStart"].disabled,
+    endDisabled: buttons["#testToneEnd"].disabled,
+}), replacementSnapshot,
+"a late confirmed End from an obsolete socket must not alter the replacement socket state");
+second.close();
+});
+
+runScenario("End success, timeout, and catalog-loss lifecycle", () => {
+const first = openAuthorizedConnection();
+selectBandForTimedStart("20m");
+dispatch(elements.testToneStart, "click", { preventDefault() {} });
+first.message({
+    command: "tone_start",
+    started: true,
+    frequency_source: "wspr_band",
+    band: "20m",
+    dial_frequency_hz: 14095600,
+    audio_offset_hz: 1500,
+    actual_rf_frequency_hz: 14097100,
+    selector_gpio_enabled: false,
+});
+context.setTestToneInterlocks(true, false);
+dispatch(elements.testToneEnd, "click", { preventDefault() {} });
+assert.equal(commandMessages(first, "tone_end").length, 1,
+    "End must send one command while the explicit lifecycle is active");
+assert.equal(context.testToneLifecycleSnapshot().state, "end_pending",
+    "End must enter an explicit pending state independent of button flags");
+first.message({ command: "tone_end", stopped: true });
+assert.equal(context.testToneLifecycleSnapshot().state, "idle",
+    "a confirmed End must clear active-tone state");
+assert.equal(buttons["#testToneStart"].disabled, false,
+    "a confirmed End must restore Start despite the stale pre-End runtime snapshot");
+assert.equal(elements.testToneExecutionResult.textContent, "Test Tone ended.",
+    "a confirmed End must replace the stale Started result");
+
+dispatch(elements.testToneStart, "click", { preventDefault() {} });
+first.message({
+    command: "tone_start",
+    started: true,
+    frequency_source: "wspr_band",
+    band: "20m",
+    dial_frequency_hz: 14095600,
+    audio_offset_hz: 1500,
+    actual_rf_frequency_hz: 14097100,
+    selector_gpio_enabled: false,
+});
+dispatch(elements.testToneEnd, "click", { preventDefault() {} });
+const endTimeout = context.testToneLifecycleSnapshot().endTimeoutHandle;
+assert.ok(timers.has(endTimeout), "End must arm the production command timeout");
+runTimer(endTimeout);
+assert.equal(context.testToneLifecycleSnapshot().state, "unknown",
+    "an End timeout must preserve truthful uncertainty");
+assert.match(elements.testToneExecutionResult.textContent, /outcome is unknown/i,
+    "an End timeout must not claim that the tone ended");
+assert.equal(buttons["#testToneEnd"].disabled, false,
+    "End must remain available when the timed-out outcome may still be active");
+
+first.close();
+assert.equal(context.testToneLifecycleSnapshot().state, "unknown",
+    "disconnect must preserve possible active-tone state");
+assert.match(elements.testToneExecutionResult.textContent, /connection lost.*outcome is unknown/i,
+    "disconnect must replace stale execution success with current uncertainty");
+const second = context.openConnection();
+assert.equal(buttons["#testToneEnd"].disabled, false,
+    "End must remain available after reconnect even before catalog authorization");
+assert.equal(buttons["#testToneStart"].disabled, true,
+    "catalog loss must continue to gate Start independently");
+second.message({ command: "tone_end", stopped: true });
+assert.equal(context.testToneLifecycleSnapshot().state, "idle",
+    "a recovery End response must settle the unknown state");
+assert.equal(elements.testToneExecutionResult.textContent, "Test Tone ended.",
+    "recovery End must report only the confirmed outcome");
+});
+
 runScenario("disconnect reconnect and catalog failure lifecycle", () => {
 const first = openAuthorizedConnection();
 selectBandForTimedStart("20m");
@@ -1242,8 +1386,8 @@ assert.deepEqual(commandMessages(second, "wspr_band_catalog"), [{ command: "wspr
     "reconnect requests a fresh catalog");
 assert.equal(context.catalogSnapshot().authorized, false, "reconnect begins unauthorized");
 first.message({ command: "tone_start", started: true });
-assert.equal(buttons["#testToneEnd"].disabled, true,
-    "a late tone_start response from the disconnected socket must not alter the replacement connection state");
+assert.equal(buttons["#testToneEnd"].disabled, false,
+    "a stale response must not remove recovery End availability from the replacement connection");
 first.message(validCatalog(1500));
 assert.equal(context.catalogSnapshot().authorized, false, "delayed old-connection response cannot authorize reconnect");
 assertStartDisabled("stale response cannot enable Start");
@@ -1292,7 +1436,10 @@ sixth.message(validCatalog(1500));
 assert.equal(context.catalogSnapshot().authorized, true, "fresh valid response restores authorization");
 assert.equal(bridge.inspect().catalog.authorized, true,
     "catalog state changed by production socket callbacks must be visible through bridge inspection");
-assert.equal(buttons["#testToneStart"].disabled, false, "Start re-enables only after the new validation");
+assert.equal(buttons["#testToneStart"].disabled, true,
+    "fresh catalog authorization cannot override an unresolved possible tone");
+assert.equal(buttons["#testToneEnd"].disabled, false,
+    "recovery End remains available after fresh catalog authorization");
 assert.match(context.testToneFrequencyContextText(), /Configured frequency:/,
     "validated catalog restores normal frequency context");
 
