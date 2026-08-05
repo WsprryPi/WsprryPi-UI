@@ -133,7 +133,7 @@ const UPDATE_CHECK_CACHE_PREFIX = "wsprrypi.updateCheck";
 const UPDATE_CHECK_FAILURE_CACHE_PREFIX = "wsprrypi.updateCheckFailure";
 const UPDATE_CHECK_DISABLED_KEY = "wsprrypi.updateCheckDisabled";
 const UPDATE_MODAL_STATE_KEY = "wsprrypi.updateModalState";
-const UPDATE_CHECK_CACHE_SCHEMA_VERSION = 6;
+const UPDATE_CHECK_CACHE_SCHEMA_VERSION = 7;
 const UPDATE_CHECK_CACHE_TTL_MS = 60 * 60 * 1000;
 const UPDATE_CHECK_FAILURE_RATE_LIMIT_MS = 5 * 60 * 1000;
 const UPDATE_MODAL_RATE_LIMIT_MS = 2 * 60 * 60 * 1000;
@@ -149,6 +149,8 @@ const UPDATE_CHECK_ERROR_MESSAGES = Object.freeze({
     rate_limited: "Update check failed: GitHub API rate limit reached.",
     network: "Update check failed: GitHub could not be reached.",
     malformed_response: "Update check failed: GitHub returned malformed update data.",
+    comparison_unavailable: "Update check failed: GitHub could not establish the update relationship.",
+    unsafe_target: "Update check failed: no trustworthy update target could be established.",
     detached_target_unknown: "Update check failed: detached or unknown branch state has no safe update target.",
     github_http: "Update check failed: GitHub returned an error.",
     unknown: "Update check failed."
@@ -4260,10 +4262,15 @@ function updateCheckCommitComparisonResult(currentSha, headSha, status = "") {
     }
 
     // Status "behind" means the installed commit is ahead of the target branch.
-    // Diverged is also intentionally not surfaced as a remote update.
+    // Diverged is a distinct successful no-update result because neither
+    // history is a safe upgrade path from the other.
     return {
         updateAvailable: false,
-        versionComparisonStatus: status === "behind" || status === "diverged" ? "local_ahead" : "commit_fallback"
+        versionComparisonStatus: status === "behind"
+            ? "local_ahead"
+            : status === "diverged"
+                ? "diverged"
+                : "commit_fallback"
     };
 }
 
@@ -4686,6 +4693,23 @@ function selectedUpdateBranch(branchInfo, reason, fallbackUsed = false) {
     });
 }
 
+async function selectContainedFallbackBranch(versionInfo, branchInfo, reason) {
+    const containment = await isCurrentShaReachableFromBranchHead(versionInfo.currentSha, branchInfo);
+    if (!containment.contained) {
+        throw buildUpdateCheckFailure(
+            "unsafe_target",
+            `The running commit is not proven reachable from upstream ${branchInfo.branch} (status ${containment.status || "unknown"}).`
+        );
+    }
+
+    const certainty = containment.uncertain ? "uncertain short SHA match" : "exact/compare-confirmed match";
+    return selectedUpdateBranch(
+        branchInfo,
+        `${reason}; running commit reachable from upstream ${branchInfo.branch} (${certainty}, status ${containment.status || "unknown"})`,
+        true
+    );
+}
+
 function isDetachedOrUnknownBranchBuild(versionInfo) {
     return versionInfo.branchState === "detached" ||
         versionInfo.branchState === "unknown" ||
@@ -4761,11 +4785,11 @@ async function selectGithubUpdateBranch(versionInfo) {
                 throw error;
             }
 
-            debugConsole("debug", "Update check local devel falling back to upstream main because upstream devel returned HTTP 404.");
-            return selectedUpdateBranch(
+            debugConsole("debug", "Update check local devel probing upstream main because upstream devel returned HTTP 404.");
+            return selectContainedFallbackBranch(
+                versionInfo,
                 await lookupGithubBranch("main"),
-                "upstream devel missing; explicit fallback to upstream main",
-                true
+                "upstream devel missing; containment-gated fallback to upstream main"
             );
         }
 
@@ -4805,13 +4829,13 @@ async function selectGithubUpdateBranch(versionInfo) {
 
         try {
             // Rule 4: if a non-main/non-devel branch is missing upstream,
-            // explicitly fall back to devel for comparison. The fallback is
-            // reported in the result and still uses normal commit comparison,
-            // so missing branch alone does not imply an update.
-            return selectedUpdateBranch(
+            // probe devel as a fallback, but select it only after proving that
+            // it contains the running commit. Missing branch or differing SHA
+            // alone never establishes an update relationship.
+            return selectContainedFallbackBranch(
+                versionInfo,
                 await lookupGithubBranch("devel"),
-                `same-name upstream branch '${currentBranch}' missing; explicit fallback to upstream devel`,
-                true
+                `same-name upstream branch '${currentBranch}' missing; containment-gated fallback to upstream devel`
             );
         } catch (fallbackError) {
             if (fallbackError.status === 404) {
@@ -4840,10 +4864,10 @@ async function compareGithubCommits(currentSha, headSha) {
         return updateCheckCommitComparisonResult(currentSha, headSha, status);
     } catch (error) {
         if (error.status === 404) {
-            return {
-                updateAvailable: !updateCheckShaMatches(currentSha, headSha),
-                versionComparisonStatus: updateCheckShaMatches(currentSha, headSha) ? "equal" : "commit_fallback"
-            };
+            throw buildUpdateCheckFailure(
+                "comparison_unavailable",
+                `GitHub could not compare running commit ${shortSha(currentSha)} with target ${shortSha(headSha)}.`
+            );
         }
 
         throw error;
@@ -5262,6 +5286,10 @@ function buildLocalUpdateStateTitle(result) {
         return "Local build is newer than the selected remote version. No update is available.";
     }
 
+    if (result?.versionComparisonStatus === "diverged") {
+        return "Local and selected branch histories have diverged. No safe branch update is available.";
+    }
+
     return "";
 }
 
@@ -5435,7 +5463,7 @@ function updateCheckPanelStatus(result = null) {
     if (result.updateAvailable === true) {
         return {
             state: "available",
-            label: "Update available"
+            label: result.versionComparisonUsed === "commit" ? "Branch build available" : "Update available"
         };
     }
     if (result.versionComparisonStatus === "local_modified" || result.localBuildState === "dirty_build") {
@@ -5450,6 +5478,12 @@ function updateCheckPanelStatus(result = null) {
             label: "Local ahead"
         };
     }
+    if (result.versionComparisonStatus === "diverged") {
+        return {
+            state: "local",
+            label: "Diverged"
+        };
+    }
     return {
         state: "clean",
         label: "No update"
@@ -5461,13 +5495,18 @@ function updateCheckPanelTitleText(result = null) {
         return "You are on the current version";
     }
     if (result.updateAvailable === true) {
-        return "An update is available";
+        return result.versionComparisonUsed === "commit"
+            ? "A newer branch build is available"
+            : "An update is available";
     }
     if (result.versionComparisonStatus === "local_modified" || result.localBuildState === "dirty_build") {
         return "Local build has modifications";
     }
     if (result.versionComparisonStatus === "local_ahead") {
         return "Local build is newer than the latest published version";
+    }
+    if (result.versionComparisonStatus === "diverged") {
+        return "Local and selected branch histories have diverged";
     }
     return "You are on the current version";
 }
@@ -5507,13 +5546,18 @@ function getUserFacingUpdateSummary(result = null) {
         return "You are running the latest version.";
     }
     if (result.updateAvailable === true) {
-        return "A newer version is available.";
+        return result.versionComparisonUsed === "commit"
+            ? "A newer branch build is available."
+            : "A newer version is available.";
     }
     if (result.versionComparisonStatus === "local_modified" || result.localBuildState === "dirty_build") {
         return "This build includes local modifications.";
     }
     if (result.versionComparisonStatus === "local_ahead") {
         return "This build is newer than the latest published version.";
+    }
+    if (result.versionComparisonStatus === "diverged") {
+        return "This build and the selected branch have diverged.";
     }
     return "You are running the latest version.";
 }
@@ -5825,17 +5869,20 @@ function markWsprryPiUpdateFooter(result) {
     const versionElement = document.getElementById("versionText");
     const updateLink = document.getElementById("versionUpdateLink");
     const releaseUrl = result.releaseUrl || UPDATE_CHECK_RELEASES_URL;
+    const title = result.versionComparisonUsed === "commit"
+        ? "A newer branch build is available"
+        : "An update is available";
 
     if (versionElement) {
         versionElement.classList.remove("update-check-failed");
         versionElement.classList.add("update-available");
-        versionElement.title = "An update is available";
+        versionElement.title = title;
     }
 
     if (updateLink) {
         updateLink.href = releaseUrl;
-        updateLink.title = "An update is available";
-        updateLink.setAttribute("aria-label", "An update is available");
+        updateLink.title = title;
+        updateLink.setAttribute("aria-label", title);
         updateLink.classList.remove("d-none");
     }
 }
@@ -6046,7 +6093,9 @@ function showWsprryPiUpdateModal(versionInfo, result) {
     writeUpdateModalState(versionInfo, result, "shown");
     activeUpdateModalIdentity = updateModalIdentity(versionInfo, result);
     markUpdateCheckModalActive(modalEl);
-    document.getElementById("confirmModalLabel").textContent = "Update available";
+    document.getElementById("confirmModalLabel").textContent = result.versionComparisonUsed === "commit"
+        ? "Newer branch build available"
+        : "Update available";
 
     const body = document.getElementById("confirmModalBody");
     body.classList.remove("confirm-modal-body--preformatted");
