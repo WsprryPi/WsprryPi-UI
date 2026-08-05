@@ -594,6 +594,19 @@ legend {
     width: 100%;
 }
 
+@media (max-width: 991.98px) {
+    .config-wspr-top-row,
+    .config-wspr-secondary-row {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0.65rem 0.85rem;
+    }
+
+    .config-wspr-top-row .form-label,
+    .config-wspr-secondary-row .form-label {
+        white-space: normal;
+    }
+}
+
 @media (max-width: 767.98px) {
     .card-header .btn-group .btn,
     .config-mode-toggle .btn,
@@ -619,17 +632,6 @@ legend {
     .config-header-actions > * {
         flex: 1 1 100%;
         min-width: 0;
-    }
-
-    .config-wspr-top-row,
-    .config-wspr-secondary-row {
-        grid-template-columns: minmax(0, 1fr);
-        gap: 0.65rem 0.85rem;
-    }
-
-    .config-wspr-top-row .form-label,
-    .config-wspr-secondary-row .form-label {
-        white-space: normal;
     }
 
     .config-wspr-top-row__field--wide,
