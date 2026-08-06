@@ -340,6 +340,62 @@ async function browserTest() {
     sharedRows[1].querySelector(".band-gpio-active-high").checked = false;
     ok(!validateGpioConflictFields(), "same-pin Band GPIO sharing with conflicting polarity must remain invalid");
 
+    // Calibration controls are shared across backends, but GPIO NTP is not.
+    // Switching the selected backend must change only presentation/enabled
+    // state; it must not rewrite either persisted value.
+    window.WSPRRYPI_PLATFORM = {
+        ...(window.WSPRRYPI_PLATFORM || {}),
+        gpioClockTransmissionSupported: true,
+        si5351Detected: true,
+    };
+    field("use_ntp").checked = true;
+    field("ppm").value = "2.409358";
+    field("transmit_backend").value = "gpio";
+    syncCalibrationControls();
+    equal(field("ntp_calibration_control").hidden, false,
+        "GPIO WSPR must show the NTP calibration control");
+    equal(field("ppm").disabled, true,
+        "GPIO WSPR with NTP enabled must disable manual PPM");
+
+    field("transmit_backend").value = "si5351";
+    clickTransmitBackend();
+    equal(field("ntp_calibration_control").hidden, true,
+        "Si5351 WSPR must hide the GPIO-only NTP control");
+    equal(field("ntp_calibration_control").getAttribute("aria-hidden"), "true",
+        "hidden Si5351 NTP control must be hidden from assistive technology");
+    equal(field("ppm").disabled, false,
+        "Si5351 WSPR must keep manual PPM editable even when GPIO NTP is stored on");
+    equal(field("use_ntp").checked, true,
+        "switching to Si5351 must preserve the GPIO NTP preference");
+    equal(field("ppm").value, "2.409358",
+        "switching to Si5351 must preserve manual PPM");
+    ok(field("ppm-hint").textContent.includes("Applied to the Si5351 reference"),
+        "Si5351 must explain how manual PPM is applied");
+
+    const si5351Payload = buildConfigPayload();
+    equal(si5351Payload.Operation["Transmit Backend"], "si5351",
+        "Si5351 payload must retain the selected backend");
+    equal(si5351Payload.GPIO["Use NTP"], true,
+        "Si5351 payload must preserve the independent GPIO NTP preference");
+    equal(si5351Payload.Calibration.PPM, 2.409358,
+        "Si5351 payload must save manual Calibration.PPM");
+
+    field("transmit_backend").value = "gpio";
+    clickTransmitBackend();
+    equal(field("ntp_calibration_control").hidden, false,
+        "switching back to GPIO WSPR must restore the NTP control");
+    equal(field("ppm").disabled, true,
+        "restored GPIO NTP preference must again disable manual PPM");
+    equal(field("use_ntp").checked, true,
+        "round-trip backend switching must preserve GPIO NTP");
+    equal(field("ppm").value, "2.409358",
+        "round-trip backend switching must preserve manual PPM");
+
+    field("use_ntp").checked = false;
+    syncCalibrationControls();
+    equal(field("ppm").disabled, false,
+        "GPIO WSPR without NTP must enable manual PPM");
+
     return { matrixCases, patches: patches.length, assertions: "passed" };
 }
 
