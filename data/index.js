@@ -1958,19 +1958,26 @@ function updateBackendPlatformSupportUi() {
 
 function syncCalibrationControls() {
     const isWsprMode = isWsprConfigMode();
-    const useNtp = isWsprMode && $("#use_ntp").is(":checked");
+    const si5351Active = selectedTransmitBackend() === "si5351";
+    const gpioNtpActive = isWsprMode && !si5351Active && $("#use_ntp").is(":checked");
     const $ppm = $("#ppm");
     const $ppmCw = $("#ppm_cw");
+    const $ppmHint = $("#ppm-hint");
     const $ntpControl = $("#ntp_calibration_control");
 
-    $ntpControl.prop("hidden", !isWsprMode);
-    $ntpControl.attr("aria-hidden", isWsprMode ? "false" : "true");
+    const showNtpControl = isWsprMode && !si5351Active;
+    $ntpControl.prop("hidden", !showNtpControl);
+    $ntpControl.attr("aria-hidden", showNtpControl ? "false" : "true");
 
-    $ppm.prop("disabled", !isWsprMode || useNtp);
+    $ppm.prop("disabled", !isWsprMode || gpioNtpActive);
     $ppmCw.prop("disabled", isWsprMode);
 
-    $ppm.prop("required", isWsprMode && !useNtp);
+    $ppm.prop("required", isWsprMode && !gpioNtpActive);
     $ppmCw.prop("required", !isWsprMode);
+
+    $ppmHint.text(si5351Active
+        ? "Applied to the Si5351 reference during synthesis planning. Enter a value from -200.000000 through 200.000000 PPM."
+        : "Enter the transmitter frequency calibration offset, from -200.000000 through 200.000000 PPM.");
 
     [$ppm.get(0), $ppmCw.get(0)].forEach((field) => {
         if (field && field.disabled) {
