@@ -1975,9 +1975,12 @@ function syncCalibrationControls() {
     $ppm.prop("required", isWsprMode && !gpioNtpActive);
     $ppmCw.prop("required", !isWsprMode);
 
-    $ppmHint.text(si5351Active
+    const ppmHint = si5351Active
         ? "Applied to the Si5351 reference during synthesis planning. Enter a value from -200.000000 through 200.000000 PPM."
-        : "Enter the transmitter frequency calibration offset, from -200.000000 through 200.000000 PPM.");
+        : gpioNtpActive
+            ? "Chrony supplies the GPIO source-clock estimate. Positive means the source clock runs fast; negative means it runs slow."
+            : "Enter the GPIO source-clock estimate from -200.000000 through 200.000000 PPM. Positive means fast; negative means slow.";
+    $ppmHint.text(ppmHint);
 
     [$ppm.get(0), $ppmCw.get(0)].forEach((field) => {
         if (field && field.disabled) {

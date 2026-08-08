@@ -247,7 +247,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                 data-bs-toggle="tooltip"
                                                 title="Enter a decimal value between -200.000000 to 200.000000">
                                             <div id="ppm-hint" class="form-text mt-2">
-                                                Enter the transmitter frequency calibration offset, from -200.000000 through 200.000000 PPM.
+                                                Enter the GPIO source-clock estimate from -200.000000 through 200.000000 PPM. Positive means fast; negative means slow.
                                             </div>
                                         </div>
 
