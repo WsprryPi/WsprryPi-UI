@@ -116,7 +116,7 @@ const TEST_TONE_COMMAND_TIMEOUT_MS = 15000;
 const WSPR_BAND_CATALOG_TIMEOUT_MS = 5000;
 const CANONICAL_WSPR_BAND_NAMES = Object.freeze([
     "2200m", "630m", "160m", "80m", "60m", "40m", "30m", "22m",
-    "20m", "17m", "15m", "12m", "10m", "6m", "4m", "2m"
+    "20m", "17m", "15m", "12m", "10m", "6m", "4m", "2m", "1.25m", "70cm"
 ]);
 const TEST_TONE_SELECTION_MODES = Object.freeze({
     WSPR_BAND: "wspr_band",
@@ -584,7 +584,9 @@ const configSchema = {
             "10m": { required: false, type: "object" },
             "6m": { required: false, type: "object" },
             "4m": { required: false, type: "object" },
-            "2m": { required: false, type: "object" }
+            "2m": { required: false, type: "object" },
+            "1.25m": { required: false, type: "object" },
+            "70cm": { required: false, type: "object" }
         }
     }
 };

@@ -258,6 +258,20 @@ async function browserTest() {
 
     validatePage = () => validateGpioConflictFields();
 
+    for (const band of ["1.25m", "70cm"]) {
+        ok(document.querySelector(`#bandGpioTable tr[data-band="${band}"]`),
+            `${band}: Band GPIO configuration row must render`);
+        ok(Object.hasOwn(collectBandGpioConfig(), band),
+            `${band}: Band GPIO configuration must serialize`);
+    }
+    ok(validateWsprFrequencyBaseToken("223.5MHz"),
+        "numeric 1.25 m WSPR input must remain valid");
+    ok(validateWsprFrequencyBaseToken("435000000"),
+        "numeric 70 cm WSPR input must remain valid");
+    ok(validateWsprFrequencyBaseToken("1.25m") &&
+        validateWsprFrequencyBaseToken("70cm"),
+        "authoritative 1.25 m and 70 cm WSPR aliases must validate");
+
     let matrixCases = 0;
     for (const transmit of [false, true]) {
         for (const txPin of [4, 20]) {

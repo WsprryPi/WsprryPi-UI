@@ -4031,6 +4031,8 @@ function validateWsprFrequencyBaseToken(token) {
         "6m",
         "4m",
         "2m",
+        "1.25m",
+        "70cm",
     ]);
     if (bandAliases.has(trimmed.toLowerCase())) {
         return true;
