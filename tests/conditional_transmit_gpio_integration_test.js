@@ -404,11 +404,17 @@ async function browserTest() {
         "round-trip backend switching must preserve GPIO NTP");
     equal(field("ppm").value, "2.409358",
         "round-trip backend switching must preserve manual PPM");
+    ok(field("ppm-hint").textContent.includes("Chrony supplies the GPIO source-clock estimate") &&
+        field("ppm-hint").textContent.includes("Positive means the source clock runs fast"),
+        "GPIO NTP mode must explain Chrony provenance and the positive-fast sign convention");
 
     field("use_ntp").checked = false;
     syncCalibrationControls();
     equal(field("ppm").disabled, false,
         "GPIO WSPR without NTP must enable manual PPM");
+    ok(field("ppm-hint").textContent.includes("Enter the GPIO source-clock estimate") &&
+        field("ppm-hint").textContent.includes("Positive means fast; negative means slow"),
+        "manual GPIO PPM mode must explain the signed source-clock convention");
 
     return { matrixCases, patches: patches.length, assertions: "passed" };
 }
@@ -499,13 +505,36 @@ async function main() {
                 "pi-hardware-tab",
                 "#pi-hardware-pane > fieldset:first-of-type"
             );
+            await captureConflictScreenshot(
+                client,
+                path.join(screenshotDir, "GPIO_PPM_Desktop.png"),
+                "radio-tab",
+                "#ppm-hint"
+            );
+            await client.send("Emulation.setDeviceMetricsOverride", {
+                width: 390,
+                height: 844,
+                deviceScaleFactor: 1,
+                mobile: true,
+            });
+            await captureConflictScreenshot(
+                client,
+                path.join(screenshotDir, "GPIO_PPM_Mobile.png"),
+                "radio-tab",
+                "#ppm-hint"
+            );
         }
         console.log("conditional_transmit_gpio_integration_test passed");
     } finally {
         if (client) client.close();
         await terminate(chromium);
         await terminate(php);
-        fs.rmSync(profileDir, { recursive: true, force: true });
+        fs.rmSync(profileDir, {
+            recursive: true,
+            force: true,
+            maxRetries: 5,
+            retryDelay: 100,
+        });
     }
 }
 
