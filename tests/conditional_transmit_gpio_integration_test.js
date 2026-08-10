@@ -387,6 +387,20 @@ async function browserTest() {
     ok(field("ppm-hint").textContent.includes("Applied to the Si5351 reference"),
         "Si5351 must explain how manual PPM is applied");
 
+    field("si5351_reference_source").value = "external_tcxo";
+    syncSi5351ReferenceControls();
+    equal(field("si5351-crystal-load-group").hidden, true,
+        "external TCXO must hide the crystal load control");
+    equal(field("si5351_crystal_load_capacitance").disabled, true,
+        "external TCXO must disable the hidden crystal load control");
+    field("si5351_reference_source").value = "crystal";
+    field("si5351_crystal_load_capacitance").value = "8";
+    syncSi5351ReferenceControls();
+    equal(field("si5351-crystal-load-group").hidden, false,
+        "crystal selection must reveal the load-capacitance select");
+    equal(field("si5351_crystal_load_capacitance").disabled, false,
+        "crystal selection must enable the load-capacitance select");
+
     const si5351Payload = buildConfigPayload();
     equal(si5351Payload.Operation["Transmit Backend"], "si5351",
         "Si5351 payload must retain the selected backend");
@@ -398,6 +412,10 @@ async function browserTest() {
         "Si5351 payload must preserve the independent GPIO manual fallback");
     equal(si5351Payload.Calibration.PPM, 2.409358,
         "Si5351 payload must save manual Calibration.PPM");
+    equal(si5351Payload.Si5351["Reference Source"], "crystal",
+        "Si5351 payload must save the reference source");
+    equal(si5351Payload.Si5351["Crystal Load Capacitance"], 8,
+        "Si5351 payload must save the crystal load capacitance");
 
     field("transmit_backend").value = "gpio";
     clickTransmitBackend();
