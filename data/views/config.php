@@ -732,10 +732,10 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                     <h3 id="gpio-calibration-heading" class="cw-control-section__title">Frequency calibration</h3>
                                     <div class="row gx-3 gy-3 align-items-start">
                                         <div class="col-12 col-lg-4 config-stacked-field">
-                                            <label for="gpio_manual_ppm" class="form-label">Fixed/manual PPM</label>
+                                            <label for="gpio_manual_ppm" class="form-label">Fallback PPM</label>
                                             <input type="number" class="form-control" id="gpio_manual_ppm" min="-200" max="200" step="0.000001" inputmode="decimal" aria-describedby="gpio-manual-ppm-hint" required />
                                             <div id="gpio-manual-ppm-hint" class="form-text mt-2">
-                                                Fixed GPIO correction used when the system clock estimate is disabled or cannot be used. Positive means fast; negative means slow.
+                                                Used only when the system clock estimate is disabled or unavailable. Positive means fast; negative means slow.
                                             </div>
                                         </div>
 
