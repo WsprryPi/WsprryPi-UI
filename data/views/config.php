@@ -839,6 +839,31 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                     </div>
                                 </div>
 
+                                <div class="row gx-3 gy-3 align-items-start mt-1">
+                                    <div class="col-12 col-lg-6">
+                                        <label for="si5351_reference_source" class="form-label">Reference Source</label>
+                                        <select class="form-select" id="si5351_reference_source" aria-describedby="si5351-reference-source-hint">
+                                            <option value="external_tcxo">External clock / TCXO</option>
+                                            <option value="crystal">Passive crystal</option>
+                                        </select>
+                                        <div id="si5351-reference-source-hint" class="form-text mt-2">
+                                            Choose the reference hardware connected to the Si5351 XA/XB inputs.
+                                        </div>
+                                    </div>
+
+                                    <div class="col-12 col-lg-6" id="si5351-crystal-load-group" hidden>
+                                        <label for="si5351_crystal_load_capacitance" class="form-label">Crystal Load Capacitance</label>
+                                        <select class="form-select" id="si5351_crystal_load_capacitance" aria-describedby="si5351-crystal-load-hint">
+                                            <option value="6">6 pF</option>
+                                            <option value="8">8 pF</option>
+                                            <option value="10" selected>10 pF</option>
+                                        </select>
+                                        <div id="si5351-crystal-load-hint" class="form-text mt-2">
+                                            Internal load for a passive crystal. This is not applied to an external clock or TCXO.
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <section class="backend-calibration-section mt-4" aria-labelledby="si5351-calibration-heading">
                                     <h3 id="si5351-calibration-heading" class="cw-control-section__title">Frequency calibration</h3>
                                     <div class="row gx-3 gy-3 align-items-start">

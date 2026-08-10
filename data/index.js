@@ -319,6 +319,10 @@ function restorePersistedConfigDraft() {
         setSi5351AddressValue(si5351["I2C Address"] || "0x60");
     }
     $("#si5351_reference_frequency").val(Number(si5351["Reference Frequency"])).trigger("change");
+    $("#si5351_reference_source").val(si5351["Reference Source"] || "external_tcxo").trigger("change");
+    $("#si5351_crystal_load_capacitance")
+        .val(String(si5351["Crystal Load Capacitance"] || 10))
+        .trigger("change");
     $("#si5351-power-range").val(Number(si5351["Power Level"])).trigger("input");
 
     validatePage();
@@ -400,6 +404,7 @@ function bindIndexActions() {
     // Bind the transmit power slider
     $("#gpio-power-range").on("input", updateGpioPowerLabel);
     $("#si5351-power-range").on("input", updateSi5351PowerLabel);
+    $("#si5351_reference_source").on("change", syncSi5351ReferenceControls);
     $("#configSaveStatusDetail").on("click", navigateToFirstInvalidConfigControl);
     $("#configSaveStatusDetail").on("keydown", handleConfigSaveStatusDetailKeydown);
 
@@ -2070,6 +2075,16 @@ function updateSi5351PowerLabel() {
     labelElement.textContent = label;
 }
 
+function syncSi5351ReferenceControls() {
+    const crystalSelected = $("#si5351_reference_source").val() === "crystal";
+    const hardwareDisabled = $("#si5351_reference_source").prop("disabled");
+    $("#si5351-crystal-load-group").prop("hidden", !crystalSelected);
+    $("#si5351_crystal_load_capacitance").prop(
+        "disabled",
+        hardwareDisabled || !crystalSelected
+    );
+}
+
 function clickUseLED() {
     const on = $("#use_led").prop("checked");
     $("#ledDropdownButton").prop("disabled", !on);
@@ -3266,6 +3281,8 @@ function validateTransmitterHardwareFields() {
     const si5351Bus = normalizeIntegerInputValue("#si5351_i2c_bus", 1);
     const si5351Reference = normalizeIntegerInputValue("#si5351_reference_frequency", 27000000);
     const si5351Power = normalizeIntegerInputValue("#si5351-power-range", 1);
+    const si5351ReferenceSource = String($("#si5351_reference_source").val() || "external_tcxo");
+    const si5351CrystalLoad = normalizeIntegerInputValue("#si5351_crystal_load_capacitance", 10);
 
     const txPin = getTxPin();
     const txPinValid = txPin === 4 || txPin === 20;
@@ -3331,6 +3348,23 @@ function validateTransmitterHardwareFields() {
     } else if (backend !== "si5351" && si5351PowerField) {
         si5351PowerField.setCustomValidity("");
         clearFieldValidationState(si5351PowerField);
+    }
+
+    const sourceValid = ["external_tcxo", "crystal"].includes(si5351ReferenceSource);
+    const sourceField = document.getElementById("si5351_reference_source");
+    sourceField.setCustomValidity(sourceValid ? "" : "Select External clock / TCXO or Passive crystal.");
+    setFieldValidationState(sourceField, backend !== "si5351" || sourceValid);
+    if (backend === "si5351" && !sourceValid) invalidCount++;
+
+    const crystalLoadValid = [6, 8, 10].includes(si5351CrystalLoad);
+    const crystalLoadField = document.getElementById("si5351_crystal_load_capacitance");
+    crystalLoadField.setCustomValidity(crystalLoadValid ? "" : "Select 6, 8, or 10 pF.");
+    setFieldValidationState(
+        crystalLoadField,
+        backend !== "si5351" || si5351ReferenceSource !== "crystal" || crystalLoadValid
+    );
+    if (backend === "si5351" && si5351ReferenceSource === "crystal" && !crystalLoadValid) {
+        invalidCount++;
     }
 
     if (backend === "si5351" && !validateSi5351I2cAddress()) {
@@ -3523,6 +3557,14 @@ function buildConfigPayload(options = {}) {
     if (!(si5351_power_level >= 1 && si5351_power_level <= 4)) {
         si5351_power_level = 1;
     }
+    let si5351_reference_source = String($("#si5351_reference_source").val() || "external_tcxo");
+    if (!["external_tcxo", "crystal"].includes(si5351_reference_source)) {
+        si5351_reference_source = "external_tcxo";
+    }
+    let si5351_crystal_load_capacitance = parseInt($("#si5351_crystal_load_capacitance").val(), 10);
+    if (![6, 8, 10].includes(si5351_crystal_load_capacitance)) {
+        si5351_crystal_load_capacitance = 10;
+    }
 
     var Operation = {
         "Mode": mode,
@@ -3549,6 +3591,8 @@ function buildConfigPayload(options = {}) {
         "I2C Bus": si5351_i2c_bus,
         "I2C Address": si5351_i2c_address,
         "Reference Frequency": si5351_reference_frequency,
+        "Reference Source": si5351_reference_source,
+        "Crystal Load Capacitance": si5351_crystal_load_capacitance,
         "Power Level": si5351_power_level,
     };
 
@@ -4329,6 +4373,8 @@ function setHardwareControlsDisabled(disabled) {
         "#si5351_i2c_bus",
         "#si5351_i2c_address",
         "#si5351_reference_frequency",
+        "#si5351_reference_source",
+        "#si5351_crystal_load_capacitance",
         "#si5351-power-range",
         "#use_led",
         "#ledDropdownButton",
@@ -4348,6 +4394,8 @@ function setHardwareControlsDisabled(disabled) {
         syncStopButtonState();
         syncAmpControlState();
     }
+
+    syncSi5351ReferenceControls();
 
     syncCalibrationControls();
 
@@ -4379,6 +4427,8 @@ function setOfflineDefaults() {
     $("#si5351_i2c_bus").val(1);
     setSi5351AddressValue(0x60);
     $("#si5351_reference_frequency").val(27000000);
+    $("#si5351_reference_source").val("external_tcxo").trigger("change");
+    $("#si5351_crystal_load_capacitance").val("10");
     $("#si5351-power-range").val(1);
     updateSi5351PowerLabel.call(document.getElementById("si5351-power-range"));
     clickTransmitBackend();

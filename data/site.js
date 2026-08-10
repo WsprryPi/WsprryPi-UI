@@ -535,6 +535,8 @@ const configSchema = {
             "I2C Bus": { required: false, type: "number" },
             "I2C Address": { required: false, type: "string" },
             "Reference Frequency": { required: false, type: "number" },
+            "Reference Source": { required: false, type: "string" },
+            "Crystal Load Capacitance": { required: false, type: "number" },
             "TX Output": { required: false, type: "string" },
             "Power Level": { required: false, type: "number" }
         }
@@ -1715,6 +1717,18 @@ function populateConfig(callback = null) {
                     "Reference Frequency",
                     27000000
                 );
+                let si5351ReferenceSource = String(getConfigValue(
+                    si5351, "Si5351", "Reference Source", "external_tcxo"
+                ) || "external_tcxo").toLowerCase();
+                if (!["external_tcxo", "crystal"].includes(si5351ReferenceSource)) {
+                    si5351ReferenceSource = "external_tcxo";
+                }
+                let si5351CrystalLoadCapacitance = getConfigIntValue(
+                    si5351, "Si5351", "Crystal Load Capacitance", 10
+                );
+                if (![6, 8, 10].includes(si5351CrystalLoadCapacitance)) {
+                    si5351CrystalLoadCapacitance = 10;
+                }
                 let si5351PowerLevel = getConfigIntValue(
                     si5351,
                     "Si5351",
@@ -1890,6 +1904,12 @@ function populateConfig(callback = null) {
                     }
                     $("#si5351_reference_frequency")
                         .val(si5351ReferenceFrequency)
+                        .trigger("change");
+                    $("#si5351_reference_source")
+                        .val(si5351ReferenceSource)
+                        .trigger("change");
+                    $("#si5351_crystal_load_capacitance")
+                        .val(String(si5351CrystalLoadCapacitance))
                         .trigger("change");
                     $("#si5351-power-range").val(si5351PowerLevel).trigger("input");
 
