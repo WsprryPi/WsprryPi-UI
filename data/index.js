@@ -305,9 +305,13 @@ function restorePersistedConfigDraft() {
     $("#tx_repeat_every").val(Number(cw["Repeat Minutes"])).trigger("change");
     $("#qrss_message").val(String(cw.Message || "")).trigger("change");
 
-    $("#use_ntp").prop("checked", !!gpio["Use NTP"]).trigger("change");
+    $("#use_system_clock_frequency_estimate").prop(
+        "checked",
+        gpio["Use System Clock Frequency Estimate"] !== false
+    ).trigger("change");
+    $("#gpio_frequency_residual_ppm").val(Number(gpio["Frequency Residual PPM"] ?? 0)).trigger("change");
+    $("#gpio_manual_ppm").val(Number(gpio["Manual PPM"] ?? 0)).trigger("change");
     $("#ppm").val(Number(calibration.PPM)).trigger("change");
-    $("#ppm_cw").val(Number(calibration.PPM)).trigger("change");
 
     $("#gpio-power-range").val(Number(gpio["Power Level"])).trigger("input");
     $("#si5351_i2c_bus").val(Number(si5351["I2C Bus"])).trigger("change");
@@ -363,12 +367,10 @@ function bindIndexActions() {
     $('input[name="cw_spacing"]').on("change", handleCwSpacingChange);
     $(".cw-repair-close").on("click", handleCwRepairClose);
 
-    // Bind the Use NTP Switch
-    $("#use_ntp").on("change", clickUseNTP);
+    // Bind the GPIO system-clock frequency-estimate switch.
+    $("#use_system_clock_frequency_estimate").on("change", clickUseSystemClockFrequencyEstimate);
     $("#transmit_backend").on("change", clickTransmitBackend);
     $("#tx_pin").on("change", clickTransmitPin);
-    $("#ppm").on("input change", () => syncPpmFields("wspr"));
-    $("#ppm_cw").on("input change", () => syncPpmFields("cw"));
 
     // Wire up the LED switch
     $("#use_led").on("change", clickUseLED);
@@ -789,7 +791,7 @@ function organizeCwControlLayout() {
     const modeFieldset = modeSelect ? modeSelect.closest("fieldset") : null;
     if (modeFieldset) document.getElementById("cw_modulation_controls").appendChild(modeFieldset);
     moveField("dot_length", "cw_dot_duration_control");
-    ["fsk_offset", "qrss_frequency", "ppm_cw"].forEach((id) => moveField(id, "cw_frequency_controls"));
+    ["fsk_offset", "qrss_frequency"].forEach((id) => moveField(id, "cw_frequency_controls"));
     ["tx_start_minute", "tx_start_second", "tx_repeat_every"].forEach((id) => moveField(id, "cw_schedule_controls"));
 
     const shared = document.getElementById("cw_intra_element_gap");
@@ -1957,32 +1959,13 @@ function updateBackendPlatformSupportUi() {
 }
 
 function syncCalibrationControls() {
-    const isWsprMode = isWsprConfigMode();
     const si5351Active = selectedTransmitBackend() === "si5351";
-    const gpioNtpActive = isWsprMode && !si5351Active && $("#use_ntp").is(":checked");
-    const $ppm = $("#ppm");
-    const $ppmCw = $("#ppm_cw");
-    const $ppmHint = $("#ppm-hint");
-    const $ntpControl = $("#ntp_calibration_control");
+    const estimateEnabled = $("#use_system_clock_frequency_estimate").is(":checked");
+    const $residual = $("#gpio_frequency_residual_ppm");
+    $residual.prop("disabled", si5351Active || !estimateEnabled);
+    $residual.prop("required", !si5351Active && estimateEnabled);
 
-    const showNtpControl = isWsprMode && !si5351Active;
-    $ntpControl.prop("hidden", !showNtpControl);
-    $ntpControl.attr("aria-hidden", showNtpControl ? "false" : "true");
-
-    $ppm.prop("disabled", !isWsprMode || gpioNtpActive);
-    $ppmCw.prop("disabled", isWsprMode);
-
-    $ppm.prop("required", isWsprMode && !gpioNtpActive);
-    $ppmCw.prop("required", !isWsprMode);
-
-    const ppmHint = si5351Active
-        ? "Applied to the Si5351 reference during synthesis planning. Enter a value from -200.000000 through 200.000000 PPM."
-        : gpioNtpActive
-            ? "Chrony supplies the GPIO source-clock estimate. Positive means the source clock runs fast; negative means it runs slow."
-            : "Enter the GPIO source-clock estimate from -200.000000 through 200.000000 PPM. Positive means fast; negative means slow.";
-    $ppmHint.text(ppmHint);
-
-    [$ppm.get(0), $ppmCw.get(0)].forEach((field) => {
+    [$("#ppm").get(0), $residual.get(0), $("#gpio_manual_ppm").get(0)].forEach((field) => {
         if (field && field.disabled) {
             field.setCustomValidity("");
             clearFieldValidationState(field);
@@ -2007,21 +1990,6 @@ function syncConfigModeSections() {
     syncCalibrationControls();
     updateRuntimeControlStatusFromForm(null);
     updateCwMessageLengthEstimate();
-}
-
-function syncPpmFields(source = "wspr") {
-    const $ppm = $("#ppm");
-    const $ppmCw = $("#ppm_cw");
-
-    if (!$ppm.length || !$ppmCw.length) {
-        return;
-    }
-
-    if (source === "cw") {
-        $ppm.val($ppmCw.val());
-    } else {
-        $ppmCw.val($ppm.val());
-    }
 }
 
 function clickTransmitBackend() {
@@ -3217,8 +3185,7 @@ function syncSelectedCwModeControls() {
     }
 }
 
-// Function to enable/disable & reset PPM field when Use NTP toggles
-function clickUseNTP() {
+function clickUseSystemClockFrequencyEstimate() {
     syncCalibrationControls();
     validatePage();
     scheduleAutosave();
@@ -3515,12 +3482,14 @@ function buildConfigPayload(options = {}) {
     if (!Number.isInteger(tx_start_second) || tx_start_second < 0 || tx_start_second > 59) tx_start_second = 5;
     if (!Number.isInteger(tx_repeat_every) || tx_repeat_every < 1) tx_repeat_every = 10;
 
-    // GPIO timing calibration
-    let use_ntp = parseBool($("#use_ntp").is(":checked"));
-    let ppmSource = $('input[name="mode_toggle"]:checked').val() === "QRSS"
-        ? $("#ppm_cw").val()
-        : $("#ppm").val();
-    let ppm_val = parseFloat(ppmSource) || 0.0;
+    // Backend-specific frequency calibration.
+    let use_system_clock_frequency_estimate = parseBool($("#use_system_clock_frequency_estimate").is(":checked"));
+    let gpio_frequency_residual_ppm = Number($("#gpio_frequency_residual_ppm").val());
+    let gpio_manual_ppm = Number($("#gpio_manual_ppm").val());
+    let ppm_val = Number($("#ppm").val());
+    if (!Number.isFinite(gpio_frequency_residual_ppm)) gpio_frequency_residual_ppm = 0.0;
+    if (!Number.isFinite(gpio_manual_ppm)) gpio_manual_ppm = 0.0;
+    if (!Number.isFinite(ppm_val)) ppm_val = 0.0;
 
     let gpio_tx_pin = parseInt(getTxPin(), 10);
     if (gpio_tx_pin !== 4 && gpio_tx_pin !== 20) {
@@ -3570,7 +3539,9 @@ function buildConfigPayload(options = {}) {
 
     var GPIO = {
         "Power Level": transmit_power,
-        "Use NTP": use_ntp,
+        "Use System Clock Frequency Estimate": use_system_clock_frequency_estimate,
+        "Frequency Residual PPM": gpio_frequency_residual_ppm,
+        "Manual PPM": gpio_manual_ppm,
         "Transmit Pin": gpio_tx_pin,
     };
 
@@ -4352,7 +4323,9 @@ function setHardwareControlsDisabled(disabled) {
         "#transmit_backend",
         "#tx_pin",
         "#gpio-power-range",
-        "#use_ntp",
+        "#use_system_clock_frequency_estimate",
+        "#gpio_frequency_residual_ppm",
+        "#gpio_manual_ppm",
         "#si5351_i2c_bus",
         "#si5351_i2c_address",
         "#si5351_reference_frequency",
@@ -4400,7 +4373,9 @@ function setOfflineDefaults() {
     setTxPin(4);
     $("#gpio-power-range").val(7);
     updateGpioPowerLabel.call(document.getElementById("gpio-power-range"));
-    $("#use_ntp").prop("checked", true);
+    $("#use_system_clock_frequency_estimate").prop("checked", true);
+    $("#gpio_frequency_residual_ppm").val(0);
+    $("#gpio_manual_ppm").val(0);
     $("#si5351_i2c_bus").val(1);
     setSi5351AddressValue(0x60);
     $("#si5351_reference_frequency").val(27000000);

@@ -513,7 +513,9 @@ const configSchema = {
         keys: {
             "Transmit Pin": { required: false, type: "number" },
             "Power Level": { required: false, type: "number" },
-            "Use NTP": { required: false, type: "boolean" }
+            "Use System Clock Frequency Estimate": { required: false, type: "boolean" },
+            "Frequency Residual PPM": { required: false, type: "number" },
+            "Manual PPM": { required: false, type: "number" }
         }
     },
     Platform: {
@@ -1664,11 +1666,23 @@ function populateConfig(callback = null) {
                     "LED Pin",
                     18
                 );
-                let use_ntp = getConfigBoolValue(
+                let use_system_clock_frequency_estimate = getConfigBoolValue(
                     gpio,
                     "GPIO",
-                    "Use NTP",
+                    "Use System Clock Frequency Estimate",
                     true
+                );
+                let gpio_frequency_residual_ppm = getConfigFloatValue(
+                    gpio,
+                    "GPIO",
+                    "Frequency Residual PPM",
+                    0.0
+                );
+                let gpio_manual_ppm = getConfigFloatValue(
+                    gpio,
+                    "GPIO",
+                    "Manual PPM",
+                    0.0
                 );
                 let ppm = getConfigFloatValue(calibration, "Calibration", "PPM", 0.0);
                 let use_offset = getConfigBoolValue(
@@ -1862,9 +1876,10 @@ function populateConfig(callback = null) {
                     }
 
                     // Frequency Calibration
-                    $("#use_ntp").prop("checked", use_ntp).trigger("change");
+                    $("#use_system_clock_frequency_estimate").prop("checked", use_system_clock_frequency_estimate).trigger("change");
+                    $("#gpio_frequency_residual_ppm").val(gpio_frequency_residual_ppm).trigger("change");
+                    $("#gpio_manual_ppm").val(gpio_manual_ppm).trigger("change");
                     $("#ppm").val(ppm).trigger("change");
-                    $("#ppm_cw").val(ppm).trigger("change");
 
                     $("#gpio-power-range").val(power_level).trigger("input");
                     $("#si5351_i2c_bus").val(si5351I2cBus).trigger("change");
@@ -2067,6 +2082,8 @@ function normalizeRuntimeStatus(msg) {
                 : (typeof msg.state === "string" ? msg.state : ""),
         runtimeMode:
             typeof msg.runtime_mode === "string" ? msg.runtime_mode : "",
+        transmitBackend:
+            typeof msg.transmit_backend === "string" ? msg.transmit_backend : "",
         nextTransmissionAt:
             typeof msg.next_transmission_at === "string"
                 ? msg.next_transmission_at
@@ -2095,6 +2112,39 @@ function normalizeRuntimeStatus(msg) {
         locatorRaw: typeof msg.locator_raw === "string" ? msg.locator_raw : "",
         locatorNormalized:
             typeof msg.locator_normalized === "string" ? msg.locator_normalized : "",
+        frequencyEstimateQualification:
+            typeof msg.frequency_estimate_qualification === "string"
+                ? msg.frequency_estimate_qualification
+                : "unavailable",
+        frequencyEstimateProvider:
+            typeof msg.frequency_estimate_provider === "string"
+                ? msg.frequency_estimate_provider
+                : "",
+        frequencyEstimateProvenance:
+            typeof msg.frequency_estimate_provenance === "string"
+                ? msg.frequency_estimate_provenance
+                : "",
+        frequencyCorrectionMode:
+            typeof msg.frequency_correction_mode === "string"
+                ? msg.frequency_correction_mode
+                : "uncalibrated",
+        frequencyEstimateReason:
+            typeof msg.frequency_estimate_reason === "string"
+                ? msg.frequency_estimate_reason
+                : "",
+        frequencyEstimatePpm:
+            msg.frequency_estimate_ppm !== null && Number.isFinite(Number(msg.frequency_estimate_ppm))
+                ? Number(msg.frequency_estimate_ppm)
+                : null,
+        gpioFrequencyResidualPpm: Number.isFinite(Number(msg.gpio_frequency_residual_ppm))
+            ? Number(msg.gpio_frequency_residual_ppm)
+            : 0,
+        effectiveGpioPpm: Number.isFinite(Number(msg.effective_gpio_ppm))
+            ? Number(msg.effective_gpio_ppm)
+            : 0,
+        frequencyEstimateAgeSeconds: Number.isFinite(Number(msg.frequency_estimate_age_seconds))
+            ? Number(msg.frequency_estimate_age_seconds)
+            : 0,
         frameCallsign: typeof msg.frame_callsign === "string" ? msg.frame_callsign : "",
         frameLocator: typeof msg.frame_locator === "string" ? msg.frame_locator : "",
         cwMessage: typeof msg.cw_message === "string" ? msg.cw_message : "",
@@ -2857,6 +2907,39 @@ function renderRuntimeStatus(status) {
     renderRuntimeControlStatus();
 }
 
+function renderGpioFrequencyCorrection(status) {
+    const panelNode = document.getElementById("gpio_frequency_correction_panel");
+    const valueNode = document.getElementById("gpio_frequency_correction_value");
+    const detailNode = document.getElementById("gpio_frequency_correction_detail");
+    if (!panelNode || !valueNode || !detailNode || !status) {
+        return;
+    }
+    panelNode.hidden = status.transmitBackend === "si5351";
+    if (panelNode.hidden) {
+        return;
+    }
+
+    const qualification = status.frequencyEstimateQualification || "unavailable";
+    const label = qualification.charAt(0).toUpperCase() + qualification.slice(1);
+    const provider = status.frequencyEstimateProvider || "No provider";
+    const estimate = status.frequencyEstimatePpm === null
+        ? "not available"
+        : `${status.frequencyEstimatePpm.toFixed(3)} PPM`;
+    valueNode.textContent = `${label} · ${status.effectiveGpioPpm.toFixed(3)} PPM effective`;
+
+    const provenance = status.frequencyEstimateProvenance
+        ? ` · ${status.frequencyEstimateProvenance}`
+        : "";
+    const age = status.frequencyEstimatePpm === null
+        ? ""
+        : ` · Age ${Math.max(0, status.frequencyEstimateAgeSeconds).toFixed(0)} s`;
+    detailNode.textContent =
+        `${provider}${provenance} · Estimate ${estimate}${age} · ` +
+        `Residual ${status.gpioFrequencyResidualPpm.toFixed(3)} PPM · ` +
+        `Mode ${String(status.frequencyCorrectionMode || "uncalibrated").replaceAll("_", " ")}. ` +
+        `${status.frequencyEstimateReason || "Provider qualification is informational and is not RF calibration."}`;
+}
+
 function applyRuntimeStatus(msg) {
     const status = normalizeRuntimeStatus(msg);
     if (!status) {
@@ -2864,6 +2947,7 @@ function applyRuntimeStatus(msg) {
     }
 
     currentRuntimeStatus = status;
+    renderGpioFrequencyCorrection(status);
     const selectedMode =
         typeof selectedConfigMode === "function" ? selectedConfigMode() : "";
     if (status.runtimeMode && !selectedMode) {

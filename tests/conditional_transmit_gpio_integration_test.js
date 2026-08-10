@@ -354,67 +354,68 @@ async function browserTest() {
     sharedRows[1].querySelector(".band-gpio-active-high").checked = false;
     ok(!validateGpioConflictFields(), "same-pin Band GPIO sharing with conflicting polarity must remain invalid");
 
-    // Calibration controls are shared across backends, but GPIO NTP is not.
-    // Switching the selected backend must change only presentation/enabled
-    // state; it must not rewrite either persisted value.
+    // Both backends expose frequency calibration in the same Transmitter-tab
+    // position while retaining independent backend-specific values.
     window.WSPRRYPI_PLATFORM = {
         ...(window.WSPRRYPI_PLATFORM || {}),
         gpioClockTransmissionSupported: true,
         si5351Detected: true,
     };
-    field("use_ntp").checked = true;
+    field("use_system_clock_frequency_estimate").checked = true;
+    field("gpio_frequency_residual_ppm").value = "-0.125";
+    field("gpio_manual_ppm").value = "1.75";
     field("ppm").value = "2.409358";
     field("transmit_backend").value = "gpio";
-    syncCalibrationControls();
-    equal(field("ntp_calibration_control").hidden, false,
-        "GPIO WSPR must show the NTP calibration control");
-    equal(field("ppm").disabled, true,
-        "GPIO WSPR with NTP enabled must disable manual PPM");
+    clickTransmitBackend();
+    equal(field("gpio-backend-panel").hidden, false,
+        "GPIO selection must show GPIO calibration in its backend panel");
+    equal(field("gpio_frequency_residual_ppm").disabled, false,
+        "enabled system-clock estimation must keep the GPIO residual editable");
+    equal(field("gpio_manual_ppm").disabled, false,
+        "GPIO manual fallback must remain editable while estimation is enabled");
 
     field("transmit_backend").value = "si5351";
     clickTransmitBackend();
-    equal(field("ntp_calibration_control").hidden, true,
-        "Si5351 WSPR must hide the GPIO-only NTP control");
-    equal(field("ntp_calibration_control").getAttribute("aria-hidden"), "true",
-        "hidden Si5351 NTP control must be hidden from assistive technology");
+    equal(field("si5351-backend-panel").hidden, false,
+        "Si5351 selection must show calibration in the matching backend panel");
     equal(field("ppm").disabled, false,
-        "Si5351 WSPR must keep manual PPM editable even when GPIO NTP is stored on");
-    equal(field("use_ntp").checked, true,
-        "switching to Si5351 must preserve the GPIO NTP preference");
+        "Si5351 reference calibration must remain editable independently");
+    equal(field("use_system_clock_frequency_estimate").checked, true,
+        "switching to Si5351 must preserve the GPIO estimate preference");
     equal(field("ppm").value, "2.409358",
-        "switching to Si5351 must preserve manual PPM");
+        "switching to Si5351 must preserve its reference calibration");
     ok(field("ppm-hint").textContent.includes("Applied to the Si5351 reference"),
         "Si5351 must explain how manual PPM is applied");
 
     const si5351Payload = buildConfigPayload();
     equal(si5351Payload.Operation["Transmit Backend"], "si5351",
         "Si5351 payload must retain the selected backend");
-    equal(si5351Payload.GPIO["Use NTP"], true,
-        "Si5351 payload must preserve the independent GPIO NTP preference");
+    equal(si5351Payload.GPIO["Use System Clock Frequency Estimate"], true,
+        "Si5351 payload must preserve the independent GPIO estimate preference");
+    equal(si5351Payload.GPIO["Frequency Residual PPM"], -0.125,
+        "Si5351 payload must preserve the independent GPIO residual");
+    equal(si5351Payload.GPIO["Manual PPM"], 1.75,
+        "Si5351 payload must preserve the independent GPIO manual fallback");
     equal(si5351Payload.Calibration.PPM, 2.409358,
         "Si5351 payload must save manual Calibration.PPM");
 
     field("transmit_backend").value = "gpio";
     clickTransmitBackend();
-    equal(field("ntp_calibration_control").hidden, false,
-        "switching back to GPIO WSPR must restore the NTP control");
-    equal(field("ppm").disabled, true,
-        "restored GPIO NTP preference must again disable manual PPM");
-    equal(field("use_ntp").checked, true,
-        "round-trip backend switching must preserve GPIO NTP");
+    equal(field("gpio-backend-panel").hidden, false,
+        "switching back to GPIO must restore its calibration panel");
+    equal(field("use_system_clock_frequency_estimate").checked, true,
+        "round-trip backend switching must preserve the GPIO estimate preference");
     equal(field("ppm").value, "2.409358",
-        "round-trip backend switching must preserve manual PPM");
-    ok(field("ppm-hint").textContent.includes("Chrony supplies the GPIO source-clock estimate") &&
-        field("ppm-hint").textContent.includes("Positive means the source clock runs fast"),
-        "GPIO NTP mode must explain Chrony provenance and the positive-fast sign convention");
+        "round-trip backend switching must preserve Si5351 calibration");
+    equal(field("gpio_manual_ppm").value, "1.75",
+        "round-trip backend switching must preserve GPIO manual fallback");
 
-    field("use_ntp").checked = false;
+    field("use_system_clock_frequency_estimate").checked = false;
     syncCalibrationControls();
-    equal(field("ppm").disabled, false,
-        "GPIO WSPR without NTP must enable manual PPM");
-    ok(field("ppm-hint").textContent.includes("Enter the GPIO source-clock estimate") &&
-        field("ppm-hint").textContent.includes("Positive means fast; negative means slow"),
-        "manual GPIO PPM mode must explain the signed source-clock convention");
+    equal(field("gpio_frequency_residual_ppm").disabled, true,
+        "disabled system-clock estimation must disable the unused residual");
+    equal(field("gpio_manual_ppm").disabled, false,
+        "disabled system-clock estimation must leave manual GPIO PPM editable");
 
     return { matrixCases, patches: patches.length, assertions: "passed" };
 }
@@ -508,8 +509,8 @@ async function main() {
             await captureConflictScreenshot(
                 client,
                 path.join(screenshotDir, "GPIO_PPM_Desktop.png"),
-                "radio-tab",
-                "#ppm-hint"
+                "transmitter-hardware-tab",
+                "#gpio-backend-panel .backend-calibration-section"
             );
             await client.send("Emulation.setDeviceMetricsOverride", {
                 width: 390,
@@ -520,8 +521,8 @@ async function main() {
             await captureConflictScreenshot(
                 client,
                 path.join(screenshotDir, "GPIO_PPM_Mobile.png"),
-                "radio-tab",
-                "#ppm-hint"
+                "transmitter-hardware-tab",
+                "#gpio-backend-panel .backend-calibration-section"
             );
         }
         console.log("conditional_transmit_gpio_integration_test passed");

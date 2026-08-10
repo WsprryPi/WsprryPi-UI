@@ -152,7 +152,7 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                 <fieldset class="config-panel" id="tx_info">
                                     <legend>WSPR Transmission Plan</legend>
                                     <p class="config-panel__summary">
-                                        Set the WSPR frequencies, reported power, calibration, and planning behavior used in WSPR mode.
+                                    Set the WSPR frequencies, reported power, and planning behavior used in WSPR mode.
                                     </p>
                                     <div class="config-wspr-top-row">
                                         <div class="config-wspr-top-row__item config-wspr-top-row__field config-wspr-top-row__field--wide">
@@ -233,45 +233,6 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                     </div>
 
                                     <div class="config-wspr-secondary-row">
-                                        <div class="config-wspr-top-row__item config-wspr-top-row__field config-wspr-top-row__field--ppm">
-                                            <label for="ppm" class="form-label">Frequency calibration (PPM)</label>
-                                            <input
-                                                type="number"
-                                                class="form-control"
-                                                id="ppm"
-                                                min="-200"
-                                                max="200"
-                                                step="0.000001"
-                                                inputmode="decimal"
-                                                aria-describedby="ppm-hint"
-                                                data-bs-toggle="tooltip"
-                                                title="Enter a decimal value between -200.000000 to 200.000000">
-                                            <div id="ppm-hint" class="form-text mt-2">
-                                                Enter the GPIO source-clock estimate from -200.000000 through 200.000000 PPM. Positive means fast; negative means slow.
-                                            </div>
-                                        </div>
-
-                                        <div
-                                            id="ntp_calibration_control"
-                                            class="config-wspr-top-row__item config-wspr-top-row__field config-wspr-top-row__field--toggle">
-                                            <label class="form-label" for="use_ntp">
-                                                NTP calibration
-                                            </label>
-                                            <div class="form-check form-switch config-wspr-switch">
-                                                <input
-                                                    class="form-check-input"
-                                                    type="checkbox"
-                                                    role="switch"
-                                                    aria-describedby="use-ntp-hint"
-                                                    data-bs-toggle="tooltip"
-                                                    title="Use NTP for GPIO frequency calibration"
-                                                    id="use_ntp" />
-                                            </div>
-                                            <div id="use-ntp-hint" class="form-text mt-2">
-                                                Use NTP-based frequency calibration when the GPIO backend is active.
-                                            </div>
-                                        </div>
-
                                         <div class="config-wspr-top-row__item config-wspr-top-row__field config-wspr-top-row__planner">
                                             <label for="planner_preference" class="form-label">
                                                 Planning mode
@@ -464,24 +425,6 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                 required />
                                             <div id="qrss-frequency-hint" class="form-text mt-2">
                                                 Enter whole-number Hz such as `14096900`, or include `Hz`, `kHz`, `MHz`, or `GHz` for decimal values such as `14.0969MHz`.
-                                            </div>
-                                        </div>
-
-                                        <div class="col-12 col-lg-4 config-stacked-field">
-                                            <label for="ppm_cw" class="form-label">Frequency calibration:</label>
-                                            <input
-                                                type="number"
-                                                class="form-control"
-                                                id="ppm_cw"
-                                                min="-200"
-                                                max="200"
-                                                step="0.000001"
-                                                inputmode="decimal"
-                                                aria-describedby="ppm-cw-hint"
-                                                data-bs-toggle="tooltip"
-                                                title="Calibration.PPM: frequency calibration offset applied to the transmitter clock." />
-                                            <div id="ppm-cw-hint" class="form-text mt-2">
-                                                Enter the transmitter frequency calibration offset, from -200.000000 through 200.000000 PPM.
                                             </div>
                                         </div>
 
@@ -784,6 +727,37 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                     </div>
 
                                 </div>
+
+                                <section class="backend-calibration-section mt-4" aria-labelledby="gpio-calibration-heading">
+                                    <h3 id="gpio-calibration-heading" class="cw-control-section__title">Frequency calibration</h3>
+                                    <div class="row gx-3 gy-3 align-items-start">
+                                        <div class="col-12 col-lg-4 config-stacked-field">
+                                            <label for="gpio_manual_ppm" class="form-label">Fixed/manual PPM</label>
+                                            <input type="number" class="form-control" id="gpio_manual_ppm" min="-200" max="200" step="0.000001" inputmode="decimal" aria-describedby="gpio-manual-ppm-hint" required />
+                                            <div id="gpio-manual-ppm-hint" class="form-text mt-2">
+                                                Fixed GPIO correction used when the system clock estimate is disabled or cannot be used. Positive means fast; negative means slow.
+                                            </div>
+                                        </div>
+
+                                        <div class="col-12 col-lg-4 config-stacked-field">
+                                            <label for="gpio_frequency_residual_ppm" class="form-label">Residual PPM</label>
+                                            <input type="number" class="form-control" id="gpio_frequency_residual_ppm" min="-200" max="200" step="0.000001" inputmode="decimal" aria-describedby="gpio-residual-ppm-hint" required />
+                                            <div id="gpio-residual-ppm-hint" class="form-text mt-2">
+                                                Remaining conducted RF error measured while the provider estimate is active. Added only to a usable provider estimate.
+                                            </div>
+                                        </div>
+
+                                        <div class="col-12 col-lg-4 config-stacked-field">
+                                            <label class="form-label" for="use_system_clock_frequency_estimate">System clock estimate</label>
+                                            <div class="form-check form-switch config-wspr-switch">
+                                                <input class="form-check-input" type="checkbox" role="switch" id="use_system_clock_frequency_estimate" aria-describedby="system-clock-estimate-hint" />
+                                            </div>
+                                            <div id="system-clock-estimate-hint" class="form-text mt-2">
+                                                Apply the frequency-error estimate from a supported system time service. WsprryPi currently supports chrony; time-service setup remains outside WsprryPi.
+                                            </div>
+                                        </div>
+                                    </div>
+                                </section>
                             </fieldset>
 
                             <fieldset class="config-panel backend-settings-panel" id="si5351-backend-panel" hidden>
@@ -864,6 +838,19 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                         </div>
                                     </div>
                                 </div>
+
+                                <section class="backend-calibration-section mt-4" aria-labelledby="si5351-calibration-heading">
+                                    <h3 id="si5351-calibration-heading" class="cw-control-section__title">Frequency calibration</h3>
+                                    <div class="row gx-3 gy-3 align-items-start">
+                                        <div class="col-12 col-lg-4 config-stacked-field">
+                                            <label for="ppm" class="form-label">Reference calibration (PPM)</label>
+                                            <input type="number" class="form-control" id="ppm" min="-200" max="200" step="0.000001" inputmode="decimal" aria-describedby="ppm-hint" required />
+                                            <div id="ppm-hint" class="form-text mt-2">
+                                                Applied to the Si5351 reference during synthesis planning, from -200.000000 through 200.000000 PPM.
+                                            </div>
+                                        </div>
+                                    </div>
+                                </section>
                             </fieldset>
                         </div>
 
