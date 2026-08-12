@@ -138,6 +138,7 @@ async function captureRp1DriveScreenshot(client, outputPath, theme) {
                 raspberryPiGeneration: 5,
                 model: "Raspberry Pi 5 Model B Rev 1.0",
                 gpioClockTransmissionSupported: true,
+                rp1GpioOperatorVisible: true,
             };
             document.getElementById("transmit_backend").value = "gpio";
             document.getElementById("rp1_gpio_drive_ma").value = "2";
@@ -164,6 +165,43 @@ async function captureRp1DriveScreenshot(client, outputPath, theme) {
             const target = document.getElementById("rp1-gpio-drive-group");
             target.scrollIntoView({ block: "center" });
             document.scrollingElement.scrollTop = Math.max(0, target.offsetTop - 300);
+        })()`,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    const screenshot = await client.send("Page.captureScreenshot", {
+        format: "png",
+        captureBeyondViewport: false,
+    });
+    fs.writeFileSync(outputPath, screenshot.data, "base64");
+}
+
+async function captureHiddenRp1Screenshot(client, outputPath, theme) {
+    await client.send("Runtime.evaluate", {
+        expression: `(() => {
+            document.documentElement.setAttribute("data-bs-theme", ${JSON.stringify(theme)});
+            window.WSPRRYPI_PLATFORM = {
+                ...(window.WSPRRYPI_PLATFORM || {}),
+                raspberryPiGeneration: 5,
+                gpioClockTransmissionSupported: false,
+                gpioClockTransmissionError: "GPIO transmission is supported only on Raspberry Pi 1 through 4.",
+                rp1GpioOperatorVisible: false,
+                si5351Detected: true,
+            };
+            document.getElementById("transmit_backend").value = "gpio";
+            updateBackendPlatformSupportUi();
+            clickTransmitBackend();
+            clearBackendStatus();
+            const tab = document.getElementById("transmitter-hardware-tab");
+            document.querySelectorAll("#configTabs .nav-link").forEach((item) => {
+                item.classList.toggle("active", item === tab);
+                item.setAttribute("aria-selected", item === tab ? "true" : "false");
+            });
+            document.querySelectorAll("#configTabsContent > .tab-pane").forEach((pane) => {
+                const selected = "#" + pane.id === tab.getAttribute("data-bs-target");
+                pane.classList.toggle("active", selected);
+                pane.classList.toggle("show", selected);
+            });
+            document.getElementById("transmit_backend").scrollIntoView({ block: "center" });
         })()`,
     });
     await new Promise((resolve) => setTimeout(resolve, 350));
@@ -405,6 +443,7 @@ async function browserTest() {
         ...(window.WSPRRYPI_PLATFORM || {}),
         raspberryPiGeneration: 5,
         gpioClockTransmissionSupported: true,
+        rp1GpioOperatorVisible: true,
         si5351Detected: true,
     };
     field("use_system_clock_frequency_estimate").checked = true;
@@ -548,6 +587,53 @@ async function browserTest() {
     equal(field("gpio_manual_ppm").disabled, false,
         "disabled system-clock estimation must leave manual GPIO PPM editable");
 
+    window.WSPRRYPI_PLATFORM.raspberryPiGeneration = 5;
+    window.WSPRRYPI_PLATFORM.gpioClockTransmissionSupported = false;
+    window.WSPRRYPI_PLATFORM.rp1GpioOperatorVisible = false;
+    field("transmit_backend").value = "gpio";
+    updateBackendPlatformSupportUi();
+    equal(field("transmit_backend").value, "gpio",
+        "default-hidden Pi 5 RP1 must preserve a retained engineering backend");
+    equal(field("transmit_backend").querySelector('option[value="gpio"]').textContent,
+        "Select Si5351 output",
+        "default-hidden Pi 5 RP1 must present a neutral migration choice");
+    equal(field("transmit_backend").querySelector('option[value="gpio"]').disabled, true,
+        "default-hidden Pi 5 RP1 must not offer GPIO as an operator selection");
+    equal(field("rp1-gpio-drive-group").hidden, true,
+        "default-hidden Pi 5 RP1 must hide its drive selector");
+    ok(!field("backend-selector-hint").textContent.includes("GPIO uses"),
+        "default-hidden Pi 5 RP1 must not advertise the hidden GPIO path in operator guidance");
+    ok(!field("backendPlatformHint").textContent.includes("GPIO"),
+        "default-hidden Pi 5 RP1 must describe the retained backend generically");
+    equal(field("legacy-gpio-power-group").hidden, true,
+        "Pi 5 must not substitute the legacy GPIO power control");
+    equal(field("gpio-backend-panel").hidden, true,
+        "default-hidden Pi 5 RP1 must hide the GPIO configuration panel");
+    equal(field("si5351-backend-panel").hidden, true,
+        "retained engineering GPIO configuration must not imply Si5351 was selected");
+    equal(buildConfigPayload().GPIO["RP1 Drive mA"], 8,
+        "operator hiding must preserve retained RP1 configuration");
+    equal(buildConfigPayload().Operation["Transmit Backend"], "gpio",
+        "an unrelated autosave must not rewrite a retained engineering backend");
+    populateRp1GpioDrive(6);
+    field("tx_pin").querySelector('option[value="20"]').disabled = false;
+    field("tx_pin").value = "20";
+    validateTransmitterHardwareFields();
+    ok(validateRp1GpioDrive(),
+        "operator-hidden invalid RP1 drive must not block client autosave");
+    equal(field("tx_pin").validationMessage, "",
+        "operator-hidden GPIO pin must not remain a client validation target");
+    equal(buildConfigPayload().GPIO["RP1 Drive mA"], 6,
+        "client hiding must not silently normalize retained RP1 drive state");
+    equal(buildConfigPayload().GPIO["Transmit Pin"], 20,
+        "client hiding must not silently normalize retained GPIO pin state");
+    field("transmit_backend").value = "si5351";
+    field("transmit_backend").dispatchEvent(new Event("change", { bubbles: true }));
+    equal(buildConfigPayload().Operation["Transmit Backend"], "si5351",
+        "an explicit Si5351 selection must update the persisted backend");
+    equal(field("si5351-backend-panel").hidden, false,
+        "an explicit Si5351 selection must reveal its configuration panel");
+
     return { matrixCases, patches: patches.length, assertions: "passed" };
 }
 
@@ -645,6 +731,8 @@ async function main() {
             );
             await captureRp1DriveScreenshot(client, path.join(screenshotDir, "RP1_Drive_Desktop_Light.png"), "light");
             await captureRp1DriveScreenshot(client, path.join(screenshotDir, "RP1_Drive_Desktop_Dark.png"), "dark");
+            await captureHiddenRp1Screenshot(client, path.join(screenshotDir, "RP1_Hidden_Desktop_Light.png"), "light");
+            await captureHiddenRp1Screenshot(client, path.join(screenshotDir, "RP1_Hidden_Desktop_Dark.png"), "dark");
             await client.send("Emulation.setDeviceMetricsOverride", {
                 width: 390,
                 height: 844,
@@ -659,6 +747,8 @@ async function main() {
             );
             await captureRp1DriveScreenshot(client, path.join(screenshotDir, "RP1_Drive_Mobile_Light.png"), "light");
             await captureRp1DriveScreenshot(client, path.join(screenshotDir, "RP1_Drive_Mobile_Dark.png"), "dark");
+            await captureHiddenRp1Screenshot(client, path.join(screenshotDir, "RP1_Hidden_Mobile_Light.png"), "light");
+            await captureHiddenRp1Screenshot(client, path.join(screenshotDir, "RP1_Hidden_Mobile_Dark.png"), "dark");
         }
         console.log("conditional_transmit_gpio_integration_test passed");
     } finally {

@@ -526,6 +526,7 @@ const configSchema = {
             "Raspberry Pi Generation": { required: false, type: "number" },
             "GPIO Clock Transmission Supported": { required: false, type: "boolean" },
             "GPIO Clock Transmission Error": { required: false, type: "string" },
+            "RP1 GPIO Operator Visible": { required: false, type: "boolean" },
             "Si5351 Detected": { required: false, type: "boolean" },
             "Si5351 Detection Error": { required: false, type: "string" }
         }
@@ -1550,6 +1551,12 @@ function populateConfig(callback = null) {
                         "Platform",
                         "GPIO Clock Transmission Error",
                         ""
+                    ),
+                    rp1GpioOperatorVisible: getConfigBoolValue(
+                        platform,
+                        "Platform",
+                        "RP1 GPIO Operator Visible",
+                        false
                     ),
                     si5351Detected: getConfigBoolValue(
                         platform,

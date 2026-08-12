@@ -1688,6 +1688,16 @@ function isRp1GpioPlatform() {
     return Number(platform.raspberryPiGeneration) === 5;
 }
 
+function rp1GpioOperatorVisible() {
+    const platform = window.WSPRRYPI_PLATFORM || {};
+    return platform.rp1GpioOperatorVisible === true;
+}
+
+function gpioBackendOperatorActive() {
+    return selectedTransmitBackend() === "gpio" &&
+        !(isRp1GpioPlatform() && !rp1GpioOperatorVisible());
+}
+
 function supportedRp1GpioDrive(value) {
     return [2, 4, 8, 12].includes(Number(value));
 }
@@ -1717,8 +1727,9 @@ function validateRp1GpioDrive() {
     }
 
     const sourceValue = field.getAttribute("data-invalid-source-value");
-    const relevant = (selectedTransmitBackend() === "gpio" && isRp1GpioPlatform()) ||
-        sourceValue !== null;
+    const relevant = rp1GpioOperatorVisible() &&
+        ((selectedTransmitBackend() === "gpio" && isRp1GpioPlatform()) ||
+         sourceValue !== null);
     const valid = supportedRp1GpioDrive(field.value);
     const message = sourceValue !== null
         ? `Saved RP1 drive value ${sourceValue} mA is unsupported. Select 2, 4, 8, or 12 mA.`
@@ -1735,13 +1746,14 @@ function validateRp1GpioDrive() {
 
 function syncGpioDriveControls() {
     const gpioActive = selectedTransmitBackend() === "gpio";
-    const rp1Active = gpioActive && isRp1GpioPlatform();
+    const rp1Active = gpioActive && isRp1GpioPlatform() &&
+        rp1GpioOperatorVisible();
     const legacyActive = gpioActive && !isRp1GpioPlatform();
     const rp1Group = document.getElementById("rp1-gpio-drive-group");
     const legacyGroup = document.getElementById("legacy-gpio-power-group");
     const rp1Field = document.getElementById("rp1_gpio_drive_ma");
     const legacyField = document.getElementById("gpio-power-range");
-    const rp1NeedsRecovery = rp1Field &&
+    const rp1NeedsRecovery = rp1GpioOperatorVisible() && rp1Field &&
         rp1Field.getAttribute("data-invalid-source-value") !== null;
 
     if (rp1Group) rp1Group.hidden = !rp1Active && !rp1NeedsRecovery;
@@ -2003,28 +2015,44 @@ function updateBackendPlatformSupportUi() {
     const $gpioOption = $('#transmit_backend option[value="gpio"]');
     const $si5351Option = $('#transmit_backend option[value="si5351"]');
     const $hint = $("#backendPlatformHint");
+    const $selectorHint = $("#backend-selector-hint");
     const $backend = $("#transmit_backend");
+    const hiddenRp1Selection = currentBackend === "gpio" &&
+        isRp1GpioPlatform() && !rp1GpioOperatorVisible();
 
-    if (currentBackend !== resolvedBackend) {
+    if (currentBackend !== resolvedBackend && !hiddenRp1Selection) {
         $backend.val(resolvedBackend);
     }
 
     const recoveryMessage =
-        currentBackend !== resolvedBackend
+        currentBackend !== resolvedBackend && !hiddenRp1Selection
             ? formatBackendRecoveryMessage(currentBackend, resolvedBackend)
             : "";
-    const backendWarning = anyBackendSupported
-        ? selectedBackendUnavailableMessage()
-        : noBackendAvailableMessage();
-    const inlineHint = anyBackendSupported
-        ? backendInlineHintMessage()
-        : noBackendAvailableMessage();
+    const backendWarning = hiddenRp1Selection
+        ? "Select Si5351 to enable transmission."
+        : (anyBackendSupported
+            ? selectedBackendUnavailableMessage()
+            : noBackendAvailableMessage());
+    const inlineHint = hiddenRp1Selection
+        ? "The saved RF output path is unavailable on this system."
+        : (anyBackendSupported
+            ? backendInlineHintMessage()
+            : noBackendAvailableMessage());
 
-    $gpioOption.text(gpioSupported ? "GPIO" : "GPIO (Unsupported on this Pi)");
+    $gpioOption.text(
+        hiddenRp1Selection
+            ? "Select Si5351 output"
+            : (gpioSupported ? "GPIO" : "GPIO (Unsupported on this Pi)")
+    );
     $gpioOption.prop("disabled", !gpioSupported);
     $si5351Option.text(getSi5351OptionLabel(si5351Detected));
     $si5351Option.prop("disabled", !si5351Supported);
     $backend.prop("disabled", !anyBackendSupported);
+    $selectorHint.text(
+        isRp1GpioPlatform() && !rp1GpioOperatorVisible()
+            ? "Si5351 uses an attached synthesizer on the configured I2C bus."
+            : "GPIO uses Raspberry Pi clock output pins directly. Si5351 uses an attached synthesizer on the configured I2C bus."
+    );
     $hint
         .prop("hidden", !inlineHint)
         .text(inlineHint);
@@ -2039,6 +2067,7 @@ function updateBackendPlatformSupportUi() {
 
     syncTransmitAvailabilityUi();
     syncGpioDriveControls();
+    syncBackendPanelVisibility();
 }
 
 function syncCalibrationControls() {
@@ -2081,7 +2110,8 @@ function clickTransmitBackend() {
     updateBackendPlatformSupportUi();
 
     const backend = selectedTransmitBackend();
-    const gpioActive = backend === "gpio";
+    const gpioActive = backend === "gpio" &&
+        !(isRp1GpioPlatform() && !rp1GpioOperatorVisible());
     syncBackendPanelVisibility();
 
     $gpioPanel
@@ -2101,11 +2131,16 @@ function clickTransmitBackend() {
 }
 
 function syncBackendPanelVisibility() {
-    const gpioActive = selectedTransmitBackend() === "gpio";
-    const rp1RecoveryRequired = document.getElementById("rp1_gpio_drive_ma")
+    const gpioActive = selectedTransmitBackend() === "gpio" &&
+        !(isRp1GpioPlatform() && !rp1GpioOperatorVisible());
+    const rp1RecoveryRequired = rp1GpioOperatorVisible() &&
+        document.getElementById("rp1_gpio_drive_ma")
         ?.getAttribute("data-invalid-source-value") !== null;
     $("#gpio-backend-panel").prop("hidden", !gpioActive && !rp1RecoveryRequired);
-    $("#si5351-backend-panel").prop("hidden", gpioActive);
+    $("#si5351-backend-panel").prop(
+        "hidden",
+        gpioActive || selectedTransmitBackend() !== "si5351"
+    );
 }
 
 function clickTransmitPin() {
@@ -3361,6 +3396,7 @@ function validateSi5351I2cAddress() {
 
 function validateTransmitterHardwareFields() {
     const backend = selectedTransmitBackend();
+    const gpioOperatorActive = gpioBackendOperatorActive();
     let invalidCount = 0;
 
     const gpioPower = normalizeIntegerInputValue("#gpio-power-range", 7);
@@ -3376,15 +3412,15 @@ function validateTransmitterHardwareFields() {
     const txPinField = document.getElementById("tx_pin");
     if (txPinField) {
         txPinField.setCustomValidity(
-            backend === "gpio" && !txPinValid
+            gpioOperatorActive && !txPinValid
                 ? "Only GPIO4 and GPIO20 support GPCLK0 clock output."
                 : ""
         );
     }
-    setFieldValidationState(txPinField, !(backend === "gpio") || txPinValid);
-    if (backend === "gpio" && !txPinValid) {
+    setFieldValidationState(txPinField, !gpioOperatorActive || txPinValid);
+    if (gpioOperatorActive && !txPinValid) {
         invalidCount++;
-    } else if (backend !== "gpio") {
+    } else if (!gpioOperatorActive) {
         txPinField.setCustomValidity("");
         clearFieldValidationState(txPinField);
     }
