@@ -513,6 +513,7 @@ const configSchema = {
         keys: {
             "Transmit Pin": { required: false, type: "number" },
             "Power Level": { required: false, type: "number" },
+            "RP1 Drive mA": { required: false, type: "number" },
             "Use System Clock Frequency Estimate": { required: false, type: "boolean" },
             "Frequency Residual PPM": { required: false, type: "number" },
             "Manual PPM": { required: false, type: "number" }
@@ -1699,6 +1700,12 @@ function populateConfig(callback = null) {
                     "Power Level",
                     7
                 );
+                let rp1GpioDriveMa = getConfigIntValue(
+                    gpio,
+                    "GPIO",
+                    "RP1 Drive mA",
+                    2
+                );
                 let si5351I2cBus = getConfigIntValue(
                     si5351,
                     "Si5351",
@@ -1896,6 +1903,9 @@ function populateConfig(callback = null) {
                     $("#ppm").val(ppm).trigger("change");
 
                     $("#gpio-power-range").val(power_level).trigger("input");
+                    if (typeof populateRp1GpioDrive === "function") {
+                        populateRp1GpioDrive(rp1GpioDriveMa);
+                    }
                     $("#si5351_i2c_bus").val(si5351I2cBus).trigger("change");
                     if (typeof setSi5351AddressValue === "function") {
                         setSi5351AddressValue(si5351I2cAddressRaw);

@@ -129,6 +129,51 @@ async function captureConflictScreenshot(client, outputPath, tabId, selector) {
     fs.writeFileSync(outputPath, screenshot.data, "base64");
 }
 
+async function captureRp1DriveScreenshot(client, outputPath, theme) {
+    await client.send("Runtime.evaluate", {
+        expression: `(() => {
+            document.documentElement.setAttribute("data-bs-theme", ${JSON.stringify(theme)});
+            window.WSPRRYPI_PLATFORM = {
+                ...(window.WSPRRYPI_PLATFORM || {}),
+                raspberryPiGeneration: 5,
+                model: "Raspberry Pi 5 Model B Rev 1.0",
+                gpioClockTransmissionSupported: true,
+            };
+            document.getElementById("transmit_backend").value = "gpio";
+            document.getElementById("rp1_gpio_drive_ma").value = "2";
+            document.getElementById("use_led").checked = false;
+            document.getElementById("use_shutdown").checked = false;
+            document.getElementById("use_amp").checked = false;
+            document.querySelectorAll(".band-gpio-enabled").forEach((field) => {
+                field.checked = false;
+            });
+            clickTransmitBackend();
+            refreshGpioConflictOptions();
+            validateGpioConflictFields();
+            const tab = document.getElementById("transmitter-hardware-tab");
+            document.querySelectorAll("#configTabs .nav-link").forEach((item) => {
+                item.classList.toggle("active", item === tab);
+                item.setAttribute("aria-selected", item === tab ? "true" : "false");
+            });
+            document.querySelectorAll("#configTabsContent > .tab-pane").forEach((pane) => {
+                const selected = "#" + pane.id === tab.getAttribute("data-bs-target");
+                pane.classList.toggle("active", selected);
+                pane.classList.toggle("show", selected);
+            });
+            document.querySelectorAll(".toast.show").forEach((toast) => toast.classList.remove("show"));
+            const target = document.getElementById("rp1-gpio-drive-group");
+            target.scrollIntoView({ block: "center" });
+            document.scrollingElement.scrollTop = Math.max(0, target.offsetTop - 300);
+        })()`,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    const screenshot = await client.send("Page.captureScreenshot", {
+        format: "png",
+        captureBeyondViewport: false,
+    });
+    fs.writeFileSync(outputPath, screenshot.data, "base64");
+}
+
 async function browserTest() {
     const fail = (message) => { throw new Error(message); };
     const equal = (actual, expected, message) => {
@@ -358,6 +403,7 @@ async function browserTest() {
     // position while retaining independent backend-specific values.
     window.WSPRRYPI_PLATFORM = {
         ...(window.WSPRRYPI_PLATFORM || {}),
+        raspberryPiGeneration: 5,
         gpioClockTransmissionSupported: true,
         si5351Detected: true,
     };
@@ -367,6 +413,28 @@ async function browserTest() {
     field("ppm").value = "2.409358";
     field("transmit_backend").value = "gpio";
     clickTransmitBackend();
+    equal(field("rp1-gpio-drive-group").hidden, false,
+        "Pi 5 GPIO must show the RP1 drive selector");
+    equal(field("legacy-gpio-power-group").hidden, true,
+        "Pi 5 GPIO must hide the legacy 0-7 power control");
+    equal(field("rp1_gpio_drive_ma").disabled, false,
+        "Pi 5 GPIO must enable the RP1 drive selector");
+    for (const drive of [2, 4, 8, 12]) {
+        populateRp1GpioDrive(drive);
+        equal(field("rp1_gpio_drive_ma").value, String(drive),
+            `RP1 ${drive} mA must populate`);
+        equal(buildConfigPayload().GPIO["RP1 Drive mA"], drive,
+            `RP1 ${drive} mA must serialize unchanged`);
+    }
+    populateRp1GpioDrive(6);
+    ok(!validateRp1GpioDrive(), "unsupported saved RP1 drive must remain invalid");
+    equal(field("rp1_gpio_drive_ma").value, "",
+        "unsupported saved RP1 drive must not be presented as a valid selection");
+    equal(buildConfigPayload().GPIO["RP1 Drive mA"], 6,
+        "unsupported saved RP1 drive must be preserved for server rejection rather than silently defaulted");
+    ok(field("rp1-gpio-drive-error").textContent.includes("6 mA"),
+        "unsupported saved RP1 drive must receive adjacent recovery guidance");
+    populateRp1GpioDrive(8);
     equal(field("gpio-backend-panel").hidden, false,
         "GPIO selection must show GPIO calibration in its backend panel");
     equal(field("gpio_frequency_residual_ppm").disabled, false,
@@ -376,6 +444,8 @@ async function browserTest() {
 
     field("transmit_backend").value = "si5351";
     clickTransmitBackend();
+    equal(field("rp1_gpio_drive_ma").disabled, true,
+        "Si5351 must disable the inactive RP1 drive selector without clearing it");
     equal(field("si5351-backend-panel").hidden, false,
         "Si5351 selection must show calibration in the matching backend panel");
     equal(field("ppm").disabled, false,
@@ -410,12 +480,33 @@ async function browserTest() {
         "Si5351 payload must preserve the independent GPIO residual");
     equal(si5351Payload.GPIO["Manual PPM"], 1.75,
         "Si5351 payload must preserve the independent GPIO manual fallback");
+    equal(si5351Payload.GPIO["RP1 Drive mA"], 8,
+        "Si5351 payload must preserve the inactive RP1 drive selection");
     equal(si5351Payload.Calibration.PPM, 2.409358,
         "Si5351 payload must save manual Calibration.PPM");
     equal(si5351Payload.Si5351["Reference Source"], "crystal",
         "Si5351 payload must save the reference source");
     equal(si5351Payload.Si5351["Crystal Load Capacitance"], 8,
         "Si5351 payload must save the crystal load capacitance");
+
+    populateRp1GpioDrive(6);
+    clickTransmitBackend();
+    equal(field("gpio-backend-panel").hidden, false,
+        "Si5351 must reveal the GPIO recovery panel for an invalid retained RP1 value");
+    equal(field("rp1-gpio-drive-group").hidden, false,
+        "Si5351 must reveal an invalid retained RP1 value for recovery");
+    equal(field("rp1_gpio_drive_ma").disabled, false,
+        "Si5351 must enable an invalid retained RP1 selector for recovery");
+    ok(!validateRp1GpioDrive(),
+        "Si5351 must not treat an invalid serialized RP1 value as client-valid");
+    field("rp1_gpio_drive_ma").value = "8";
+    field("rp1_gpio_drive_ma").dispatchEvent(new Event("change", { bubbles: true }));
+    equal(field("gpio-backend-panel").hidden, true,
+        "repairing the retained RP1 value must dismiss the Si5351 recovery panel");
+    equal(field("si5351-backend-panel").hidden, false,
+        "repairing the retained RP1 value must leave the selected Si5351 panel visible");
+    equal(buildConfigPayload().GPIO["RP1 Drive mA"], 8,
+        "repairing the retained RP1 value must preserve the selected value");
 
     field("transmit_backend").value = "gpio";
     clickTransmitBackend();
@@ -427,6 +518,28 @@ async function browserTest() {
         "round-trip backend switching must preserve Si5351 calibration");
     equal(field("gpio_manual_ppm").value, "1.75",
         "round-trip backend switching must preserve GPIO manual fallback");
+    equal(field("rp1_gpio_drive_ma").value, "8",
+        "round-trip backend switching must preserve RP1 drive strength");
+
+    window.WSPRRYPI_PLATFORM.raspberryPiGeneration = 4;
+    syncGpioDriveControls();
+    equal(field("legacy-gpio-power-group").hidden, false,
+        "Pi 4 GPIO must restore the legacy power control");
+    equal(field("gpio-power-range").disabled, false,
+        "Pi 4 GPIO must keep the legacy 0-7 power control authoritative");
+    equal(field("rp1-gpio-drive-group").hidden, true,
+        "Pi 4 GPIO must hide the RP1-only drive selector");
+    equal(buildConfigPayload().GPIO["RP1 Drive mA"], 8,
+        "Pi 4 operation must preserve the inactive RP1 selection");
+    populateRp1GpioDrive(6);
+    syncGpioDriveControls();
+    equal(field("rp1-gpio-drive-group").hidden, false,
+        "Pi 4 must reveal an invalid retained RP1 value for recovery");
+    equal(field("rp1_gpio_drive_ma").disabled, false,
+        "Pi 4 must enable an invalid retained RP1 selector for recovery");
+    ok(!validateRp1GpioDrive(),
+        "Pi 4 must not treat an invalid serialized RP1 value as client-valid");
+    populateRp1GpioDrive(8);
 
     field("use_system_clock_frequency_estimate").checked = false;
     syncCalibrationControls();
@@ -530,6 +643,8 @@ async function main() {
                 "transmitter-hardware-tab",
                 "#gpio-backend-panel .backend-calibration-section"
             );
+            await captureRp1DriveScreenshot(client, path.join(screenshotDir, "RP1_Drive_Desktop_Light.png"), "light");
+            await captureRp1DriveScreenshot(client, path.join(screenshotDir, "RP1_Drive_Desktop_Dark.png"), "dark");
             await client.send("Emulation.setDeviceMetricsOverride", {
                 width: 390,
                 height: 844,
@@ -542,6 +657,8 @@ async function main() {
                 "transmitter-hardware-tab",
                 "#gpio-backend-panel .backend-calibration-section"
             );
+            await captureRp1DriveScreenshot(client, path.join(screenshotDir, "RP1_Drive_Mobile_Light.png"), "light");
+            await captureRp1DriveScreenshot(client, path.join(screenshotDir, "RP1_Drive_Mobile_Dark.png"), "dark");
         }
         console.log("conditional_transmit_gpio_integration_test passed");
     } finally {

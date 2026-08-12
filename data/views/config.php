@@ -709,8 +709,8 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                         <div id="tx-pin-error" class="form-text text-danger mt-2" aria-live="polite" hidden></div>
                                     </div>
 
-                                    <div class="col-12 col-lg-4">
-                                        <label for="gpio-power-range" class="form-label">Power Level</label>
+                                    <div class="col-12 col-lg-4" id="legacy-gpio-power-group">
+                                        <label for="gpio-power-range" class="form-label">Legacy GPIO power level</label>
                                         <div class="config-range-control">
                                             <input
                                                 type="range"
@@ -724,6 +724,26 @@ $bandGpioBands = ['2200m', '630m', '160m', '80m', '60m', '40m', '30m', '22m', '2
                                                 <span id="gpio-power-range-value" class="small" aria-live="polite" aria-atomic="true"></span>
                                             </label>
                                         </div>
+                                        <div class="form-text mt-2">
+                                            Used by Raspberry Pi 1 through 4. This value is preserved but is not used by RP1.
+                                        </div>
+                                    </div>
+
+                                    <div class="col-12 col-lg-4 config-stacked-field" id="rp1-gpio-drive-group" hidden>
+                                        <label for="rp1_gpio_drive_ma" class="form-label">RP1 GPIO drive strength</label>
+                                        <select
+                                            id="rp1_gpio_drive_ma"
+                                            class="form-select"
+                                            aria-describedby="rp1-gpio-drive-hint rp1-gpio-drive-error">
+                                            <option value="2">2 mA (safe default)</option>
+                                            <option value="4">4 mA</option>
+                                            <option value="8">8 mA</option>
+                                            <option value="12">12 mA</option>
+                                        </select>
+                                        <div id="rp1-gpio-drive-hint" class="form-text mt-2">
+                                            Raspberry Pi 5 RP1 pad drive setting. This is not a calibrated RF power measurement.
+                                        </div>
+                                        <div id="rp1-gpio-drive-error" class="form-text text-danger mt-2" aria-live="polite" hidden></div>
                                     </div>
 
                                 </div>

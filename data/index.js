@@ -314,6 +314,7 @@ function restorePersistedConfigDraft() {
     $("#ppm").val(Number(calibration.PPM)).trigger("change");
 
     $("#gpio-power-range").val(Number(gpio["Power Level"])).trigger("input");
+    populateRp1GpioDrive(gpio["RP1 Drive mA"] ?? 2);
     $("#si5351_i2c_bus").val(Number(si5351["I2C Bus"])).trigger("change");
     if (typeof setSi5351AddressValue === "function") {
         setSi5351AddressValue(si5351["I2C Address"] || "0x60");
@@ -403,6 +404,14 @@ function bindIndexActions() {
 
     // Bind the transmit power slider
     $("#gpio-power-range").on("input", updateGpioPowerLabel);
+    $("#rp1_gpio_drive_ma").on("change", function () {
+        if (supportedRp1GpioDrive(this.value)) {
+            this.removeAttribute("data-invalid-source-value");
+        }
+        syncBackendPanelVisibility();
+        validateRp1GpioDrive();
+        scheduleAutosave();
+    });
     $("#si5351-power-range").on("input", updateSi5351PowerLabel);
     $("#si5351_reference_source").on("change", syncSi5351ReferenceControls);
     $("#configSaveStatusDetail").on("click", navigateToFirstInvalidConfigControl);
@@ -1674,6 +1683,74 @@ function selectedTransmitBackend() {
     return backend === "si5351" ? "si5351" : "gpio";
 }
 
+function isRp1GpioPlatform() {
+    const platform = window.WSPRRYPI_PLATFORM || {};
+    return Number(platform.raspberryPiGeneration) === 5;
+}
+
+function supportedRp1GpioDrive(value) {
+    return [2, 4, 8, 12].includes(Number(value));
+}
+
+function populateRp1GpioDrive(value) {
+    const field = document.getElementById("rp1_gpio_drive_ma");
+    if (!field) {
+        return;
+    }
+
+    const parsed = Number(value);
+    if (supportedRp1GpioDrive(parsed)) {
+        field.value = String(parsed);
+        field.removeAttribute("data-invalid-source-value");
+    } else {
+        field.value = "";
+        field.setAttribute("data-invalid-source-value", String(value));
+    }
+    validateRp1GpioDrive();
+}
+
+function validateRp1GpioDrive() {
+    const field = document.getElementById("rp1_gpio_drive_ma");
+    const error = document.getElementById("rp1-gpio-drive-error");
+    if (!field) {
+        return true;
+    }
+
+    const sourceValue = field.getAttribute("data-invalid-source-value");
+    const relevant = (selectedTransmitBackend() === "gpio" && isRp1GpioPlatform()) ||
+        sourceValue !== null;
+    const valid = supportedRp1GpioDrive(field.value);
+    const message = sourceValue !== null
+        ? `Saved RP1 drive value ${sourceValue} mA is unsupported. Select 2, 4, 8, or 12 mA.`
+        : "Select an RP1 drive strength of 2, 4, 8, or 12 mA.";
+
+    field.setCustomValidity(relevant && !valid ? message : "");
+    setFieldValidationState(field, !relevant || valid);
+    if (error) {
+        error.hidden = !relevant || valid;
+        error.textContent = relevant && !valid ? message : "";
+    }
+    return !relevant || valid;
+}
+
+function syncGpioDriveControls() {
+    const gpioActive = selectedTransmitBackend() === "gpio";
+    const rp1Active = gpioActive && isRp1GpioPlatform();
+    const legacyActive = gpioActive && !isRp1GpioPlatform();
+    const rp1Group = document.getElementById("rp1-gpio-drive-group");
+    const legacyGroup = document.getElementById("legacy-gpio-power-group");
+    const rp1Field = document.getElementById("rp1_gpio_drive_ma");
+    const legacyField = document.getElementById("gpio-power-range");
+    const rp1NeedsRecovery = rp1Field &&
+        rp1Field.getAttribute("data-invalid-source-value") !== null;
+
+    if (rp1Group) rp1Group.hidden = !rp1Active && !rp1NeedsRecovery;
+    if (legacyGroup) legacyGroup.hidden = !legacyActive;
+    if (rp1Field) rp1Field.disabled = !rp1Active && !rp1NeedsRecovery;
+    if (legacyField) legacyField.disabled = !legacyActive;
+    validateRp1GpioDrive();
+}
+
 function syncTransmitAvailabilityUi() {
     const transmitField = document.getElementById("transmit");
     const transmitHint = document.getElementById("transmitAvailabilityHint");
@@ -1961,6 +2038,7 @@ function updateBackendPlatformSupportUi() {
     }
 
     syncTransmitAvailabilityUi();
+    syncGpioDriveControls();
 }
 
 function syncCalibrationControls() {
@@ -2004,9 +2082,7 @@ function clickTransmitBackend() {
 
     const backend = selectedTransmitBackend();
     const gpioActive = backend === "gpio";
-
-    $gpioPanel.prop("hidden", !gpioActive);
-    $si5351Panel.prop("hidden", gpioActive);
+    syncBackendPanelVisibility();
 
     $gpioPanel
         .find("input, select, button")
@@ -2015,11 +2091,21 @@ function clickTransmitBackend() {
         .find("input, select, button")
         .prop("disabled", gpioActive);
 
+    syncGpioDriveControls();
+
     syncCalibrationControls();
     refreshGpioConflictOptions();
     validateTransmitterHardwareFields();
     validatePage();
     scheduleAutosave();
+}
+
+function syncBackendPanelVisibility() {
+    const gpioActive = selectedTransmitBackend() === "gpio";
+    const rp1RecoveryRequired = document.getElementById("rp1_gpio_drive_ma")
+        ?.getAttribute("data-invalid-source-value") !== null;
+    $("#gpio-backend-panel").prop("hidden", !gpioActive && !rp1RecoveryRequired);
+    $("#si5351-backend-panel").prop("hidden", gpioActive);
 }
 
 function clickTransmitPin() {
@@ -3278,6 +3364,7 @@ function validateTransmitterHardwareFields() {
     let invalidCount = 0;
 
     const gpioPower = normalizeIntegerInputValue("#gpio-power-range", 7);
+    const rp1GpioDrive = normalizeIntegerInputValue("#rp1_gpio_drive_ma", 2);
     const si5351Bus = normalizeIntegerInputValue("#si5351_i2c_bus", 1);
     const si5351Reference = normalizeIntegerInputValue("#si5351_reference_frequency", 27000000);
     const si5351Power = normalizeIntegerInputValue("#si5351-power-range", 1);
@@ -3303,16 +3390,21 @@ function validateTransmitterHardwareFields() {
     }
 
     const gpioPowerField = document.getElementById("gpio-power-range");
+    const legacyGpioActive = backend === "gpio" && !isRp1GpioPlatform();
     const gpioPowerValid = gpioPower >= 0 && gpioPower <= 7;
     setFieldValidationState(
         gpioPowerField,
-        !(backend === "gpio") || gpioPowerValid
+        !legacyGpioActive || gpioPowerValid
     );
-    if (backend === "gpio" && !gpioPowerValid) {
+    if (legacyGpioActive && !gpioPowerValid) {
         invalidCount++;
-    } else if (backend !== "gpio" && gpioPowerField) {
+    } else if (!legacyGpioActive && gpioPowerField) {
         gpioPowerField.setCustomValidity("");
         clearFieldValidationState(gpioPowerField);
+    }
+
+    if (!validateRp1GpioDrive()) {
+        invalidCount++;
     }
 
     const busValid = si5351Bus >= 0;
@@ -3535,6 +3627,13 @@ function buildConfigPayload(options = {}) {
     if (!(transmit_power >= 0 && transmit_power <= 7)) {
         transmit_power = 7;
     }
+    let rp1_gpio_drive_ma = parseInt($("#rp1_gpio_drive_ma").val(), 10);
+    if (!supportedRp1GpioDrive(rp1_gpio_drive_ma)) {
+        const invalidSource = $("#rp1_gpio_drive_ma").attr("data-invalid-source-value");
+        rp1_gpio_drive_ma = invalidSource === undefined
+            ? 2
+            : parseInt(invalidSource, 10);
+    }
 
     let si5351_i2c_bus = parseInt($("#si5351_i2c_bus").val(), 10);
     if (!Number.isInteger(si5351_i2c_bus) || si5351_i2c_bus < 0) {
@@ -3581,6 +3680,7 @@ function buildConfigPayload(options = {}) {
 
     var GPIO = {
         "Power Level": transmit_power,
+        "RP1 Drive mA": rp1_gpio_drive_ma,
         "Use System Clock Frequency Estimate": use_system_clock_frequency_estimate,
         "Frequency Residual PPM": gpio_frequency_residual_ppm,
         "Manual PPM": gpio_manual_ppm,
@@ -4367,6 +4467,7 @@ function setHardwareControlsDisabled(disabled) {
         "#transmit_backend",
         "#tx_pin",
         "#gpio-power-range",
+        "#rp1_gpio_drive_ma",
         "#use_system_clock_frequency_estimate",
         "#gpio_frequency_residual_ppm",
         "#gpio_manual_ppm",
@@ -4393,6 +4494,7 @@ function setHardwareControlsDisabled(disabled) {
     if (!disabled) {
         syncStopButtonState();
         syncAmpControlState();
+        syncGpioDriveControls();
     }
 
     syncSi5351ReferenceControls();
@@ -4421,6 +4523,7 @@ function setOfflineDefaults() {
     setTxPin(4);
     $("#gpio-power-range").val(7);
     updateGpioPowerLabel.call(document.getElementById("gpio-power-range"));
+    populateRp1GpioDrive(2);
     $("#use_system_clock_frequency_estimate").prop("checked", true);
     $("#gpio_frequency_residual_ppm").val(0);
     $("#gpio_manual_ppm").val(0);
